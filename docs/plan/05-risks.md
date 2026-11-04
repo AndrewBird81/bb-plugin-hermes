@@ -1,28 +1,32 @@
 # 05 — Risk register
 
-L = likelihood, I = impact (H/M/L).
+L = likelihood, I = impact (H/M/L). Detection runs through `diagnostics` and health unless noted.
 
 | # | Risk | L | I | Mitigation | Early detection |
 |---|---|---|---|---|---|
-| R1 | **Hermes canary churn** (daily `main`): a canonical method, param or event changes; `model.options` isn't in `x-canonical-methods` (11 §1); unknown keys are refused (08 §1) | M | H | Wire protocol only in TS (no private symbols); feature-detect via `runtime.describe` capabilities; send only declared keys | Daily drift check (03 §9); health row; bridge `provider.error` counts |
-| R2 | **Private Hermes symbols** in `bb_tools`: `admission_author` contextvar, `get_session_env`, `register_tool` kwargs (11 §4–5) | M | M | One shim with `inspect.signature` feature detection; echo falls back to `echo.json`; tools fail closed with `tool_error` | Drift check imports each symbol |
-| R3 | **Experimental bb SDK APIs**: `experimental_providerBridge`, `experimental_defineHostEntry`, `experimental_visibility`, signals, `experimental_retainWorker`, `experimental_thread.events`, `experimental_regenerateTitle`. Host 0.6.104 vs main 0.6.120 (01 G10) | M | H | Pin SDK 0.6.104; `bb plugin types --check` per release; e2e at the live bb version; re-run conformance on every bb upgrade | Type check on bb update; e2e gate |
-| R4 | **Process count**: one bridge per hosted thread, each with its own gateway socket (S1-S3 fact 2); bot and Discord threads wake often | M | M | Release after import (`threads.stop`); 30 min idle release; no keep-alive turns | Count hosted threads in health |
-| R5 | **Host-worker lifetime**: killed at exactly 300 s without calls, with no exit event (S7 §6) | H | H | `ensureWatch` every 60 s (verified 7+ min); re-list on every (re)connect; WAL stat catches missed signals | "last sync" age in health; `ensureWatch` reports a new pid |
-| R6 | **Concurrency limits**: $HERMES_HOST host limit 18; idle-thread wakes can be held (07 §4) | L | M | Serial import; short mirror turns; no parallel replays | Wake → `turn/start` delay > 30 s logged |
-| R7 | **Import timestamps**: every item stamped "now"; sidebar order = import order (S1-S3 §S1b) | H | L | Oldest-first serial import; Hermes title kept; accept (Q7) | Dogfood P2 review |
-| R8 | **Notification noise**: one push per mirrored outside turn, plus Conduit's own push for the same turn; users' own Discord messages notify too | M | M | Settings default level; silent import; per-thread override; hidden-during-replay | Push counts in dogfood P2 |
-| R9 | **Conduit co-writing Bot Chats**: legacy dashboard turns reach bb only when finished; turn leases serialise; a legacy writer lease can refuse adoption (08 §4) | M | M | Mirror finished turns; never adopt or move Bot Chats; on refusal, show the error and retry later | Refusals (`runtime_coordination_required`) in bridge log; P3 dogfood |
-| R10 | **Discord echo**: bot may re-ingest its own echo; `reply_to` = admission id may be rejected (11 §4) | M | L | Author check; ship without the echo if A11 fails | Supervised live try (T5.4) |
-| R11 | **Duplicate bindings**: bb accepts a duplicate handle, then the newer thread fails 409 (S1-S3 fact 4) | M | H | `UNIQUE(profile_home, lineage_root)`; check before spawn; one serial queue for import, handoff and bots | 409s in bridge logs; uniqueness query in health |
-| R12 | **$HERMES_HOST sleep**: Hermes, worker and bridges all stop; bb server stays up | H | M | Outbox; reconcile on wake; "$HERMES_HOST offline" in UI; optional keep-awake | `watch` state; dogfood sleep test |
-| R13 | **Privacy**: transcripts enter the bb server's thread store; `bb_tools` lets any session in an enabled profile, Discord included, drive bb | L | H | No text in mapping db or logs; no network credentials; minimal CLI env from a 0600 file; Q5 approval in Discord-origin sessions; fixed tool set | Log review per release; pytest env assertions |
-| R14 | **Approvals answered by bb** under a permission mode (A2) | L | H | `approvalEnforcedBy:"provider"`; verify each declared mode; never-auto-approve tests | P1 gate |
-| R15 | **Replay ring truncation** (512 events/session, 06 §2) on long turns during a disconnect | M | L | `truncated`/`snapshot_required` → `session.resume` and render from row ids | Fake-Hermes test; reconnect counts |
-| R16 | **Discord rolled-over sessions**: replies from bb don't reach Discord after the daily reset (08 §4, 04 §2) | H | M | Notice in thread (Q3); thread per session (Q4) | P5 dogfood |
-| R17 | **Row metadata gap**: canonical list may lack pinned, archived, cwd or origin → SQLite fallback on a private schema (A1) | M | M | Read-only `mode=ro`, `schema_version` check, columns named explicitly; fall back to "no sync" for a field rather than guess | Drift check runs the query |
-| R18 | **Config change for `bb_tools`** in 4 profiles; `reload-plugins` reloads Conduit's plugin too (11 §5) | L | M | User approval at T4.4; do it while Conduit is idle; rollback = `plugins disable` | Conduit link status after reload |
-| R19 | **Project catalog clash**: project chats share the cwd-keyed catalog, so profiles in one project overwrite each other's model list (S7 finding 1) | M | L | Bridge maps unoffered models to the profile default with a warning; republish after each turn; Q9 | Warning counts |
-| R20 | **Navigation jumps**: `threads.open` moves every client, phones included (S7 finding 3) | H | L | `useBbNavigate` from our UI; realtime + overlay for handoff (A17); `threads.open` fallback only | Dogfood P1 |
-| R21 | **bb's own handoff** (model picker) drops the profile and offers other harness tabs; can't be hidden (S7 §1d) | M | L | Documented limitation; the default profile applies | — |
-| R22 | **Init-turn artifacts**: unread dot, a push, marker title (S7 §2) | H | L | Title always set; mute during init, then `markRead` and restore | Dogfood P1 |
+| R1 | **Hermes canary churn**: methods, params or events change; `model.options` isn't in `x-canonical-methods` (11 §1); unknown keys are refused | M | H | Wire protocol only in TS; capability detection; strict fake from a vendored contract | Worker drift check on each version change; manual check before `hermes update` (D20) |
+| R2 | **Private Hermes symbols** in `bb_tools` (`admission_author`, `get_session_env`) | M | M | One shim with `inspect.signature`; echo falls back to `echo.json`; tools fail closed | Drift check imports each symbol |
+| R3 | **Private store schema**: the store reader is now primary for reads (`message_uid`, metadata) | M | H | `mode=ro`; `schema_version` check; named columns; a field that fails → no sync for that field, never a guess | Drift check runs the queries |
+| R4 | **Experimental bb SDK APIs** (`experimental_*`); host 0.6.104 vs main 0.6.120 | M | H | Pin SDK 0.6.104; e2e at the live version; bb upgrade runbook (04) | `bb plugin types --check` per release and per bb upgrade |
+| R5 | **Host-worker lifetime**: killed at 300 s with no exit event (S7 §6) | H | H | 60 s `ensureWatch`; `worker_boot_id` → full reconcile; WAL stat | Boot id changes; last-sync age |
+| R6 | **Process count**: one bridge per hosted thread | M | M | Release after import; 30 min idle release; no keep-alive turns | Hosted count |
+| R7 | **Concurrency limits**: $HERMES_HOST host limit 18 (07 §4) | L | M | Serial import; short mirror turns | Wake → `turn/start` delay > 30 s |
+| R8 | **Duplicate or lost messages**: re-lists, compaction clones, `/retry`, merged sends (R1 M1, M2, M6) | M | H | `turns` keyed by `message_uid`, inserted with the wake in one transaction; input segmentation | Unit tests; dogfood `/retry` check |
+| R9 | **Wrong-turn control**: steer or Stop hits another client's turn (R1 M4) | M | H | Fence on our own `admission_id`; `prompt.cancel` for queued prompts | Fencing tests |
+| R10 | **Irreversible Hermes writes from reads**: `session.resume` adopts legacy rows (R1 M7); detach can end rows (R1 S7) | M | H | Store reads; adopt on first send only (D16); `end_reason:null` (A24) | 0 revision changes after import |
+| R11 | **Duplicate bindings**: bb accepts a duplicate handle, then 409s (S1-S3 fact 4) | M | H | `UNIQUE` key; one serial queue; `pluginMetadata` origin check on `thread.created` | Duplicate-binding query |
+| R12 | **Hung mirror turns** with no canonical events (Conduit legacy writer; R1 M5) | M | M | Store polling; 10 min cap → `partial`, the rest later | Turn age |
+| R13 | **Release path**: the private repo isn't readable by the server's git; exact tags pin; no downgrade (R3 M1, M2) | H | H | P0 `git ls-remote` + `gh auth setup-git` (D29); `@^0` range; roll forward; `VACUUM INTO` before removal | P0 gate |
+| R14 | **Tests hit live Hermes** if the root falls back (R3 M3) | M | H | `hermesRoot` required, no fallback; e2e aborts unless the instance id is the fake's | e2e step 7 |
+| R15 | **Import timestamps**: items stamped "now" (S1-S3 §S1b) | H | L | Dated tags `[CLI · Oct 12]`; oldest-first import (Q7) | Dogfood P2 |
+| R16 | **Notification noise**: double pushes with Conduit and Discord | M | M | D26 (`input-only` for user-started outside turns); silent imports | Push counts in dogfood |
+| R17 | **Conduit co-writing Bot Chats**: legacy writer lease; turns serialised (08 §4) | M | M | Never adopt or move Bot Chats; store-rendered turns | Refusals in logs; P3 dogfood |
+| R18 | **Discord echo**: re-ingest or `reply_to` rejection (11 §4) | M | L | Author check; ship without the echo if A11 fails | Supervised try |
+| R19 | **Discord rollover**: replies after the daily reset don't reach Discord (08 §4) | H | M | Notice (D23); thread per session (Q4) | P5 dogfood |
+| R20 | **bb tools security**: Discord users can drive bb; the Discord approval is self-approvable (R1 M10) | M | H | Off on cron; approval in Discord-origin sessions (D24); allowlist; no `tell` to its own thread; 0600 env file | pytest; log review |
+| R21 | **Privacy**: transcripts enter bb's thread store | L | H | Ids only in db, logs and `diagnostics`; no network credentials | Log review per release |
+| R22 | **bb auto-answers approvals** under a permission mode (A2) | L | H | One declared mode; never-auto-approve tests | P1 gate |
+| R23 | **$HERMES_HOST outage** (sleep is off: keep-awake mode "all", D21) | L | M | Thread banner; reconnect diff; reconcile | `watch` state; Wi-Fi-off dogfood |
+| R24 | **UI limits**: project catalog clash (Q9); `threads.open` moves every client; bb's own handoff drops the profile; init artifacts; mobile slots (A30) | M | L | Model mapping + warning; `useBbNavigate`; documented limitations; mute + `markRead`; pinned bots on the phone | Dogfood P1 |
+| R26 | **Parity gaps**: slash commands and fork are unverified on canonical (A31–A34); either can block ACP retirement (D25) | M | M | Protocol check in P0 (T0.12); tip-only fork fallback; legacy-only catalog → raise with the user before P1 | T0.12 result |
+| R25 | **`bb_tools` config change** in 4 profiles; `reload-plugins` reloads Conduit too | L | M | User approval at T4.3; while Conduit is idle; `plugins disable` rollback | Conduit link status |
