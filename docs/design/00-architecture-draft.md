@@ -12,7 +12,10 @@ Status: planning. Evidence: `docs/research/01..11`, `docs/spikes/`. The full pla
 - **Profile picker in the Hermes harness:**
   - A Profile chip in every Hermes chat's composer, next to the model picker, plus one in "New Hermes chat".
   - The model list follows the profile.
-  - Mid-chat switching behavior is pending (the user is being asked).
+  - Changing the profile in a chat that has messages hands off to a new chat for that profile, carrying the context (like bb's "Handoff to new thread").
+- **Projects:** optional project for Hermes chats ($HERMES_HOST projects only); Hermes works in that folder.
+  - Imported sessions whose cwd matches a bb project land in it; the rest are project-less.
+- **Outside messages** (Discord, Conduit, CLI) render as the user's own bubble with a source tag, e.g. `[Discord] …`.
 - **Bots:**
   - Hermes Bot Mode bots: Hermes, Alex, David, Neo.
   - One pinned bb thread each, bound to that profile's canonical `Bot Chat`, which Conduit and Desktop also use.
@@ -23,7 +26,8 @@ Status: planning. Evidence: `docs/research/01..11`, `docs/spikes/`. The full pla
   - Cron runs are off.
 - **External activity:** mirrored live into the bb thread, with progress, unread and normal notifications.
 - **Discord replies:** same conversation.
-  - A reply from bb is delivered to Discord (08 §4). The user's own text is not echoed; whether to fix that is pending.
+  - A reply from bb is delivered to Discord (08 §4).
+  - The user's bb message is echoed to Discord first ("$OWNER_NAME (via bb): …") by the Hermes plugin. Feasibility: H2.
 - **State sync:** two-way for pin, archive, rename and read.
 - **ACP harness:**
   - Retire `acp-hermes-agent` once at parity. Its 18 threads stay viewable and become read-only.
@@ -32,6 +36,12 @@ Status: planning. Evidence: `docs/research/01..11`, `docs/spikes/`. The full pla
   - They work in every session of each enabled profile.
   - The editor-MCP route is dropped: it loses `clarify`, and it only covers sessions bb creates (S0-S4 T3).
 - **Spikes:** may touch live bb and Hermes. A live gateway restart is OK at any time.
+- **Settings v1** (proposed; the user hasn't objected):
+  - connection health;
+  - default profile and hidden profiles;
+  - import sources and time window;
+  - hidden models per profile (replaces `hermes-host/config/bb-models.json`);
+  - default notification level for outside activity.
 
 ## Fixed by evidence
 
