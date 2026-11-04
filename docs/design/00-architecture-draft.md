@@ -8,16 +8,19 @@ Status: feasibility. Evidence: `docs/research/01..10`. Review: `09`. Decisions b
   - Hermes Bot Mode bots (Hermes, Alex, David, Neo).
   - One pinned bb thread each, bound to that profile's canonical `Bot Chat`, shared with Conduit and Desktop.
   - The stale `todoist` profile is hidden.
-- **Import:** non-empty interactive chats (CLI, TUI, Desktop, Conduit), first import covering the last 30 days. Pending a confirmation answer:
-  - subagents nested under their parent;
-  - one-shots off;
-  - Discord off.
+- **Import:** non-empty interactive chats (CLI, TUI, Desktop, Conduit) and Discord conversations, first import covering the last 30 days.
+  - Subagents render nested: a live delegation item in the parent, openable as a bb sub-thread.
+  - One-shots are off (settings toggle).
+  - Cron is off.
 - **External activity:** mirrored live into the bb thread, with progress, unread and normal notifications.
-- **Discord replies:** same conversation. A viewer reply is delivered to Discord (08 §4); the user's own text is not echoed. Only relevant once Discord import is enabled.
+- **Discord replies:** same conversation. A viewer reply is delivered to Discord (08 §4); the user's own text is not echoed, which needs a UX decision. Verify with the user against a throwaway Discord thread.
 - **State sync:** two-way for pin, archive, rename and read.
 - **ACP harness:** retire `acp-hermes-agent` once at parity. Keep its 18 threads; never re-import their sessions.
-- **bb tools:** full bridging, so bb's injected tools become callable by Hermes (design pending, 10).
-- **Spikes:** live bb and Hermes allowed. The gateway restart is pending the user's answer.
+- **bb tools:** full bridging (10).
+  - (a) The `bb` CLI, thread identity and bb skills, available to Hermes in every bound session.
+  - (b) bb's injected tools via an editor MCP overlay served by the bridge. This works only for sessions bb creates, which need `source=acp` (to verify).
+  - Python plugin tools are needed only if imported sessions (Bot Chats, Discord, Conduit) must also get injected tools. That is still the user's call.
+- **Spikes:** live bb and Hermes allowed. A live gateway restart is OK at any time.
 
 ## Fixed by evidence
 
