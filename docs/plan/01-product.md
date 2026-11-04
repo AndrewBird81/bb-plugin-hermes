@@ -79,7 +79,7 @@ AC:
 - **Profile pick, chat started** (binding not `pending`, including one-turn imports and bots; R1 M9) → **handoff** (S7 §1d):
   1. A new chat opens in the chosen profile and project, titled "<Profile> chat (from <old title>)". Our UI navigates the current window (A17).
   2. The old chat keeps its profile; its chip reverts.
-  3. Its first Hermes prompt is visible text: a handoff block (the old transcript from the store, ≤ ~25 kB) plus the message (r11 §7). bb shows the message plus "Continued from <old thread>".
+  3. Its first Hermes prompt is visible text: a handoff block (the old transcript from the store, ≤ ~25 kB; sensitive tool results by name only, F15) plus the message (r11 §7). bb shows the message plus "Continued from <old thread>".
   4. A send that races the pick is refused: "This chat stays on <old>. A <new> chat is opening."
 - Limitations (bb UI, can't be hidden):
   - bb's model picker also offers "Handoff to new thread" to other harnesses;
@@ -92,34 +92,28 @@ AC:
 - After a handoff, "what were we just discussing?" is answered correctly.
 - The old Hermes session's `revision` is unchanged.
 
-## F4 Bots and Conduit co-use [P3]
+## F4 Bots [P1] (D35)
 
-- One pinned thread per Bot Mode bot: Hermes, Alex, David, Neo. Each is bound to the profile's `Bot Chat` (r11 §3); no "Bots" section (S7 §4).
-- Title = the capitalised handle (r11 §2). Bot titles never sync in either direction (R1 S5); archive is bb-only (Q2 default).
-- Pin (D31): setup pins the Bot Chat in Hermes too, then pin syncs normally. If Hermes refuses a pin on a hidden session, the bot pin is bb-only and the user is told.
-- `todoist` is in hidden profiles by default. Every live profile is a Desktop bot (r11 §2), so bb's rule decides.
-- History is imported (F5); then the thread is live.
-- Shared with Conduit and Desktop:
-  - bb turns show there;
-  - Conduit turns show in bb as soon as Hermes writes them. A turn with no live events is rendered from Hermes' store (02 flow 4).
-- Compaction keeps the bound id (r11 §3). A re-minted Bot Chat → the thread rebinds.
-- Bot Chat handed off to a messaging lane (R1 S13) → banner "Replies here also post to <platform>".
+- One pinned bb Hermes chat per visible profile: Hermes, Alex, David, Neo (`todoist` hidden). No "Bots" section (S7 §4).
+- Each is an ordinary bb-created chat: an empty chat at setup; the Hermes session is created on its first message, in that profile, with `title:<handle>`. If Hermes refuses the title as a duplicate, it gets `" (2)"` in Hermes only.
+- It behaves like any Hermes chat: chip, handoff, approvals; title and archive sync as in F9. The pin is bb-only: no Hermes pin writes for bots.
+- Not shared with Hermes' own Bot Chats. Those stay in Hermes for Desktop and Conduit, and are never imported (Bot Mode finds them by exact title).
 
 AC:
 - Setup creates exactly 4 pinned threads; a re-run creates 0.
-- A Conduit message to Alex appears in bb ≤ 5 s after Hermes writes the reply, including when the wake fires mid-turn (R1 M5).
-- A bb message shows in Conduit.
-- After a bb rename, the Hermes row is still `Bot Chat` and the bb title stays.
+- The first message in "Alex" creates one session in alex (`session.info.profile_name`), titled "Alex".
+- Every Hermes Bot Chat is unchanged (`revision`) and none is imported.
+- The bot sessions stay unpinned in Hermes.
 
 ## F5 Imported threads [P2; Discord P5]
 
 - **Scope** (deny-list, R2 M3): every session with ≥ 1 message active in the last 30 days, except:
   - cron and one-shot (toggles, off); `a2a` and `tool` (D32);
   - `acp` in `source` or `created_source` (D12);
-  - Bot Chats (F4) and subagents (nested);
+  - Bot Chats (D35) and subagents (nested);
   - bb-created and tombstoned sessions.
   - Discord is held back until P5. `api_server` imports, tagged `[API]` (D32).
-  - Tags come from the real source values (`[CLI]`, `[TUI]`, `[Desktop]`, `[Conduit]` if distinguishable, A5); unknown → `[Hermes]`.
+  - Tags come from the real source values (`[CLI]`, `[TUI]`, `[Desktop]`; Conduit records as Desktop, A5); unknown → `[Hermes]`.
 - **Pre-migration sessions** (D16):
   - render read-only from Hermes' store;
   - Hermes adopts the session (`session.resume`) only when the user first sends from bb;
@@ -133,7 +127,7 @@ AC:
 - **State:** an import takes Hermes' pinned and archived state; the last-synced values start at Hermes' values.
 - **Rendering** (S1-S3 §S1b):
   - each user message is the user's bubble, tagged with source and date: `[CLI · Oct 12] …` (R2 S10);
-  - reply and tools follow, collapsed;
+  - reply and tools follow, collapsed; sensitive tool results show by name only (F15);
   - title = Hermes title, else the first message cut to 60 characters (R2 S2);
   - item times are import time (Q7 default);
   - replayed lines enter prompt history (accepted).
@@ -156,16 +150,16 @@ AC:
 ## F6 Live mirroring and source tags [P2]
 
 - Outside activity in a bound session mirrors into its thread: spinner, streaming text, tools, then unread.
-- An outside user message is the user's own bubble, tagged `[CLI]`, `[TUI]`, `[Desktop]`, `[Conduit]`, `[Discord]`, `[Hermes]` (S7 §8).
-  - It lands in prompt history (D15).
+- An outside user message is the user's own bubble, tagged `[CLI]`, `[TUI]`, `[Desktop]`, `[Discord]`, `[API]`, `[Hermes]` (S7 §8). Sensitive tool results show by name only (F15).
+  - It lands in prompt history (D15). A bb send that starts with a source tag (an ↑-recalled line) is refused: "Remove the [Discord] tag to send."
   - A turn with no user line (Pulse, subagent results) mirrors the reply only.
   - Images in outside messages: text only in v1.
 - Each outside turn is shown once, even across re-lists and compaction (R1 M1–M2). A CLI `/retry` adds a "Retried in CLI" turn with the new reply (R4 S1).
 - Queued sends merged with a mirror are still sent to Hermes (R1 M6).
 - **Notifications** (D26):
-  - no push for turns the user started: the user's own Discord id, bb, CLI, TUI, Desktop, Conduit (D33);
-  - push for approvals, clarify and turns the user didn't start (other Discord users, `a2a`, subagents, Pulse); unknown author: no push;
-  - unread is still set, and cleared when Hermes shows the turn read (R2 S3).
+  - turns the user started (the user's own Discord id, bb, CLI, TUI, Desktop/Conduit; D33) are marked read automatically: no dot, no push;
+  - turns the user didn't start (other Discord users, `a2a`, subagents, Pulse) keep the dot and push; unknown author: no push;
+  - approvals and clarify always push.
 - Typing in bb during a mirror → queued behind the outside turn (S1-S3 §S2c).
 - **Stop during a mirror** (D27): interrupts that Hermes turn, fenced by its admission and generation. With no live events (legacy writer), it stops watching only.
 - Approvals and clarify from an outside turn show in bb, even while a bb turn waits behind it (R1 S1). The first answer anywhere wins (r08 §4).
@@ -173,6 +167,8 @@ AC:
 AC:
 - Outside start → visible in bb ≤ 3 s (A13).
 - 3 re-lists during one outside turn → 1 bubble. A compaction adds no `[Hermes]` summary bubble (R4 M3b).
+- A CLI turn: no dot, no push. A Pulse turn: dot + push.
+- Sending a recalled `[Discord] …` line is refused.
 - Streamed text == final text when attaching mid-turn (R1 S2).
 - Back-to-back outside turns render as 2 turns.
 - Turns made while the bb server or daemon was down appear in order after reconnect.
@@ -198,7 +194,7 @@ AC (throwaway Discord thread, user-approved):
   - a deadline: edit 60 s, command 300 s.
 - **Clarify:** a bb user question (choices, multi-select, free text, skip) with a 600 s deadline. Native, so `AskUserQuestion` isn't injected (r10 Q5).
 - **Timeout** → Hermes decides; the card closes "Timed out in Hermes". Answered elsewhere → "Answered elsewhere".
-- **Never auto-approved:** one declared permission mode that never auto-answers (A2, D17).
+- **Never auto-approved:** the one declared permission mode, `auto`, must never answer for the user (A2, D17). Live Hermes runs smart approvals; P1 dogfood includes a command smart mode escalates.
 - **Stop:**
   - ours running → interrupt (271 ms, S0-S4 §S4d);
   - ours queued behind an outside turn → cancel ours only (R1 M4).
@@ -224,7 +220,9 @@ AC (isolated Hermes, manual approvals, quoted throwaway paths):
 | delete (Q1 default) | none; tombstone | delete | archive + "Deleted in Hermes"; sends refused |
 
 - Server-set titles (placeholders, fallbacks, Hermes titles) never go to Hermes (R2 S2).
-- Bot threads: titles never sync; archive is bb-only (Q2 default); pin syncs after setup (D31). ACP threads are untouched.
+- Bot threads: the pin is bb-only (D35); title and archive sync. ACP threads are untouched.
+- Legacy (not yet adopted) bindings: no Hermes writes until the first bb send adopts them, since a mutation also claims the row (D16, A23).
+- Hermes records no reads today (`last_read_at` unset on 0 of 455 sessions, R5), so the read row fires bb → Hermes only in practice.
 - Hermes host unreachable: changes are applied on reconnect by diffing against the last synced values. If both sides changed, Hermes wins (R1 S14).
 
 AC:
@@ -235,11 +233,11 @@ AC:
 ## F10 Notifications [P2]
 
 - Each bound thread gets the Settings default level (`inherit`, D7) via `threadNotifications.set` (S1-S3 §S3c), overridable per thread.
-- Outside turns the user started run at `input-only`, so approvals and clarify still push (D26).
+- Outside turns the user started run at `input-only` (approvals and clarify still push) and are marked read when they finish (D26).
 - Imports and init turns: silent. bb-started turns: normal bb behaviour.
 
 AC:
-- A Conduit chat turn: 0 bb pushes, unread set.
+- A Conduit chat turn: 0 bb pushes, no dot.
 - A Pulse turn: 1 push.
 - An outside approval: 1 push.
 - First import: 0 pushes.
@@ -257,9 +255,9 @@ AC:
   - `project` targets any bb project.
 - `bb_thread_wait` is capped below Hermes' 420 s tool limit.
 - **Work boundary** (D28, R4 M1), on every tool: spawn's `project`, the target thread's project for tell/read/wait, and `list` results.
-  - A $WORK_HOST target is allowed only if the current turn came from bb (author `bb:…`) or Conduit (Desktop too if A5 can't separate them), **and** the session isn't Discord-origin.
+  - A $WORK_HOST target is allowed only if the current turn came from bb (author `bb:…`) or Desktop/Conduit (one source, A5), **and** the session isn't Discord-origin.
   - Otherwise `tool_error`, and `list` drops $WORK_HOST threads.
-  - $WORK_HOST = the project's environment host. Personal projects follow the normal rules.
+  - $WORK_HOST = the project's environment host; a project with checkouts on both hosts counts as work (A35). Personal projects follow the normal rules.
 
 AC:
 - In neo: "spawn a Codex thread that lists ~/src" → a child of neo's thread; `bb_thread_wait` returns its result.
@@ -273,7 +271,7 @@ AC:
 | Setting | Default | Phase |
 |---|---|---|
 | Hermes host + Hermes root (required; unset = no Hermes I/O; D30) | unset; $HERMES_HOST + `~/.hermes` on live | P0 |
-| Connection health: gateway, Hermes version, drift result, worker last sync, Hermes host online, bb and SDK versions | — | P0 |
+| Connection health: gateway, Hermes version, drift result, worker last sync, Hermes host online, bb and SDK versions; `audit` result from P2 | — | P0 |
 | Default profile; hidden profiles | `default` ("Hermes"); `todoist` | P1 |
 | Hidden models per profile | from `hermes-host/config/bb-models.json`, `custom:mlx-main` = `mlx-main` (r11 §1) | P1 |
 | Import exclusions (deny-list) | cron, one-shot (`a2a`, `tool` always) | P2 |
@@ -297,21 +295,33 @@ AC:
 - No Hermes ACP entry in any picker.
 - 0 empty ACP probes after cleanup.
 
-## F14 Slash commands and fork [P1] (D25)
+## F14 Slash commands and fork [built from P1; gate P6] (D25)
 
-Both are unverified on the canonical socket. The protocol check runs in P0 (T0.12) so that a gap shows early.
+Not part of the P1 exit. The protocol check runs in P0 (T0.12), so a gap shows early.
 
-- **Slash commands:**
-  - bb's command menu lists the profile's Hermes commands (A31: a canonical catalog, or only the legacy `commands.catalog`);
-  - a picked command runs in Hermes (A32: `prompt.submit` text or a dedicated method);
+- **Slash commands** ride Hermes' legacy methods: there is no canonical catalog (A31):
+  - bb's command menu lists the profile's commands from `commands.catalog`;
+  - a picked command runs through `slash.exec`;
   - `/compact` is bb's manual compaction (`supportsManualCompaction`), mapped to Hermes `session.mutate compress` (A33);
   - text that isn't a listed command goes to the model as-is.
-- **Fork:** bb "Fork" on a Hermes thread → a Hermes branch (A34: `session.mutate branch`; the api_server fork route needs `API_SERVER_KEY`, a credential D1 rules out) → a new bb thread bound to the branch, with the same profile and project.
-  - Checkpoint fork (from an earlier turn) needs Hermes to branch at a message.
-  - If only tip works, we declare `fork:"tip"`: bb then offers forking at the latest turn only, with no fork from an earlier message.
+- **Fork:** bb "Fork" on a Hermes thread → `session.mutate branch` (A34, verified in code) → a new bb thread bound to the branch, with the same profile and project. The api_server fork route needs `API_SERVER_KEY`, a credential D1 rules out.
+  - Checkpoint fork uses `branch{through_message_id}`.
+  - If only tip works live, we declare `fork:"tip"`: bb then offers forking at the latest turn only.
 
 AC:
 - A listed command runs, and its output shows in the thread.
 - `/compact` compacts the Hermes session (`context.compacted` in bb; same thread).
 - A fork is a new thread whose first reply knows the forked context. The source session is unchanged.
 - Checkpoint fork (if declared) starts from the chosen turn.
+
+## F15 Sensitive tool results [P1 handoff; P2 import and mirror] (D36)
+
+- Results of sensitive tools render in bb by tool name only, e.g. "used conduit_location": no arguments, no result, no progress text.
+- Applies to import replay, mirror turns and the handoff block. The full result stays in Hermes.
+- The list lives in code (`src/shared/sensitive-tools.ts`), with a test: Conduit health and location (`conduit_health`, `conduit_location`) and Home Assistant tools (exact names from live `tool_names`, A40).
+- Limits:
+  - the assistant's own text can still quote a result;
+  - bb-started turns are outside D36's scope: their results render normally. The same filter can cover them if the user asks.
+
+AC:
+- A replayed, mirrored or handed-off `conduit_location` call shows only "used conduit_location". bb's thread events and the handoff text contain none of the fake result.

@@ -8,16 +8,17 @@ bb-plugin-hermes/
                           scripts pin the bb bundled in bb-app@0.48.1 for builds
   server.ts host.ts app.tsx   entries only
   assets/hermes.svg       provider, rail and row icon
-  src/shared/             marker.ts, host-contract.ts, rpc-contract.ts, filters.ts (deny-list)  (lead)
-  src/hermes/             client.ts (canonical), store.ts (read-only state.db)                  (client)
+  src/shared/             marker.ts, host-contract.ts, rpc-contract.ts, filters.ts (deny-list),
+                          sensitive-tools.ts (D36)                                              (lead)
+  src/hermes/             client.ts (canonical), store.ts or store.py helper (T0.4 picks)       (client)
   src/bridge/             turns, segmentation, mapper, interactions, replay/mirror              (bridge)
-  src/server/             mapping db, import, wakes, state sync, bots, handoff, diagnostics     (server)
+  src/server/             mapping db, import, wakes, state sync, bots, handoff, diagnostics, audit (server)
   src/worker/             watch, store reads, mutate, models, drift, bindings                   (worker)
   src/app/                rail, home send menu, ⇧⌘H, row metadata, banner, settings             (app)
   hermes-plugin/bb_tools/ plugin.yaml, __init__.py, tests/ (own .venv, stubs)                   (hermes-plugin)
-  test/fake-hermes/       strict fake gateway + fake state.db; vendored contract                (client)
-  test/fixtures/          recorded frames and store snapshots, redacted                         (e2e)
-  e2e/                    isolated-bb scripts, sbb, eligibility                                 (e2e)
+  test/fake-hermes/       strict fake gateway + snapshot state.db copies; vendored contract     (client)
+  test/fixtures/          recorded frames, store snapshots, golden reader output, redacted      (e2e)
+  e2e/                    isolated-bb scripts, sbb, eligibility, canary                         (e2e)
   contract/               used-surface.json, contract:check                                     (client)
   docs/                   plan, guide.md, operations.md, PLUGIN_OVERVIEW.md                     (lead)
 ```
@@ -30,16 +31,29 @@ Changes from the brief's order:
 - bb tools (P4) come before Discord (P5): both need the same per-profile `bb_tools` install, so the user approves it once.
 - The live install moves to P0 (R3 S8).
 - Settings ship with the phase that reads them.
+- Bots move into P1: they are plain pinned chats now (D35), and D19's phone gate needs one in P1. P3 is empty.
 
 | Phase | Usable result | Exit (verify: 03 gates) |
 |---|---|---|
 | P0 Foundations | Live bb shows Hermes health and the drift result | Server reaches the private repo (D29); live install from `@^0` and one `bb plugin update` work; provider hidden; worker alive past 5 min |
-| P1 New chats | Chat with any profile from bb: reasoning, attachments, approvals, slash commands, fork; phone works; ACP still available | F1–F3, F8, F14; settings for profiles and models |
-| P2 Sync, import, mirror | All recent Hermes chats in bb, live, two-way state | F5 (no Discord), F6, F9, F10; import settings |
-| P3 Bots | 4 pinned bot threads shared with Conduit and Desktop | F4 |
+| P1 New chats + bots | Chat with any profile and bot from bb: reasoning, attachments, approvals; phone works; ACP still available | F1–F4, F8, F15 (handoff); settings for profiles and models. F14 is built here or later; it gates P6 |
+| **Go/no-go** (D34) | — | Below |
+| P2 Sync, import, mirror | All recent Hermes chats in bb, live, two-way state | F5 (no Discord), F6, F9, F10, F15; import settings; audit |
+| P3 | Folded into P1 (D35) | — |
 | P4 bb tools | Hermes spawns, tells, lists, reads and waits on bb threads | F11; plugin pinned and enabled in 4 profiles (user-approved) |
 | P5 Discord | Discord conversations in bb; replies post with echo | F5 Discord, F7 |
-| P6 Polish + retirement | One Hermes integration; docs | Parity gate (D25); F12 complete, F13; older chats; cleanup |
+| P6 Polish + retirement | One Hermes integration; docs | Parity gate (D25) incl. F14; F12 complete, F13; older chats; cleanup |
+
+Go/no-go checkpoint (D34):
+- When: P1 has run live for 3 weeks.
+- Input:
+  - `diagnostics` usage: bb-started Hermes messages per week, against the ~10/week ACP baseline;
+  - the upkeep log (`docs/operations.md` §Upkeep);
+  - the kill criteria (05).
+- The user decides:
+  - **go** → P2;
+  - **no-go** → stop. The user may still ask for the retirement subset (F14 + F13) or keep ACP.
+- No P2+ task starts before go, including T4.1.
 
 ## Work breakdown
 
@@ -51,15 +65,17 @@ Changes from the brief's order:
 | T0.1 | Scaffold: manifest, SVG, vitest, `npm run check`, pinned build `bb`. Asks the Q8 hermes-host question before anything touches hermes-host | lead | — |
 | T0.2 | Contracts: markers, host contract, RPC, Hermes host + root settings (D30), deny-list constants | lead | T0.1 |
 | T0.3 | Canonical client port; `gateway.sock.path` fallback; reconnect | client | T0.1 |
-| T0.4 | Store reader: first prove A36 (binding in worker and bridge runtimes); mismatch policy; turn-row rules (02) | client | T0.1 |
-| T0.5 | Strict fake Hermes (vendored contract, fake `state.db`) | client | T0.3, T0.4 |
+| T0.4 | Store reader: compare TS `node:sqlite` with Hermes' Python reader on the T0.13 snapshots, in the worker and bridge runtimes; record the pick (the one that fails loudly) in `docs/operations.md`; mismatch policy; turn-row rules (02) | client | T0.13 |
+| T0.5 | Strict fake Hermes (vendored contract incl. legacy `methods`, snapshot `state.db` copies) | client | T0.3, T0.4 |
 | T0.6 | Mapping db, transactional migrations, dedupe | server | T0.2 |
 | T0.7 | Provider registration (hidden); bridge skeleton; build registry | bridge | T0.2 |
 | T0.8 | Worker: `ensureWatch{root}`, boot id, `describe`, drift check, `diagnostics` | worker | T0.3, T0.4 |
 | T0.9 | Server: 60 s keep-alive service, `diagnostics` RPC, health | server | T0.6, T0.8 |
 | T0.10 | Settings section: Hermes root, health | app | T0.9 |
 | T0.11 | `git ls-remote` as the bb service user; live install `@^0`; one update | lead | T0.1–T0.10 |
-| T0.12 | Protocol check on isolated Hermes: slash catalog and exec, `compress`, `branch` (A31–A34) | client | T0.3 |
+| T0.12 | Protocol check on isolated Hermes: `commands.catalog`, `slash.exec`, `compress`, `branch{through_message_id}` (A31, A33, A34) | client | T0.3 |
+| T0.13 | Record store snapshots + golden reader output from scripted scenarios on isolated Hermes (03 §4); the script is `npm run canary` | e2e | T0.3 |
+| T0.14 | `npm run contract:check [--incoming]` (fetch; `git show origin/main:` contract, schema, symbols) | client | T0.3 |
 | T1.0 | Fixtures: gateway restart, attachments, second viewer, detach, `hermes chat -c` | e2e | T0.5 |
 | T1.1 | Bridge turns: start/resume/stop, lazy create, identity, segmentation, fencing | bridge | T0.5, T0.7 |
 | T1.2 | Bridge interactions: approvals, clarify, deadlines, session-scoped | bridge | T1.1 |
@@ -76,16 +92,18 @@ Changes from the brief's order:
 | T1.9b | App: those settings | app | T1.9a |
 | T1.10 | Server: titles (Hermes → bb; server-set titles recorded in `synced`) | server | T1.3 |
 | T1.12 | Bridge: attachments | bridge | T1.0, T1.1 |
-| T1.13 | Bridge: slash commands (`commands/list` → `bb/provider-commands`, exec) and `/compact` → `compress` | bridge | T0.12, T1.1 |
-| T1.14a | Bridge: `thread/fork` → `branch`, tip or checkpoint | bridge | T0.12, T1.1 |
-| T1.14b | Server: bind fork threads on `thread.created` | server | T1.3 |
-| T1.11 | P1 e2e + dogfood (phone, two hosts) | e2e | T1.1–T1.14 |
-| T2.0 | Fixtures: compaction clone, `/retry`, subagent, legacy row, Conduit mid-turn | e2e | T0.5 |
+| T1.13 | Bridge: slash commands (`commands.catalog` → `bb/provider-commands`, `slash.exec`) and `/compact` → `compress` (not in the P1 exit; gate P6) | bridge | T0.12, T1.1 |
+| T1.14a | Bridge: `thread/fork` → `branch`, tip or checkpoint (gate P6) | bridge | T0.12, T1.1 |
+| T1.14b | Server: bind fork threads on `thread.created` (gate P6) | server | T1.3 |
+| T1.15 | Server: bot setup (D35): one pinned `newChat` per visible bot profile, titled by handle; idempotent | server | T1.3 |
+| T1.16 | Bridge: sensitive-tool filter (D36) in the handoff block now, replay and mirror in P2; list test; A40 | bridge | T1.6b |
+| T1.11 | P1 e2e + dogfood (phone, two hosts) | e2e | T1.1–T1.12, T1.15, T1.16 |
+| T2.0 | Fixtures: subagent, legacy row (claim, adoption), legacy-writer turn mid-turn | e2e | T0.5 |
 | T2.1 | Worker: watch (hint + WAL), `listSessions`, `readTurns` (uids), source → tag table | worker | T0.8, T2.0 |
 | T2.2 | Server: import (deny-list, preview, serial queue, redo, backfill) | server | T2.1 |
-| T2.3 | Bridge: bind/replay/mirror from the store; mirror modes; legacy without resume | bridge | T1.1, T2.0 |
-| T2.4 | Server: wakes (`turns`, one transaction), D26 levels, read race | server | T2.1, T2.3 |
-| T2.5a | Server: state sync both ways, reconnect diff | server | T2.1 |
+| T2.3 | Bridge: bind/replay/mirror from the store; mirror modes; legacy without resume; D36 filter | bridge | T1.1, T2.0 |
+| T2.4 | Server: wakes (`turns`, `INSERT OR IGNORE` then send), D26 levels and auto `markRead` | server | T2.1, T2.3 |
+| T2.5a | Server: state sync both ways, reconnect diff; no writes for legacy bindings or bot pins | server | T2.1 |
 | T2.5b | Worker: `mutate` | worker | T2.1 |
 | T2.5c | App: offline thread banner | app | T0.9 |
 | T2.6a | Server: import exclusions, window, notification level | server | T2.2 |
@@ -94,12 +112,10 @@ Changes from the brief's order:
 | T2.7b | Server: subagent sub-thread binding | server | T2.2 |
 | T2.8a | Bridge: compression follow | bridge | T2.3 |
 | T2.8b | Worker: tip tracking (`resolved_id`) | worker | T2.1 |
-| T2.9 | P2 e2e, `e2e/eligibility`, dogfood | e2e | T2.1–T2.8 |
-| T3.1 | Server: bot setup (lookup, import, pin in bb and Hermes per D31, idempotent); verify the hidden Bot Chat accepts the pin | server | T2.2 |
-| T3.2a | Server: rotation, bot exemptions, `handed_off` banner | server | T3.1 |
-| T3.2b | Bridge: `rebind` | bridge | T2.3 |
-| T3.3 | Conduit co-use check | e2e | T3.1, T2.4 |
-| T4.1 | `bb_tools`: tools, allowlist, cron refusal, Discord approval (`rule_key`), work boundary on all tools, env, `schema_version`, pytest | hermes-plugin | T0.2 (parallel from P0) |
+| T2.10 | Server: `message.dispatch` hook refuses sends that start with a source tag (D15) | server | T2.4 |
+| T2.11 | Server: daily `audit` (anchors vs `turns` and rendered markers) in health and `diagnostics` | server | T2.4 |
+| T2.9 | P2 e2e, `e2e/eligibility`, dogfood, soak | e2e | T2.1–T2.8, T2.10, T2.11 |
+| T4.1 | `bb_tools`: tools, allowlist, cron refusal, Discord approval (`rule_key`), work boundary on all tools, env, `schema_version`, pytest | hermes-plugin | go (D34) |
 | T4.2a | Worker: `setBindings` (atomic, 0700/0600) | worker | T2.1 |
 | T4.2b | Server: push binding rows | server | T4.2a |
 | T4.3 | Install pinned + enable in 4 profiles + cron disable (user approval) | lead | T4.1, T4.2b |
@@ -117,21 +133,20 @@ Changes from the brief's order:
 | T6.6 | Docs: `guide.md`, `operations.md` (appended each phase), `PLUGIN_OVERVIEW.md` | lead | P5 |
 | T6.7 | Optional stack trim: webui, hermes-host adapter (user OK) | lead | T6.3 |
 
-- Critical path: T0.1 → T0.3 → T0.5 → T1.1 → T1.5b → T1.6b → T1.11 → T2.3 → T2.4 → T2.9 → T3.1 → T3.3 → … (R3 S4).
-- T4.1 runs alongside from P0.
+- Critical path: T0.1 → T0.3 → T0.13 → T0.4 → T0.5 → T1.1 → T1.5b → T1.6b → T1.11 → go/no-go → T2.3 → T2.4 → T2.9 → … (R3 S4).
 
 ## Assumptions to verify
 
 | ID | Assumption | Verify in |
 |---|---|---|
 | A1 | Store columns (`pinned`, `archived`, `last_read_at`, `cwd`, `source`, `created_source`, `parent_session_id`, `chat_id`, `session_key`, `message_uid`, `active`) mean what we read | T2.1, read-only on live |
-| A2 | The one declared permission mode never auto-answers | T1.2 |
+| A2 | With `approvalEnforcedBy:"provider"`, the declared mode `auto` never answers a Hermes approval. If it does, try `accept-edits`, then `full`; if all answer, stop and ask | T1.2 |
 | A3 | The bridge can close a pending interaction | T1.2 |
 | A4 | `turn_author` `bb:` persists on submits, steers and queued prompts; a repeated `submission_id` runs once | T1.1, T2.1 |
-| A5 | Per-row origin is readable (Conduit distinguishable or folded into Desktop) | T2.1 |
+| A5 | VERIFIED no (R5): no `conduit` source in any DB, so Conduit is Desktop everywhere. T2.1 builds the tag table from real values | T2.1 |
 | A6 | A delegation item can link to a sub-thread | T2.7a |
 | A7 | Disabled-provider threads stay viewable | T6.2 |
-| A8 | `message_uid` + `active=1` renders compaction clones and `/retry` once | T2.3 |
+| A8 | `message_uid` + `active=1` renders compaction clones and `/retry` once. uids are backfilled (0 NULL; 227 of 998 recent `default` rows inactive, R5) | T2.3 |
 | A9 | Sends while the Hermes host is offline wait or fail (sets the banner text) | P2 dogfood (Wi-Fi off) |
 | A10 | Viewer submit posts to Discord; rollover detected via `gateway_routing` | T5.2a, T5.4 |
 | A11 | The bot ignores its own echo; `reply_to` = admission id is fine | T5.4 |
@@ -146,7 +161,7 @@ Changes from the brief's order:
 | A20 | `source:"cli"` bb sessions aren't picked by `hermes chat -c` | T1.0 |
 | A21 | bb marks agent-originated input (the P1 `turn_author` name uses it) | T1.1 |
 | A22 | Bridges and worker share a `dataDir` | T0.8 |
-| A23 | Resuming a gateway-owned row doesn't migrate it; legacy rows are only adopted on first send | T2.0 |
+| A23 | Resuming a gateway-owned row doesn't migrate it; legacy rows are only adopted on first send. A `session.mutate` on an unrouted legacy row inserts a history claim (`gateway/session_mutations.py:174-183` → `hermes_state_mutation_binding.py:74-98`, `claim=True`; read in code), so we send none until adoption | T2.0 |
 | A24 | `session.detach{end_reason:null}` doesn't end the row | T1.0 |
 | A25 | bb's grouping of queued sends (what the segmentation must handle) | T2.4, isolated bb |
 | A26 | `bb plugin update` swaps the worker like `reload` | T0.11 |
@@ -154,15 +169,15 @@ Changes from the brief's order:
 | A28 | A row-metadata item renders the SVG + profile | T1.4 |
 | A29 | $HERMES_HOST's SSH key can `git ls-remote` the private repo | T4.3 |
 | A30 | Plugin slots render on bb mobile | T1.11 |
-| A31 | The canonical socket lists Hermes slash commands (a canonical catalog, not only the legacy `commands.catalog`) | T0.12 |
-| A32 | How a slash command runs: `prompt.submit` text vs a dedicated method (e.g. `slash_exec`, `command_dispatch`; R2 S7); bb sends a picked command as `turn/start` text | T0.12 |
+| A31 | There is no canonical slash catalog (R5: only the legacy `commands.catalog` and `slash.exec`, `session_controls.py:219-221`). Assumed: both answer on our host-scoped socket, as `model.options` does, and bb sends a picked command as `turn/start` text | T0.12 |
 | A33 | bb's manual compaction maps to `session.mutate compress` | T0.12, T1.13 |
-| A34 | `session.mutate branch` forks at the tip, and at a given message for checkpoint fork | T0.12, T1.14a |
-| A35 | `bb_tools` reads a target's project host (environment host via `bb … --json`), the turn author (`admission_author`) and Discord origin | T4.1 |
-| A36 | A SQLite binding works read-only inside the host worker and the bridge (else `/usr/bin/sqlite3 -readonly -json`) | T0.4 |
+| A34 | Verified in code (R5): `branch{through_message_id}` (`hermes_state_mutations.py:58-68`). Live check of tip and checkpoint forks | T0.12, T1.14a |
+| A35 | `bb_tools` reads a target's project host (environment host via `bb … --json`), the turn author (`admission_author`) or session source, and Discord origin. The 4 projects with checkouts on both hosts count as work | T4.1 |
+| A36 | `node:sqlite` `readOnly` works in the daemon's Node v24.21 (VERIFIED, R5). Open: does it work inside the worker and bridge processes, and does Hermes' Python reader beat it on loud failure | T0.4 |
 | A37 | A custom `extension.state` (`hermes/persisted-turn`) reaches the server via `experimental_thread.events` | T1.1 |
 | A38 | Deleting a hidden import thread frees its `providerThreadId` (no 409 orphan, R4 S8) | T2.9 |
 | A39 | The user's own Discord id is the single id in the profile's `DISCORD_ALLOWED_USERS` (read by name only). If there are several, every Discord author pushes. Checked 2026-11-04: one id, the same in all five profiles; recheck in T5.4 | T5.4 |
+| A40 | The live names of the sensitive tools: `conduit_health`, `conduit_location`, and the Home Assistant MCP tools (prefix from live `tool_names`, read-only) | T1.16 |
 
 ## Dev loop
 
@@ -189,11 +204,11 @@ Changes from the brief's order:
 
 ## Rollout
 
-Each user approval is logged in `docs/operations.md` §Approvals (date, item, answer). Gated tasks (T0.11, T4.3, T5.4, T6.3, T6.4, the first live import and sync) check it before they run.
+Each user approval is logged in `docs/operations.md` §Approvals (date, item, answer). Gated tasks (T0.11, T4.3, T5.4, T6.3, T6.4, the first live import and sync, the go/no-go) check it before they run.
 
-- P0: live install; ACP stays enabled as the fallback until P6.
-- P2: `VACUUM INTO` a `data.db` copy → `importPreview` → user confirms → import.
-- P3: bot setup once.
+- P0: live install; ACP stays enabled as the fallback until P6. Upkeep hours are logged in `docs/operations.md` §Upkeep from here on.
+- P1: bot setup once (D35). Then 3 live weeks and the go/no-go (D34).
+- P2: `VACUUM INTO` a `data.db` copy → `importPreview` → user confirms → import. From P2 on, 7 days of soak with a clean audit before the next phase.
 - P4: the user approves the 4-profile install, enable and cron disable.
 - P5: the user approves the live Discord try.
 - P6: parity week → the user confirms the ACP disable, then the cleanup.
