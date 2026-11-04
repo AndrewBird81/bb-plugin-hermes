@@ -1,86 +1,79 @@
-# bb-plugin-hermes — architecture draft (v1, 2026-11-04)
+# bb-plugin-hermes — architecture draft (v2, 2026-11-04)
 
-Status: feasibility. Evidence: `docs/research/01..10`. Review: `09`. Decisions below are the user's answers from 2026-11-04.
+Status: planning. Evidence: `docs/research/01..11`, `docs/spikes/`. The full plan will live in `docs/plan/` and supersede this file.
 
 ## Decisions (user)
 
+- **Architecture: Local.**
+  - The harness (one bridge process per hosted thread) and the sync watcher run on $HERMES_HOST under bb's host daemon.
+  - They reach the gateway through `~/.hermes/gateway.sock`: host-scoped ticket, then `/api/ws` (`hermes-gateway-v1`). Evidence: `docs/spikes/S0-S4-hermes.md`.
+  - No Hermes config change, restart, network credential or new tailnet port. The dashboard stays, for Conduit only.
+  - If Hermes ever moves, that machine becomes a bb machine. Remote (E) stays documented in S0-S4 as the fallback.
+- **Profile picker in the Hermes harness:**
+  - A Profile chip in every Hermes chat's composer, next to the model picker, plus one in "New Hermes chat".
+  - The model list follows the profile.
+  - Mid-chat switching behavior is pending (the user is being asked).
 - **Bots:**
-  - Hermes Bot Mode bots (Hermes, Alex, David, Neo).
-  - One pinned bb thread each, bound to that profile's canonical `Bot Chat`, shared with Conduit and Desktop.
+  - Hermes Bot Mode bots: Hermes, Alex, David, Neo.
+  - One pinned bb thread each, bound to that profile's canonical `Bot Chat`, which Conduit and Desktop also use.
   - The stale `todoist` profile is hidden.
 - **Import:** non-empty interactive chats (CLI, TUI, Desktop, Conduit) and Discord conversations, first import covering the last 30 days.
-  - Subagents render nested: a live delegation item in the parent, openable as a bb sub-thread.
+  - Subagents are nested in their parent thread.
   - One-shots are off (settings toggle).
-  - Cron is off.
+  - Cron runs are off.
 - **External activity:** mirrored live into the bb thread, with progress, unread and normal notifications.
-- **Discord replies:** same conversation. A viewer reply is delivered to Discord (08 §4); the user's own text is not echoed, which needs a UX decision. Verify with the user against a throwaway Discord thread.
+- **Discord replies:** same conversation.
+  - A reply from bb is delivered to Discord (08 §4). The user's own text is not echoed; whether to fix that is pending.
 - **State sync:** two-way for pin, archive, rename and read.
-- **ACP harness:** retire `acp-hermes-agent` once at parity. Keep its 18 threads; never re-import their sessions.
-- **bb tools:** full bridging (10).
-  - (a) The `bb` CLI, thread identity and bb skills, available to Hermes in every bound session.
-  - (b) bb's injected tools via an editor MCP overlay served by the bridge. This works only for sessions bb creates, which need `source=acp` (to verify).
-  - Python plugin tools are needed only if imported sessions (Bot Chats, Discord, Conduit) must also get injected tools. That is still the user's call.
-- **Spikes:** live bb and Hermes allowed. A live gateway restart is OK at any time.
+- **ACP harness:**
+  - Retire `acp-hermes-agent` once at parity. Its 18 threads stay viewable and become read-only.
+  - Never re-import their sessions.
+- **bb tools for Hermes:** native tools in a small Hermes plugin that wrap the `bb` CLI: spawn, tell, list, read, wait.
+  - They work in every session of each enabled profile.
+  - The editor-MCP route is dropped: it loses `clarify`, and it only covers sessions bb creates (S0-S4 T3).
+- **Spikes:** may touch live bb and Hermes. A live gateway restart is OK at any time.
 
 ## Fixed by evidence
 
-- **bb provider bridge** (01, 07):
-  - Runs in a host daemon.
-  - Hide it from the standard picker with `experimental_visibility: "installed"` plus health `not_installed`. Plugin-spawned threads still work.
-  - Binding and wake both use an `agent-only` input: invisible in the timeline, prompt history and search, but delivered to the bridge in `turn/start`.
-  - The bridge can open turns only on threads it currently hosts. Hosting happens only through a turn.
-  - Idle release default is 30 min, and is skipped while a `backgroundTask` item is open.
-  - Per-thread notification level is set via the push-notifications RPC `threadNotifications.set`; `markRead` exists.
-  - Host concurrency limits: $HERMES_HOST 18, $BB_SERVER_HOST 4.
-- **Rendering risk:** `input.provider` user lines render as "BB · System Message" cards. S1 compares that with replaying history as real turns (visible user text plus an agent-only replay marker).
-- **Hermes canonical `hermes-gateway-v1`** (08 §1): see the cheat-sheet there. Points that matter:
-  - `prompt.submit` always queues; steer and interrupt are separate calls.
-  - The socket must `session.resume` or `session.create` before it can submit.
-  - `session.mutate{rename|archive|sidebar}` for state sync.
-  - A host-scoped ticket lets one socket address every profile.
-  - Events carry `seq`/`replay_epoch`; `session.events.since` handles gap replay.
-- **Never** call `connect_gateway()` without an endpoint (it can start a gateway). Discovery only, via the `owner_forward` pattern.
-- **Plugin WebSockets in the dashboard bypass auth middleware:** every socket must call `_ws_auth_ok` and fail closed. bb gets a ticket from `POST /api/auth/ws-ticket` (Bearer), then `?ticket=`.
-- **Bot Chats:** all 5 are gateway-adopted. Conduit writes through the legacy dashboard `/api/ws`, so bb sees Conduit's turns as transcript updates rather than live streams.
+- **bb provider bridge** (01, 07, S1-S3):
+  - Runs in the host daemon, **one process per hosted thread**. `bb plugin reload` does not update running bridge processes.
+  - Hidden from the standard picker by `experimental_visibility: "installed"` plus health `not_installed`. Plugin-spawned threads keep their follow-ups and the model picker.
+  - Import: replay each past turn as a real turn (visible user text plus an agent-only replay marker). Announce `thread/identity` only after the first turn ends.
+  - Wake: send an agent-only marker with `queue-if-active`. A bridge-opened turn works on an already-hosted thread.
+  - User input during a mirror turn arrives as `turn/steer`; map it to `prompt.submit` (queue).
+  - Renames reach the bridge only while the thread is hosted, prefixed `"[bb] "`. The server syncs renames.
+  - bb accepts a duplicate session binding and fails later, so dedupe in the mapping db before spawning.
+  - `markRead` and `threadNotifications.set` work; host concurrency limit on $HERMES_HOST is 18.
+- **Hermes canonical `hermes-gateway-v1`** (08, S0-S4 cheat-sheet):
+  - Pass tickets as the subprotocol.
+  - `prompt.submit` always queues.
+  - `session.mutate` handles rename, archive, sidebar and delete; delete needs `expected_generation`.
+  - Fences: `stale_generation`, `revision_conflict`.
+  - Replay with `session.events.since`, deduped by `(replay_epoch, seq)`.
+  - `sessions.changed` is a bare "re-list" signal.
+- bb-created session ids are deterministic from `request_id = "bb:<threadId>"`. This is the dedupe tag for the feed.
+- **Never** call `connect_gateway()` without an endpoint. Never auto-approve anything.
 - **Dedupe rules** (09 M6):
   - Never import empty sessions.
-  - Never re-import sessions bb created (tag them at `session.create`, and import only after the bridge has announced its identity).
-  - Skip `created_source=acp` sessions linked to existing ACP threads.
-  - Key on the profile's database location, never on `profile_name`.
-  - Lineage comes from Hermes' compression chain, never from `parent_session_id`.
-
-## Open: transport (S0 decides, user answer pending)
-
-| Option | Path | For | Against |
-|---|---|---|---|
-| E | Gateway webapp listener (fixed port) serves the dashboard app with session authority; bridge anywhere | No relay; our plugin runs in-process with Hermes tools (easy tool bridging); one process could serve Conduit too (trims the stack) | One gateway restart; webapp sign-in issues its own tokens (static bearer refused, 08 §2); new tailnet port |
-| A | Standalone dashboard plus our relay plugin (`owner_forward`) | No restart; hot-mount | Relay code on private APIs; shares Conduit's event loop; tool calls need an IPC hop to the gateway; plugin updates restart the dashboard |
-| B | Bridge on $HERMES_HOST, direct to `gateway.sock` | Simplest; no token on the network | Tied to Hermes being on a bb machine; ignores the dashboard |
-
-The bridge code is identical across all three; only the connector differs (S0).
+  - Recognise bb-created sessions by their deterministic id.
+  - Skip sessions linked to existing ACP threads.
+  - Key on the profile's database location.
+  - Take lineage from the compression chain.
 
 ## Components
 
-- `server.ts` (bb server):
-  - sync service (feed or polling → threads; dedupe; two-way state)
-  - mapping db (`profile-home`, `lineage-root` → threadId, cursor)
-  - bots
-  - settings
-  - our new-chat UI (`homepageSection`/`navPanel`) with the profile picker
-- `host.ts` provider bridge:
-  - canonical client
-  - turn/start → `prompt.submit`
-  - events → deltas
-  - approvals and clarify → interactions
-  - import and mirror turns
-  - tool bridging
-- `hermes-plugin/bb_bridge` (Python, as small as possible):
-  - bb tool registration and callback
-  - change feed if needed
-  - relay only for option A
+- **bb server part:** sync service, mapping db, bots, settings, "New Hermes chat" UI with profile picker.
+- **Host worker on $HERMES_HOST:** watches Hermes (`sessions.changed`, listing) and signals the server. The channel is being verified in S7.
+- **Bridge on $HERMES_HOST (per thread):** canonical client; turns → `prompt.submit`; events → deltas; approvals and clarify → bb interactions; import and mirror turns.
+- **`hermes-plugin/`** (Python, small):
+  - native bb tools wrapping the `bb` CLI;
+  - a Discord echo hook, if approved.
 
-## Spikes (bb sub-threads)
+## Spikes
 
-- **S-bb** (`docs/spikes/brief-bb-mechanics.md`): S1 import, S2 mirror, S3 UX, all against an isolated local bb and a fake Hermes.
-- **S-hermes** (`docs/spikes/brief-hermes-client.md`): TypeScript canonical client plus S4 against live Hermes, and S0 transports. Option E is tested on an isolated Hermes home, so the live gateway is never restarted.
-- **Later:** S5 resilience, S6 tool bridging, integration.
+- Done:
+  - S1-S3 bb mechanics (`docs/spikes/S1-S3-bb-mechanics.md`);
+  - S0/S4 Hermes client and transports (`docs/spikes/S0-S4-hermes.md`).
+- Running:
+  - S7, bb side: profile and model picker, chat entry points, project-bound chats, the sync channel, redeploy.
+  - H2, Hermes side: per-profile models, bot metadata, Bot Chat rotation, Discord echo, bb-tools plugin, cwd, handoff.
