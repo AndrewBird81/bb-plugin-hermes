@@ -48,10 +48,10 @@ Changes from the brief's order:
 
 | ID | Task | Seam | Depends |
 |---|---|---|---|
-| T0.1 | Scaffold: manifest, SVG, vitest, `npm run check`, pinned build `bb` | lead | — |
-| T0.2 | Contracts: markers, host contract, RPC, `hermesRoot` setting, deny-list constants | lead | T0.1 |
+| T0.1 | Scaffold: manifest, SVG, vitest, `npm run check`, pinned build `bb`. Asks the Q8 hermes-host question before anything touches hermes-host | lead | — |
+| T0.2 | Contracts: markers, host contract, RPC, Hermes host + root settings (D30), deny-list constants | lead | T0.1 |
 | T0.3 | Canonical client port; `gateway.sock.path` fallback; reconnect | client | T0.1 |
-| T0.4 | Store reader (`mode=ro`, `schema_version` check) | client | T0.1 |
+| T0.4 | Store reader: first prove A36 (binding in worker and bridge runtimes); mismatch policy; turn-row rules (02) | client | T0.1 |
 | T0.5 | Strict fake Hermes (vendored contract, fake `state.db`) | client | T0.3, T0.4 |
 | T0.6 | Mapping db, transactional migrations, dedupe | server | T0.2 |
 | T0.7 | Provider registration (hidden); bridge skeleton; build registry | bridge | T0.2 |
@@ -90,16 +90,16 @@ Changes from the brief's order:
 | T2.5c | App: offline thread banner | app | T0.9 |
 | T2.6a | Server: import exclusions, window, notification level | server | T2.2 |
 | T2.6b | App: those settings | app | T2.6a |
-| T2.7a | Bridge: delegation item (droppable) | bridge | T2.3 |
-| T2.7b | Server: subagent sub-thread binding (droppable) | server | T2.2 |
+| T2.7a | Bridge: delegation item | bridge | T2.3 |
+| T2.7b | Server: subagent sub-thread binding | server | T2.2 |
 | T2.8a | Bridge: compression follow | bridge | T2.3 |
 | T2.8b | Worker: tip tracking (`resolved_id`) | worker | T2.1 |
 | T2.9 | P2 e2e, `e2e/eligibility`, dogfood | e2e | T2.1–T2.8 |
-| T3.1 | Server: bot setup (lookup, import, pin, idempotent) | server | T2.2 |
+| T3.1 | Server: bot setup (lookup, import, pin in bb and Hermes per D31, idempotent); verify the hidden Bot Chat accepts the pin | server | T2.2 |
 | T3.2a | Server: rotation, bot exemptions, `handed_off` banner | server | T3.1 |
 | T3.2b | Bridge: `rebind` | bridge | T2.3 |
 | T3.3 | Conduit co-use check | e2e | T3.1, T2.4 |
-| T4.1 | `bb_tools`: tools, allowlist, cron refusal, Discord approval, env, `schema_version`, pytest | hermes-plugin | T0.2 (parallel from P0) |
+| T4.1 | `bb_tools`: tools, allowlist, cron refusal, Discord approval (`rule_key`), work boundary on all tools, env, `schema_version`, pytest | hermes-plugin | T0.2 (parallel from P0) |
 | T4.2a | Worker: `setBindings` (atomic, 0700/0600) | worker | T2.1 |
 | T4.2b | Server: push binding rows | server | T4.2a |
 | T4.3 | Install pinned + enable in 4 profiles + cron disable (user approval) | lead | T4.1, T4.2b |
@@ -132,7 +132,7 @@ Changes from the brief's order:
 | A6 | A delegation item can link to a sub-thread | T2.7a |
 | A7 | Disabled-provider threads stay viewable | T6.2 |
 | A8 | `message_uid` + `active=1` renders compaction clones and `/retry` once | T2.3 |
-| A9 | Sends while $HERMES_HOST is offline wait or fail (sets the banner text) | P2 dogfood (Wi-Fi off) |
+| A9 | Sends while the Hermes host is offline wait or fail (sets the banner text) | P2 dogfood (Wi-Fi off) |
 | A10 | Viewer submit posts to Discord; rollover detected via `gateway_routing` | T5.2a, T5.4 |
 | A11 | The bot ignores its own echo; `reply_to` = admission id is fine | T5.4 |
 | A12 | `bb` CLI works from the gateway with per-call `BB_*` + `HOME` | T4.1, P4 dogfood |
@@ -141,10 +141,10 @@ Changes from the brief's order:
 | A15 | Conformance accepts a placeholder identity | T1.1 |
 | A16 | Host RPC limits fit `readTurns` pages; prewarmed `model.options` ≤ 2 s | T1.5a, T2.1 |
 | A17 | Realtime + overlay navigates only the window showing the old chat | T1.6c |
-| A18 | `bb thread spawn --provider hermes` works on $HERMES_HOST and fails clearly elsewhere | T1.11 |
+| A18 | `bb thread spawn --provider hermes` works on the Hermes host and fails clearly elsewhere | T1.11 |
 | A19 | A viewer gets live events of another client's turn | T1.0 |
 | A20 | `source:"cli"` bb sessions aren't picked by `hermes chat -c` | T1.0 |
-| A21 | bb marks agent-originated input | T5.3 |
+| A21 | bb marks agent-originated input (the P1 `turn_author` name uses it) | T1.1 |
 | A22 | Bridges and worker share a `dataDir` | T0.8 |
 | A23 | Resuming a gateway-owned row doesn't migrate it; legacy rows are only adopted on first send | T2.0 |
 | A24 | `session.detach{end_reason:null}` doesn't end the row | T1.0 |
@@ -158,7 +158,11 @@ Changes from the brief's order:
 | A32 | How a slash command runs: `prompt.submit` text vs a dedicated method (e.g. `slash_exec`, `command_dispatch`; R2 S7); bb sends a picked command as `turn/start` text | T0.12 |
 | A33 | bb's manual compaction maps to `session.mutate compress` | T0.12, T1.13 |
 | A34 | `session.mutate branch` forks at the tip, and at a given message for checkpoint fork | T0.12, T1.14a |
-| A35 | `bb_tools` can tell a $WORK_HOST project (project machine via `bb project … --json`) and the session's platform (Conduit, Desktop, CLI, one-shot) | T4.1 |
+| A35 | `bb_tools` reads a target's project host (environment host via `bb … --json`), the turn author (`admission_author`) and Discord origin | T4.1 |
+| A36 | A SQLite binding works read-only inside the host worker and the bridge (else `/usr/bin/sqlite3 -readonly -json`) | T0.4 |
+| A37 | A custom `extension.state` (`hermes/persisted-turn`) reaches the server via `experimental_thread.events` | T1.1 |
+| A38 | Deleting a hidden import thread frees its `providerThreadId` (no 409 orphan, R4 S8) | T2.9 |
+| A39 | The user's own Discord id is the single id in the profile's `DISCORD_ALLOWED_USERS` (read by name only). If there are several, every Discord author pushes | T5.4 |
 
 ## Dev loop
 
@@ -178,12 +182,14 @@ Changes from the brief's order:
    - Each release: `bb plugin update hermes`, which snapshots `data.db` and restores it if activation fails. Then `bb plugin rpc call hermes stopHosted`; check `diagnostics`.
 5. **`bb_tools`, per profile** (default, alex, david, neo; R3 M5):
    - `hermes -p <p> plugins install git@github.com:AndrewBird81/bb-plugin-hermes.git#hermes-plugin/bb_tools --ref <release sha> --no-enable`
-   - `hermes -p <p> plugins enable bb_tools`: sends `reload-plugins`; no restart; tools appear in new sessions (11 §5).
-   - `hermes -p <p> tools disable bb --platform cron` (D18).
+   - `hermes -p <p> plugins enable bb_tools`: sends `reload-plugins`; no restart; tools appear in new sessions (r11 §5).
+   - `hermes -p <p> tools disable bb --platform cron` (D18). `cron` as a platform value is unverified; the handler's own cron refusal covers it.
    - Update: the same install with `--force --ref <new sha>`. Never branch-following `plugins update`; `bindings.json` `schema_version` catches skew.
 - **bb upgrade runbook** (R3 S7): before upgrading live bb, run e2e + conformance on `npx bb-app@<new>`, then `bb plugin types --check`. Health shows bb and SDK versions.
 
 ## Rollout
+
+Each user approval is logged in `docs/operations.md` §Approvals (date, item, answer). Gated tasks (T0.11, T4.3, T5.4, T6.3, T6.4, the first live import and sync) check it before they run.
 
 - P0: live install; ACP stays enabled as the fallback until P6.
 - P2: `VACUUM INTO` a `data.db` copy → `importPreview` → user confirms → import.

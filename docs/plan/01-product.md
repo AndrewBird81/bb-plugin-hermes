@@ -8,10 +8,10 @@ One section per flow, each ending with testable acceptance criteria (AC). The ph
   - bot threads with unread dots;
   - "New <Profile> chat" per visible profile, plus an optional project select;
   - recent Hermes chats; "Older Hermes chats" (P6, F5);
-  - a connection line ("$HERMES_HOST offline").
+  - a connection line ("<Hermes host> offline").
 - **Home composer** (type-first, R2 S1): "Send to Hermes · <Profile>" rows in bb's own send menu (`ComposerCustomization{scopes:["new-thread"], sendMenu}`).
   - Attachments and voice stay. Spike in P1 (A27); fallback: the verified home-section message box (S1-S3 §S3b).
-  - Hidden on a project home that has no $HERMES_HOST folder ($WORK_HOST work projects, R2 S4).
+  - Hidden on a project home with no folder on the Hermes host (e.g. $WORK_HOST work projects, R2 S4).
 - **⇧⌘H** (`app.commands.register`): an empty chat in the last-used profile.
 - Not used: the sidebar-footer disclosure (S7 §3).
 - **Sidebar:**
@@ -21,7 +21,7 @@ One section per flow, each ending with testable acceptance criteria (AC). The ph
 - **Hidden from bb's pickers:** New Thread picker and Settings → Providers (S1-S3 §S3a). No machine picker anywhere (S7 §5).
 - **bb tooling** works on Hermes threads: `bb thread tell|read|wait|stop|archive`.
   - `bb thread spawn --provider hermes [--option profile=<p>]` makes a normal Hermes chat in the default profile (A18).
-  - Started on a host without Hermes ($WORK_HOST), the turn fails with "Hermes runs on $HERMES_HOST: add `--machine $HERMES_HOST`".
+  - Started on another host (e.g. $WORK_HOST), the turn fails with "Hermes runs on <Hermes host>: add `--machine <Hermes host>`" (the Hermes host setting, D30; $HERMES_HOST today).
 - **Navigation:** our UI uses `useBbNavigate`. `threads.open` moves every client, phones included (S7 finding 3), so it is a fallback only.
 - **Phone** (D19): starting a chat and talking to a bot from bb mobile is a P1 gate.
   - If plugin slots don't render on mobile (A30), pinned bot threads still work, and new chats come from desktop or `bb thread spawn`.
@@ -44,13 +44,13 @@ AC:
   - an agent-only init publishes the chip and model list, muted, then `markRead`;
   - 5–8 s to a usable composer.
 - Composer: bb's own, with text, attachments, voice, the **Profile** chip, bb's model chip and reasoning.
-  - **Profile:** visible profiles only (`todoist` hidden). Labels are handles; `default` shows as "Hermes" (11 §2).
+  - **Profile:** visible profiles only (`todoist` hidden). Labels are handles; `default` shows as "Hermes" (r11 §2).
   - **Model:** the profile's `model.options` minus hidden models; default = the profile's current model. Validated against the last-known list; never blocks a turn (R2 S9).
-  - **Reasoning** (D17): Hermes levels per model (`capabilities.reasoning`, `can_disable_reasoning`; 11 §1). `default` = the profile's level.
+  - **Reasoning** (D17): Hermes levels per model (`capabilities.reasoning`, `can_disable_reasoning`; r11 §1). `default` = the profile's level.
   - **Attachments:** images and files go to `prompt.submit.attachments`. A model without image input gets a warning and the text still goes (R2 M2).
   - **Voice:** ASSUMED to be client-side dictation into text; checked in P1 dogfood.
   - Hermes slash commands and `/compact`: F14.
-- **Project** (optional; $HERMES_HOST projects only): from the home's project or the rail's select. None = a personal chat.
+- **Project** (optional; projects on the Hermes host only, D4): from the home's project or the rail's select. None = a personal chat.
 - The Hermes session is created on the first message, so an abandoned chat leaves nothing in Hermes.
 - Hermes' working folder:
   - project chat: the project root (`project-checkout`, S7 §5);
@@ -79,7 +79,7 @@ AC:
 - **Profile pick, chat started** (binding not `pending`, including one-turn imports and bots; R1 M9) → **handoff** (S7 §1d):
   1. A new chat opens in the chosen profile and project, titled "<Profile> chat (from <old title>)". Our UI navigates the current window (A17).
   2. The old chat keeps its profile; its chip reverts.
-  3. Its first Hermes prompt is visible text: a handoff block (the old transcript from the store, ≤ ~25 kB) plus the message (11 §7). bb shows the message plus "Continued from <old thread>".
+  3. Its first Hermes prompt is visible text: a handoff block (the old transcript from the store, ≤ ~25 kB) plus the message (r11 §7). bb shows the message plus "Continued from <old thread>".
   4. A send that races the pick is refused: "This chat stays on <old>. A <new> chat is opening."
 - Limitations (bb UI, can't be hidden):
   - bb's model picker also offers "Handoff to new thread" to other harnesses;
@@ -94,14 +94,15 @@ AC:
 
 ## F4 Bots and Conduit co-use [P3]
 
-- One pinned thread per Bot Mode bot: Hermes, Alex, David, Neo. Each is bound to the profile's `Bot Chat` (11 §3); no "Bots" section (S7 §4).
-- Title = the capitalised handle (11 §2). Bot titles never sync in either direction (R1 S5). Archive is bb-only (Q2 default).
-- `todoist` is in hidden profiles by default. Every live profile is a Desktop bot (11 §2), so bb's rule decides.
+- One pinned thread per Bot Mode bot: Hermes, Alex, David, Neo. Each is bound to the profile's `Bot Chat` (r11 §3); no "Bots" section (S7 §4).
+- Title = the capitalised handle (r11 §2). Bot titles never sync in either direction (R1 S5); archive is bb-only (Q2 default).
+- Pin (D31): setup pins the Bot Chat in Hermes too, then pin syncs normally. If Hermes refuses a pin on a hidden session, the bot pin is bb-only and the user is told.
+- `todoist` is in hidden profiles by default. Every live profile is a Desktop bot (r11 §2), so bb's rule decides.
 - History is imported (F5); then the thread is live.
 - Shared with Conduit and Desktop:
   - bb turns show there;
   - Conduit turns show in bb as soon as Hermes writes them. A turn with no live events is rendered from Hermes' store (02 flow 4).
-- Compaction keeps the bound id (11 §3). A re-minted Bot Chat → the thread rebinds.
+- Compaction keeps the bound id (r11 §3). A re-minted Bot Chat → the thread rebinds.
 - Bot Chat handed off to a messaging lane (R1 S13) → banner "Replies here also post to <platform>".
 
 AC:
@@ -113,11 +114,11 @@ AC:
 ## F5 Imported threads [P2; Discord P5]
 
 - **Scope** (deny-list, R2 M3): every session with ≥ 1 message active in the last 30 days, except:
-  - cron and one-shot (toggles, off);
+  - cron and one-shot (toggles, off); `a2a` and `tool` (D32);
   - `acp` in `source` or `created_source` (D12);
   - Bot Chats (F4) and subagents (nested);
   - bb-created and tombstoned sessions.
-  - Discord is held back until P5.
+  - Discord is held back until P5. `api_server` imports, tagged `[API]` (D32).
   - Tags come from the real source values (`[CLI]`, `[TUI]`, `[Desktop]`, `[Conduit]` if distinguishable, A5); unknown → `[Hermes]`.
 - **Pre-migration sessions** (D16):
   - render read-only from Hermes' store;
@@ -128,7 +129,8 @@ AC:
   2. The import runs serially, oldest first.
   3. Each thread is hidden while it replays, then shown, marked read and released. No pushes.
   - An import cut off by a restart is redone (R3 S2).
-- **Placement:** cwd at or inside a $HERMES_HOST project root → that project; else personal.
+- **Placement:** cwd at or inside the root of a project on the Hermes host → that project; else personal.
+- **State:** an import takes Hermes' pinned and archived state; the last-synced values start at Hermes' values.
 - **Rendering** (S1-S3 §S1b):
   - each user message is the user's bubble, tagged with source and date: `[CLI · Oct 12] …` (R2 S10);
   - reply and tools follow, collapsed;
@@ -158,35 +160,35 @@ AC:
   - It lands in prompt history (D15).
   - A turn with no user line (Pulse, subagent results) mirrors the reply only.
   - Images in outside messages: text only in v1.
-- Each outside turn is shown once, even across re-lists, compaction and `/retry` (R1 M1–M2).
+- Each outside turn is shown once, even across re-lists and compaction (R1 M1–M2). A CLI `/retry` adds a "Retried in CLI" turn with the new reply (R4 S1).
 - Queued sends merged with a mirror are still sent to Hermes (R1 M6).
 - **Notifications** (D26):
-  - no push for outside turns the user started (CLI, Desktop, Conduit, Discord);
-  - push for approvals, clarify and turns the user didn't start;
+  - no push for turns the user started: the user's own Discord id, bb, CLI, TUI, Desktop, Conduit (D33);
+  - push for approvals, clarify and turns the user didn't start (other Discord users, `a2a`, subagents, Pulse); unknown author: no push;
   - unread is still set, and cleared when Hermes shows the turn read (R2 S3).
 - Typing in bb during a mirror → queued behind the outside turn (S1-S3 §S2c).
 - **Stop during a mirror** (D27): interrupts that Hermes turn, fenced by its admission and generation. With no live events (legacy writer), it stops watching only.
-- Approvals and clarify from an outside turn show in bb, even while a bb turn waits behind it (R1 S1). The first answer anywhere wins (08 §4).
+- Approvals and clarify from an outside turn show in bb, even while a bb turn waits behind it (R1 S1). The first answer anywhere wins (r08 §4).
 
 AC:
 - Outside start → visible in bb ≤ 3 s (A13).
-- 3 re-lists during one outside turn → 1 bubble.
+- 3 re-lists during one outside turn → 1 bubble. A compaction adds no `[Hermes]` summary bubble (R4 M3b).
 - Streamed text == final text when attaching mid-turn (R1 S2).
 - Back-to-back outside turns render as 2 turns.
 - Turns made while the bb server or daemon was down appear in order after reconnect.
 
 ## F7 Discord replies and echo [P5]
 
-- A bb reply in a thread bound to a live Discord session posts to that Discord conversation (08 §4, A10).
-- `bb_tools` first posts "$OWNER_NAME (via bb): <text>" (`pre_llm_call` + `ctx.post_message`, 11 §4).
+- A bb reply in a thread bound to a live Discord session posts to that Discord conversation (r08 §4, A10).
+- `bb_tools` first posts "$OWNER_NAME (via bb): <text>" (`pre_llm_call` + `ctx.post_message`, r11 §4).
   - Agent-sent input (`bb thread tell` from another agent) is labelled "<thread title> (bb agent)" if bb marks it (A21); otherwise this is a documented limitation (R2 S11).
-- Rolled-over session (daily 04:00 / 24 h reset) → the reply stays in bb and Hermes, with "Not posted to Discord: this conversation rolled over" (D23).
+- Rolled-over session (daily 04:00 / 24 h reset) → the reply stays in bb and Hermes, with "Not posted to Discord: this conversation rolled over" (D23). No echo either (`messaging_bound`, R4 S4).
 - Children spawned from a Discord-bound thread don't notify the parent, so nothing leaks to Discord (R1 S12).
 
 AC (throwaway Discord thread, user-approved):
 - Echo, then reply, in order; the echo isn't re-ingested (A11).
 - A Discord message appears in bb as `[Discord] …` + reply.
-- A rolled-over session posts nothing and shows the notice.
+- A rolled-over session posts nothing (no echo, no reply) and shows the notice.
 
 ## F8 Approvals, clarify, interrupt, steer [P1]
 
@@ -194,7 +196,7 @@ AC (throwaway Discord thread, user-approved):
   - the command or diff;
   - only Hermes' choices (`once|deny`, plus `session|always` for commands);
   - a deadline: edit 60 s, command 300 s.
-- **Clarify:** a bb user question (choices, multi-select, free text, skip) with a 600 s deadline. Native, so `AskUserQuestion` isn't injected (10 Q5).
+- **Clarify:** a bb user question (choices, multi-select, free text, skip) with a 600 s deadline. Native, so `AskUserQuestion` isn't injected (r10 Q5).
 - **Timeout** → Hermes decides; the card closes "Timed out in Hermes". Answered elsewhere → "Answered elsewhere".
 - **Never auto-approved:** one declared permission mode that never auto-answers (A2, D17).
 - **Stop:**
@@ -222,8 +224,8 @@ AC (isolated Hermes, manual approvals, quoted throwaway paths):
 | delete (Q1 default) | none; tombstone | delete | archive + "Deleted in Hermes"; sends refused |
 
 - Server-set titles (placeholders, fallbacks, Hermes titles) never go to Hermes (R2 S2).
-- Bot threads: titles never sync; archive is bb-only (Q2 default). ACP threads are untouched.
-- $HERMES_HOST unreachable: changes are applied on reconnect by diffing against the last synced values. If both sides changed, Hermes wins (R1 S14).
+- Bot threads: titles never sync; archive is bb-only (Q2 default); pin syncs after setup (D31). ACP threads are untouched.
+- Hermes host unreachable: changes are applied on reconnect by diffing against the last synced values. If both sides changed, Hermes wins (R1 S14).
 
 AC:
 - Every row works both ways with one Hermes revision per user action.
@@ -245,31 +247,36 @@ AC:
 ## F11 bb tools in Hermes [P4]
 
 - The `bb_tools` Hermes plugin adds toolset `bb`: `bb_thread_spawn`, `bb_thread_tell`, `bb_thread_list`, `bb_thread_read`, `bb_thread_wait`. Each wraps `bb thread … --json`.
-- Enabled per profile. Works in every session of an enabled profile **except cron**: always off there (D18).
-- **Discord-origin sessions:** spawn and tell ask for a Hermes approval. Elsewhere they run without asking (D24).
-- From a bb-bound session the tools act as that thread: children are spawned under it.
+- Enabled per profile. Works in every session of an enabled profile **except cron**, which the handler itself refuses (D18).
+- **Discord-origin sessions:** spawn and tell ask for a Hermes approval, every call (per-call `rule_key`, so "always" can't stick; R4 S5). Elsewhere they run without asking (D24).
+- From a session with a binding, the tools act as that thread: children are spawned under it.
 - `tell` may target any thread (D2 interop), except its own bound thread (loop).
 - **Arguments** (allowlist):
   - spawn takes `prompt`, `title`, `provider` (fixed list), `model` and `project`;
   - no permission-mode argument;
-  - `project` targets any bb project. Work ($WORK_HOST) projects only from bb-bound and Conduit sessions (Desktop counts as Conduit if A5 can't tell them apart); never from Discord, cron, CLI or one-shot (D28). Personal projects follow the normal rules.
+  - `project` targets any bb project.
 - `bb_thread_wait` is capped below Hermes' 420 s tool limit.
+- **Work boundary** (D28, R4 M1), on every tool: spawn's `project`, the target thread's project for tell/read/wait, and `list` results.
+  - A $WORK_HOST target is allowed only if the current turn came from bb (author `bb:…`) or Conduit (Desktop too if A5 can't separate them), **and** the session isn't Discord-origin.
+  - Otherwise `tool_error`, and `list` drops $WORK_HOST threads.
+  - $WORK_HOST = the project's environment host. Personal projects follow the normal rules.
 
 AC:
 - In neo: "spawn a Codex thread that lists ~/src" → a child of neo's thread; `bb_thread_wait` returns its result.
 - Cron sessions and non-enabled profiles have no `bb` tools.
-- A $WORK_HOST `project` from a Discord or CLI session is refused; from a bb-bound session it works.
+- A $WORK_HOST `project` or `read` from a CLI turn is refused; from a bb-sent turn in a CLI or bb chat it works.
+- In a Discord-origin session, a $WORK_HOST `read` is refused even when the turn was sent from bb.
 - `tell` to its own thread is refused.
 
 ## F12 Settings v1 [P0–P2, P6]
 
 | Setting | Default | Phase |
 |---|---|---|
-| Hermes root (required; unset = no Hermes access, R3 M3) | unset; `~/.hermes` on live | P0 |
-| Connection health: gateway, Hermes version, drift result, worker last sync, $HERMES_HOST online, bb and SDK versions | — | P0 |
+| Hermes host + Hermes root (required; unset = no Hermes I/O; D30) | unset; $HERMES_HOST + `~/.hermes` on live | P0 |
+| Connection health: gateway, Hermes version, drift result, worker last sync, Hermes host online, bb and SDK versions | — | P0 |
 | Default profile; hidden profiles | `default` ("Hermes"); `todoist` | P1 |
-| Hidden models per profile | from `hermes-host/config/bb-models.json`, `custom:mlx-main` = `mlx-main` (11 §1) | P1 |
-| Import exclusions (deny-list) | cron, one-shot | P2 |
+| Hidden models per profile | from `hermes-host/config/bb-models.json`, `custom:mlx-main` = `mlx-main` (r11 §1) | P1 |
+| Import exclusions (deny-list) | cron, one-shot (`a2a`, `tool` always) | P2 |
 | Import window | 30 days | P2 |
 | Default notification level, outside activity | `inherit` | P2 |
 
@@ -278,7 +285,7 @@ AC: each setting applies to the next action without a reload; `bb-models.json` i
 ## F13 ACP retirement and the stack after v1 [P6]
 
 - **Parity gate** (D25), run in this phase: F1–F3 (reasoning included), F8, F9 and F14 (slash commands, fork) pass on live, plus 1 week of daily use without falling back to ACP. Service tier is not required.
-- `bb provider disable acp-hermes-agent`: the 18 threads stay viewable and sends fail (07 §1; A7). Their sessions are never imported.
+- `bb provider disable acp-hermes-agent`: the 18 threads stay viewable and sends fail (r07 §1; A7). Their sessions are never imported.
 - Then, only after the user confirms the listed ids and a `state.db` backup is taken (R3 S10), delete:
   - the empty ACP probe sessions (137 on 2026-11-04; ~125 more per 30 days until ACP is disabled);
   - the spike leftover `local-a6fec510…`.

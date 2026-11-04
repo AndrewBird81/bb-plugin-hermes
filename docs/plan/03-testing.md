@@ -5,27 +5,29 @@ Rules for every layer:
 - Destructive test commands target quoted paths under `/private/tmp/bb-hermes-test/`.
 - No live Discord without user approval.
 - Live Hermes: read-only unless the gate says otherwise.
-- Every gate runs `bb plugin rpc call hermes diagnostics` (R3 S1).
+- Every gate runs `bb plugin rpc call hermes diagnostics` (R3 S1). Gated live steps first check `docs/operations.md` §Approvals.
 
 ## Layers
 
 | # | Layer | Covers | Tool | Phase |
 |---|---|---|---|---|
 | 1 | Unit | client; store reader; marker codec and input segmentation; deny-list; dedupe; wakes; titles and echo suppression; reconnect diff; model validation; migrations | vitest, `@get-bb/plugin-sdk/testing` | P0+ |
-| 2 | Bridge conformance | protocol compliance | `experimental_runBridgeConformance` (07 §6) | P1+ |
+| 2 | Bridge conformance | protocol compliance | `experimental_runBridgeConformance` (r07 §6) | P1+ |
 | 3 | Own bridge tests | turns the kit doesn't cover | `experimental_createDeltaAssembler` | P1+ |
 | 4 | Recorded fixtures | real Hermes shapes | client `onFrame` tap + store snapshots → `test/fixtures/` | T1.0, T2.0, P3, P5 |
 | 5 | Fake canonical Hermes | all of the above, plus e2e | `test/fake-hermes/` | P0+ |
 | 6 | E2E, isolated bb | real bb runtime and UI | `npx bb-app` + `sbb` + agent-browser | P1+ |
-| 7 | Isolated Hermes | approvals, cwd, legacy adoption, detach, `bb_tools` load | 08 §5 recipe | P1, P2, P4 |
+| 7 | Isolated Hermes | approvals, cwd, legacy adoption, detach, `bb_tools` load | r08 §5 recipe | P1, P2, P4 |
 | 8 | Hermes plugin | tools, echo, env, bindings | pytest in `hermes-plugin/.venv` with stubs | P4, P5 |
 | 9 | Contract drift | Hermes version changes | worker check + `npm run contract:check` | P0+ |
 | 10 | Live dogfood | the user's setup | checklist below | each phase |
 
 ## 1. Unit tests that guard review findings
 
-- 3 re-lists during one outside turn → 1 wake (R1 M1).
-- Compaction clone and `/retry` rewrite → 0 re-rendered turns (`message_uid`, R1 M2).
+- 3 re-lists during one outside turn → 1 wake. A failed send deletes the row; a boot with orphaned `queued` rows recovers them (R1 M1, R4 S7).
+- Compaction clone → 0 re-rendered turns; scaffolding rows (`_compressed_summary`, restatements) → 0 bubbles; `/retry` → 1 "Retried" turn with the new reply (R1 M2, R4 M3b, S1).
+- Author join fails → the `persisted_turn` record still suppresses bb's own message (R4 M3c).
+- Store schema mismatch: drift queries pass → warn and continue; fail → import, mirror and sync paused, bb chats still work (R4 M3a).
 - `thread.created` for our own spawn → no extra binding (R1 M3).
 - Profile pick on a one-turn import → handoff, not init (R1 M9).
 - Bot titles never sync in either direction (R1 S5). Server-set titles never reach Hermes (R2 S2).
@@ -78,7 +80,7 @@ Rules for every layer:
 | Desktop turn seen by a second viewer (A19) | T1.0 | isolated: two canonical clients |
 | Detach with `end_reason:null` (A24) | T1.0 | isolated |
 | `source:"cli"` vs `hermes chat -c` (A20) | T1.0 | isolated |
-| Compaction with a cloned tail; `/retry` rewrite (A8) | T2.0 | isolated |
+| Compaction with a cloned tail and scaffolding rows; `/retry` rewrite with a new reply (A8) | T2.0 | isolated |
 | Subagent turn | T2.0 | isolated |
 | Legacy (pre-migration) row: store read, then adoption on first send (A23) | T2.0 | isolated, copied DB |
 | Conduit Bot Chat turn, wake mid-turn | T2.0 | live, read-only store snapshot |
@@ -97,7 +99,7 @@ Rules for every layer:
   - `sessions.changed` and WAL touches;
   - fences (`stale_generation`, `revision_conflict`, `already_resolved`) and the duplicate-title refusal;
   - restart (new port and epoch), `model.options`, legacy-writer turns with no events.
-- Selected only through the `hermesRoot` setting. No env fallback to `~/.hermes` (R3 M3).
+- Selected only through the Hermes host and root settings, with no env fallback to `~/.hermes`. All `bb_tools` files land under `<hermesRoot>/bb_tools/` (R3 M3, R4 M2).
 
 ## 6. E2E on an isolated bb
 
@@ -106,7 +108,7 @@ Rules for every layer:
 3. Disable `provider-acp`, `keep-awake` and `connect`.
 4. Use `sbb` (unsets `BB_*`, sets `BB_SERVER_URL=http://127.0.0.1:48886`).
 5. `sbb plugin install <repo> --yes`; `sbb plugin dev <repo>`. `package.json` scripts pin the `bb` bundled in `bb-app@0.48.1` (the live binary fails to build; S1-S3 gotchas).
-6. Set `hermesRoot` to the fake (or to isolated Hermes for layer 7).
+6. Set Hermes host (the local daemon) and Hermes root to the fake (or to isolated Hermes for layer 7).
 7. **Before any check:** `diagnostics.instance_id` must equal the fake's. Otherwise abort.
 8. Assert with `sbb thread log|history|options`, `sbb plugin rpc call hermes …` and `sbb push-notifications thread`. Check the UI with agent-browser screenshots matched against the DOM.
 9. Teardown: `kill -INT <bb-app pid>`; `rm -rf ~/.bb-hermes-e2e`.
@@ -114,20 +116,20 @@ Rules for every layer:
 
 ## 7–8. Isolated Hermes and the Hermes plugin
 
-- Isolated Hermes, recipe 08 §5:
+- Isolated Hermes, recipe r08 §5:
   - `/private/tmp/hermes-spike`, `HERMES_GATEWAY_LOCK_DIR`;
   - `approvals: {mode: manual}`; no Discord or `webapp`; never the hermes-host wrappers.
 - `bb_tools` tests (R3 M6):
   - pytest in its own venv `hermes-plugin/.venv`, with stubs for `ctx`, `gateway.session_ingress` and `gateway.session_context`;
   - never `pip install` into `~/.hermes/hermes-agent/venv` (hermes-webui shares it).
 - Covered:
-  - tool schemas; argument allowlist; `tell` to its own thread refused;
-  - cron refusal;
-  - the Discord approval hook;
+  - tool schemas; argument allowlist; `tell` to its own thread refused; cron refused by the handler;
+  - the Discord approval hook, with a fresh `rule_key` per call ("always" can't stick; R4 S5);
+  - the work boundary on all 5 tools (author `bb:`/Conduit × Discord-origin or not; `list` filtering; R4 M1);
   - `bindings.json` lookup by chat id and by route key; `schema_version` mismatch → `tool_error`;
   - minimal env (has `HOME`, no inherited `HERMES_DASHBOARD_SESSION_TOKEN`);
   - timeout < 420 s;
-  - echo: private author present → post; absent → `echo.json`; non-bb author → no post.
+  - echo: private author present → post; absent → `echo.json`; non-bb author or `messaging_bound:false` → no post (R4 S4).
 - Real symbols are checked only by the drift check and an isolated-Hermes load (symlink, enable, `reload-plugins`, tools in a new session).
 
 ## 9. Contract drift
@@ -136,10 +138,10 @@ Rules for every layer:
   - methods and param keys, including `session.mutate` operations with `request_id`/`expected_revision`/`expected_generation`, `clarify.respond` with `prompt_id`/`execution_generation`, `session.detach` without `profile` (R1 S6);
   - event types;
   - control verbs;
-  - store columns and `schema_version`;
+  - store columns and `schema_version`; source hashes of `is_compaction_scaffolding` and `_display_dedupe_key` (R4 M3e);
   - the Python symbols `ctx.register_tool`, `ctx.register_hook`, `ctx.post_message`, `gateway.session_ingress.admission_author`, `gateway.session_context.get_session_env`.
 - **Automatic:** the worker runs it whenever the Hermes version or `instance_id` changes. The result goes to health and `bb.log` (D20).
-- **Manual:** run `npm run contract:check` on $HERMES_HOST before `hermes update`.
+- **Manual:** run `npm run contract:check` on the Hermes host before `hermes update`. Paths are under `<hermesRoot>` (R4 M2).
 
 ## 10. Live dogfood checklist
 
@@ -153,14 +155,14 @@ Live bb + live Hermes, user present:
   - a Hermes slash command, `/compact`, a fork (tip, and checkpoint if declared).
 - [P1] Clients and recovery:
   - the phone: start a chat and chat with a bot (D19);
-  - `bb thread spawn --provider hermes` from $WORK_HOST → a clear error, then OK with `--machine $HERMES_HOST`;
+  - `bb thread spawn --provider hermes` from $WORK_HOST → a clear error, then OK with `--machine <Hermes host>`;
   - a gateway restart mid-turn recovers (user-approved: it drops every live Hermes session, Discord and Conduit included);
   - redeploy (`update`, `stopHosted`, new build id in `diagnostics`).
 - [P2] Import and mirror:
   - `importPreview` == `e2e/eligibility`; import: 0 unread, 0 pushes, 0 Hermes revisions changed;
   - a CLI turn mirrors as `[CLI]`; a `/retry` in the CLI doesn't duplicate;
-  - pin, archive, rename and read both ways.
-- [P2] Outage: Wi-Fi off on $HERMES_HOST for 5 min → banner; make a CLI turn and a bb pin; Wi-Fi on → both sync (R3 S13).
+  - pin, archive, rename and read both ways (the first live two-way sync is user-approved).
+- [P2] Outage: Wi-Fi off on the Hermes host ($HERMES_HOST) for 5 min → banner; make a CLI turn and a bb pin; Wi-Fi on → both sync (R3 S13).
 - [P3] 4 bot threads; Conduit → bb (including mid-turn) and bb → Conduit; a bot rename leaves `Bot Chat` intact.
 - [P4] neo spawns, waits on and reads a Codex thread; cron and non-enabled profiles lack the tools.
 - [P5] Throwaway Discord thread: echo then reply; `[Discord]` mirror; rolled-over notice.
@@ -172,10 +174,10 @@ Each gate also needs `npm run check` (test, typecheck, `bb plugin types --check`
 
 | Phase | Gate |
 |---|---|
-| P0 | Unit + client tests on the strict fake; `git ls-remote` as the bb server's user after `gh auth setup-git` (D29); live install from `@^0` + one update (A26); health shows the drift result; A31–A34 protocol check done (T0.12): a gap is raised with the user before P1 |
-| P1 | Conformance + own bridge tests; e2e for chats, chips, catalog, reasoning, attachments, approvals, clarify, Stop/steer fencing, handoff, slash commands, `/compact` and fork; A2–A4, A14, A15, A17–A20, A24, A27, A28, A33, A34 verified; dogfood P1 incl. phone |
-| P2 | Import, mirror and sync e2e on the fake; A1, A5, A8, A9, A13, A16, A23, A25 verified; dogfood P2 |
-| P3 | Bot setup idempotent; Conduit fixture (mid-turn wake) mirrored; dogfood P3 |
+| P0 | A36 proven (SQLite binding in worker and bridge, T0.4); unit + client tests on the strict fake; `git ls-remote` as the bb server's user after `gh auth setup-git` (D29); live install from `@^0` + one update (A26); health shows the drift result; A31–A34 protocol check done (T0.12): a gap is raised with the user before P1 |
+| P1 | Conformance + own bridge tests; e2e for chats, chips, catalog, reasoning, attachments, approvals, clarify, Stop/steer fencing, handoff, slash commands, `/compact` and fork; A2–A4, A14, A15, A17–A21, A24, A27, A28, A33, A34 verified; dogfood P1 incl. phone |
+| P2 | Import, mirror and sync e2e on the fake; A1, A5, A8, A9, A13, A16, A23, A25, A37, A38 verified; dogfood P2 |
+| P3 | Bot setup idempotent; the hidden Bot Chat accepts the pin (D31), else fall back and tell the user; Conduit fixture (mid-turn wake) mirrored; dogfood P3 |
 | P4 | pytest; isolated-Hermes load; A12, A29, A35 verified; user-approved install and enable in 4 profiles; dogfood P4 |
-| P5 | Echo tests + fixture; A10, A11, A21 verified in a supervised live try; dogfood P5 |
+| P5 | Echo tests + fixture; A10, A11, A39 verified in a supervised live try; dogfood P5 |
 | P6 | A7 on isolated bb; parity week clean; user confirms the ACP disable and the cleanup |
