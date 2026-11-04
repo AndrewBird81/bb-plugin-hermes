@@ -162,7 +162,7 @@ Changes from the brief's order:
 | A36 | A SQLite binding works read-only inside the host worker and the bridge (else `/usr/bin/sqlite3 -readonly -json`) | T0.4 |
 | A37 | A custom `extension.state` (`hermes/persisted-turn`) reaches the server via `experimental_thread.events` | T1.1 |
 | A38 | Deleting a hidden import thread frees its `providerThreadId` (no 409 orphan, R4 S8) | T2.9 |
-| A39 | The user's own Discord id is the single id in the profile's `DISCORD_ALLOWED_USERS` (read by name only). If there are several, every Discord author pushes | T5.4 |
+| A39 | The user's own Discord id is the single id in the profile's `DISCORD_ALLOWED_USERS` (read by name only). If there are several, every Discord author pushes. Checked 2026-11-04: one id, the same in all five profiles; recheck in T5.4 | T5.4 |
 
 ## Dev loop
 
