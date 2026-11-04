@@ -111,7 +111,7 @@ Approvals needed at execution time:
 
 ## Plan defaults (reversible)
 
-No user decisions are pending: Q3, Q5, Q6, Q10–Q14 became D22–D29. These remaining defaults weren't put to the user as questions. The reviews found them consistent with intent (R2 "checked and fine").
+No user decisions are pending: Q3, Q5, Q6, Q10–Q14 became D22–D29. The defaults below were not asked as questions. They were shown to the user on 2026-11-04 ("taking unless you object"), with no objection, and the reviews found them consistent with intent (R2 "checked and fine").
 
 | # | Question | Default (applied) | Alternatives |
 |---|---|---|---|
@@ -119,7 +119,7 @@ No user decisions are pending: Q3, Q5, Q6, Q10–Q14 became D22–D29. These rem
 | Q2 | Bot threads vs two-way rename/archive (conflicts with D9): Bot Mode finds `Bot Chat` by its exact title | Bot titles never sync; archive bb-only | Sync anyway (breaks Bot Mode) |
 | Q4 | One thread per Discord conversation across resets? | No: per session | Merge by route |
 | Q7 | Imported items show import time | Accept; dated tags `[CLI · Oct 12]`; oldest-first import | — |
-| Q8 | Uncommitted hermes-host bb adapter (04 §5) | Commit now; delete at P6 | Delete now |
+| Q8 | Uncommitted hermes-host bb adapter (04 §5) | Ask the user before touching hermes-host (P0). Recommended: commit it, then delete it at P6 | Delete now |
 | Q9 | Project chats share one model list per folder (S7 finding 1) | Accept; unoffered model → profile default + warning | Worktree per chat (Hermes then works in a worktree) |
 
 ## Review resolution
