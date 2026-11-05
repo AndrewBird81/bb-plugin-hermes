@@ -5,8 +5,7 @@ L = likelihood, I = impact (H/M/L). Detection runs through `diagnostics` and hea
 | # | Risk | L | I | Mitigation | Early detection |
 |---|---|---|---|---|---|
 | R1 | **Hermes canary churn**: methods, params or events change; `model.options` isn't in `x-canonical-methods` (r11 §1); unknown keys are refused | M | H | Wire protocol only in TS; capability detection; strict fake from a vendored contract | Worker drift check on each version change; `contract:check --incoming` before `hermes update` (D20) |
-| R2 | **Private Hermes symbols** in `bb_tools` (`admission_author`, `get_session_env`) | M | M | One shim with `inspect.signature`; echo falls back to `echo.json`; tools fail closed | Drift check imports each symbol |
-| R3 | **Private store schema**: the store reader is now primary for reads (`message_uid`, metadata) | M | H | T0.4 picks the reader that fails loudly (TS `node:sqlite` or Hermes' Python reader); mismatch policy: drift queries pass → warn, fail → pause import, mirror and sync (02 store rules); scaffolding rows excluded | Drift check runs the queries and hashes Hermes' dedupe functions |
+| R3 | **Private store schema**: the store reader is now primary for reads (`message_uid`, metadata) | M | H | T0.4 picks the reader that fails loudly (TS `node:sqlite` or Hermes' Python reader); mismatch policy: drift queries pass → warn, fail → pause import and mirror (02 store rules); scaffolding rows excluded | Drift check runs the queries and hashes Hermes' dedupe functions |
 | R4 | **Experimental bb SDK APIs** (`experimental_*`); host 0.6.104 vs main 0.6.120 | M | H | Pin SDK 0.6.104; e2e at the live version; bb upgrade runbook (04) | `bb plugin types --check` per release and per bb upgrade |
 | R5 | **Host-worker lifetime**: killed at 300 s with no exit event (S7 §6) | H | H | 60 s `ensureWatch`; `worker_boot_id` → full reconcile; WAL stat | Boot id changes; last-sync age |
 | R6 | **Process count**: one bridge per hosted thread | M | M | Release after import; 30 min idle release; no keep-alive turns | Hosted count |
@@ -17,21 +16,20 @@ L = likelihood, I = impact (H/M/L). Detection runs through `diagnostics` and hea
 | R11 | **Duplicate bindings**: bb accepts a duplicate handle, then 409s (S1-S3 fact 4) | M | H | `UNIQUE` key; one serial queue; `pluginMetadata` origin check on `thread.created` | Duplicate-binding query |
 | R12 | **Hung mirror turns** with no canonical events (Conduit legacy writer; R1 M5) | M | M | Render persisted rows, close `partial`; the rest by re-list (no polling) | Turn age; audit |
 | R13 | **Release path**: the private repo isn't readable by the server's git; exact tags pin; no downgrade (R3 M1, M2) | H | H | P0 `git ls-remote` + `gh auth setup-git` (D29); `@^0` range; roll forward; `VACUUM INTO` before removal | P0 gate |
-| R14 | **Tests hit live Hermes** if the root falls back (R3 M3) | M | H | Hermes host + root required, no fallback; `bb_tools` files under `<hermesRoot>` (R4 M2); e2e aborts unless the instance id is the fake's | e2e step 7 |
+| R14 | **Tests hit live Hermes** if the root falls back (R3 M3) | M | H | Hermes host + root required, no fallback; e2e aborts unless the instance id is the fake's | e2e step 7 |
 | R15 | **Import timestamps**: items stamped "now" (S1-S3 §S1b) | H | L | Dated tags `[CLI · Oct 12]`; oldest-first import (Q7) | Dogfood P2 |
 | R16 | **Notification noise**: double pushes with Conduit and Discord | M | M | D26 (user-started outside turns auto-read, no push); silent imports | Push counts in dogfood |
-| R18 | **Discord echo**: re-ingest or `reply_to` rejection (r11 §4) | M | L | Author check; ship without the echo if A11 fails | Supervised try |
-| R19 | **Discord rollover**: replies after the daily reset don't reach Discord (r08 §4) | H | M | Notice (D23); thread per session (Q4) | P5 dogfood |
-| R20 | **bb tools security**: Discord users can drive bb; the Discord approval is self-approvable (R1 M10) | M | H | Off on cron; approval in Discord-origin sessions with a per-call `rule_key` (D24); work boundary on every tool (D28); allowlist; no self-`tell`; 0600 env file. R5 C3: spawned children and neo's skills bypass D28; pending Q15 | pytest; log review |
-| R21 | **Privacy**: transcripts enter bb's thread store on $BB_SERVER_HOST, incl. tool results | L | H | Sensitive tools by name only in import, mirror and handoff (D36); ids only in db, logs and `diagnostics`; no network credentials | Log review per release |
+| R20 | **Accepted risk (user decision, D37): Hermes → bb is unguarded by the plugin.** Any Hermes chat in a profile with the bb skills, Discord included, can read and act on work threads through the bb CLI, including via prompt injection. The only guards are the skill guidance and Hermes' smart approvals; Desktop "Approvals: off" bypasses the approvals (`tools/approval.py:1017-1021`, R5 C3) | M | H | Guidance in `dev-setup`; smart approvals; kill criterion below | Log review; the user noticing work data outside bb or Conduit |
+| R21 | **Privacy**: transcripts enter bb's thread store on $BB_SERVER_HOST, incl. tool results | L | H | Sensitive tools by name only in every Hermes thread (D36; the model's reply can still mention them); ids only in db, logs and `diagnostics`; no network credentials | Log review per release |
 | R22 | **bb auto-answers approvals** under a permission mode (A2) | L | H | One declared mode, `auto` (D17); never-auto-approve tests; a smart-escalated command in dogfood | P1 gate |
-| R23 | **Hermes host outage** (no idle sleep: keep-awake already on, D21) | L | M | Thread banner; reconnect diff; reconcile | `watch` state; Wi-Fi-off dogfood |
+| R23 | **Hermes host outage** (no idle sleep: keep-awake already on, D21) | L | M | Thread banner; push on reconnect; reconcile | `watch` state; Wi-Fi-off dogfood |
 | R24 | **UI limits**: project catalog clash (Q9); `threads.open` moves every client; bb's own handoff drops the profile; init artifacts; mobile slots (A30) | M | L | Model mapping + warning; `useBbNavigate`; documented limitations; mute + `markRead`; pinned bots on the phone | Dogfood P1 |
-| R25 | **`bb_tools` config change** in 4 profiles; `reload-plugins` reloads Conduit too | L | M | User approval at T4.3; while Conduit is idle; `plugins disable` rollback | Conduit link status |
 | R26 | **Parity gaps**: slash commands ride legacy methods (A31); fork is verified in code only (A34); either can block ACP retirement (D25) | M | M | Protocol check in P0 (T0.12); tip-only fork fallback; legacy-only catalog → raise with the user before P1 | T0.12 result |
 | R27 | **Silent semantic drift**: new row kinds, a moved author field, changed adoption rules or event order pass every structure check and show as duplicate or missing turns (R5 C2) | M | H | Semantic canary after each `hermes update`; daily audit; 7-day soak per gate; the Python reader option (T0.4) | Audit; canary diff |
 | R28 | **Upkeep treadmill**: Hermes canary (~389 commits/day) and bb (7–13 releases/month) both move; the plugin can delay `hermes update` | H | M | Upkeep log; budget in the kill criteria; `contract:check --incoming` | `docs/operations.md` §Upkeep |
 | R29 | **Recalled source tags**: ↑ recall resends `[Discord] …` into a thread (D15) | M | L | `message.dispatch` hook refuses tagged sends without a marker | Unit test |
+| R30 | **One-way state**: Hermes-side pins, archives and renames never reach bb (D38); a refused push (duplicate title) leaves the two differing | M | L | Accepted (user decision); refusals logged in `diagnostics` | `diagnostics` |
+| R31 | **Read-only Discord chip** (A41): the `discord` current value may not render or fire a pick | L | L | Fallback: Continue in bb from the rail panel's recent list (navPanel + RPC, verified surfaces) | T2.3 |
 
 ## Success metric and kill criteria (D34, R5)
 
@@ -40,13 +38,13 @@ L = likelihood, I = impact (H/M/L). Detection runs through `diagnostics` and hea
   - **Usage:** 3 weeks after P1, bb-started Hermes messages per week below the baseline → no-go; stop at P1.
   - **Upkeep:** over 4 h/month averaged over 2 months, or the plugin delays a `hermes update` by over 7 days twice → freeze features; consider a retreat to ACP plus skills.
   - **Silent drift:** the audit finds duplicates or gaps in more than one week of a month → live mirror off; imports stay static.
-  - **Security:** $WORK_HOST data reached outside an allowed turn (D28), or an unapproved destructive action by a Hermes-spawned child → disable `bb_tools`; re-decide Q15.
+  - **Security** (D37): work data shows up outside bb or Conduit → remove the bb skills from that profile.
   - **Obsolescence:** bb ships Hermes profiles or a canonical provider, or Hermes exposes message uids and authors publicly → migrate within one release. Hermes moves Conduit's legacy writer to canonical → delete the no-events mirror mode.
 - **Exit cost** (~1 h, SUSPECTED):
   - Reversible:
     - `bb plugin disable hermes`;
-    - in all 4 profiles, `plugins disable` + remove `bb_tools`, and its config entries;
-    - `<hermesRoot>/bb_tools/`; the server git helper (D29).
-  - Irreversible but benign: adopted legacy rows, synced pins, archives and renames, `" (2)"` titles, and deleted ACP probes (backed up).
+    - in default, alex and david: the bb skill symlinks, `BB_SERVER_URL` and its passthrough entry (TS.1);
+    - the server git helper (D29).
+  - Irreversible but benign: adopted legacy rows, pushed pins, archives and renames, and deleted ACP probes (backed up).
   - bb's Hermes threads stay, read-only. Never `remove` the plugin without the `VACUUM INTO` copy.
 
