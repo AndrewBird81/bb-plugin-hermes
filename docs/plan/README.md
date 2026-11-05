@@ -1,6 +1,10 @@
 # bb-plugin-hermes — implementation plan
 
-Status: revised 2026-11-04 after reviews R1–R6 (`docs/plan/reviews/`), user batches 1–4 and parent batch 5a. Four user decisions are pending (Q18–Q21). Integrates:
+Status: revised 2026-11-04 after reviews R1–R6 (`docs/plan/reviews/`), user batches 1–4 and parent batch 5a.
+
+**Superseded in part.** User decisions D42–D46 (the answers to Q18–Q21, and a scope reset) are not yet applied to this README's other sections or to `01`–`05`. Read `scope-reset.md` first: the proposed lean v1 is awaiting the user's OK (Q22–Q25).
+
+Integrates:
 - S7 (`docs/spikes/S7-bb-profile-entry-sync.md`, cited `S7 §n`);
 - H2 (`docs/research/11-hermes-profiles-tools.md`, cited `r11 §n`).
 
@@ -31,7 +35,7 @@ Out:
 
 ## Decisions log
 
-D1–D15, D22–D29 and D34–D39 are user decisions (00 v2, BRIEF, user batches 1–4). D16–D21, D30–D33 and D40–D41 are parent triage, presented to the user with the plan. The R5 changes to D16, D26 and D33, and the R6 changes to D20, D26, D28, D33 and D36 (batch 5a), were shown to the user as "taking unless you object". All dated 2026-11-04.
+D1–D15, D22–D29, D34–D39 and D42–D46 are user decisions (00 v2, BRIEF, user batches 1–4, Q18–Q21 and the scope reset). D16–D21, D30–D33 and D40–D41 are parent triage, presented to the user with the plan. The R5 changes to D16, D26 and D33, and the R6 changes to D20, D26, D28, D33 and D36 (batch 5a), were shown to the user as "taking unless you object". All dated 2026-11-04.
 
 | # | Decision | Source |
 |---|---|---|
@@ -76,6 +80,12 @@ D1–D15, D22–D29 and D34–D39 are user decisions (00 v2, BRIEF, user batches
 | D39 | No replies from bb into Discord. Discord sessions mirror live, read-only; "Continue in bb" hands off to a new bb chat with the conversation | user, was Q17 |
 | D40 | Read path (R6 C3, C4): no Hermes history reader before the go/no-go; the P1 handoff block comes from bb's own timeline. In P2, T2.0b spikes Hermes' REST projection (Desktop's `native-http` path) first, with TS `node:sqlite` as fallback; the venv-Python reader is dropped (webui's Python 3.11). Golden files and audit anchors come from Hermes' projection | parent, R6 |
 | D41 | Deny-list fails closed: every deny label checks `source` and `created_source`; more than 5 new automatic imports a day → pause import, health red | parent, R6 |
+| D42 | Full mirroring: every session of an enabled bot started outside bb, Conduit included, appears as a bb thread automatically and keeps updating. No "Continue in bb" needed, no P2-lite | user, was Q18 |
+| D43 | One switch per bot in plugin settings. On = the bot is available to chat in bb **and** has full access to operate bb, through a plugin-installed bb skill (S8 §Secondary). Restrictions come later. Not Neo-only, not all bots. Design only: no live change approved. Supersedes D37 and TS.1 | user, was Q19 |
+| D44 | One shared conversation: each enabled bot keeps one pinned bb thread, and it is that profile's single Bot Chat, mirrored both ways. Replies from bb or Conduit stay in that conversation, and so do Conduit's other mirrored chats. No fork, split, copy or read-only view, and no takeover that stops Conduit. Minimum coordination per S8. Supersedes D35's bb-only session | user, was Q20 + clarification |
+| D45 | hermes-webui is left alone and is out of scope: no retirement in this work (drops T3.7) | user, was Q21 |
+| D46 | Scope reset: v1 is the basics for a general Hermes user installing a public bb plugin. Deferred: the user's work/home split, edge-case permissions, path restrictions and elaborate multi-client policy. D42–D44 stay. Proposed v1 and backlog: `scope-reset.md` (awaiting OK) | user |
+
 Plan-level choices (reversible):
 - **Reads and writes:** reads come from Hermes history (P2 on; REST projection first, D40), writes and live events from canonical. `session.resume` adopts legacy rows and carries no `message_uid` (R1 M2, M7).
 - **Mirror path:** one path for hosted and idle threads, a tagged `threads.send` per outside turn. No bridge-opened turns.
@@ -134,6 +144,7 @@ Approvals needed at execution time:
 | `03-testing.md` | Test layers, strict fake, fixtures, e2e recipe, drift check, dogfood, gates |
 | `04-delivery.md` | Layout, phases, 62 tasks, assumptions, release, rollout, rollback, cleanup |
 | `05-risks.md` | Risk register; kill criteria; exit cost |
+| `scope-reset.md` | D46: proposed lean v1, the Later backlog, S8's shared-conversation rules, open questions Q22–Q25, and what the rewrite changes |
 
 ## Plan defaults (reversible)
 
@@ -147,9 +158,9 @@ Q3, Q5, Q6 and Q10–Q17 became decisions (D22–D29, D37–D39); Q2 is supersed
 | Q8 | Uncommitted hermes-host bb adapter (r04 §5) | The T0.1 lead asks the user before anything touches hermes-host. Recommended: commit it, then delete it at P3 | Delete now |
 | Q9 | Project chats share one model list per folder (S7 finding 1) | Accept; unoffered model → profile default + warning | Worktree per chat (Hermes then works in a worktree) |
 
-## Pending user decisions (batch 5b)
+## User decisions Q18–Q21 (answered: D42–D45)
 
-The plan keeps its current design for these until the user answers.
+Answered 2026-11-04; the answers are not yet applied (see Status). The table records what was asked. Open questions are now Q22–Q25 in `scope-reset.md`.
 
 | # | Question | Applied now | R6 recommends |
 |---|---|---|---|
