@@ -2,7 +2,7 @@
 
 Status: revised 2026-11-04 after reviews R1–R6 (`docs/plan/reviews/`), user batches 1–4 and parent batch 5a.
 
-**Superseded in part.** User decisions D42–D46 (the answers to Q18–Q21, and a scope reset) are not yet applied to this README's other sections or to `01`–`05`. Read `scope-reset.md` first: the proposed lean v1 is awaiting the user's OK (Q22–Q25).
+**Superseded in part.** User decisions D42–D46 (the answers to Q18–Q21, and a scope reset) are not yet applied to this README's other sections or to `01`–`05`. Read `scope-reset.md` first: the proposed lean v1 is awaiting the user's OK (Q22–Q25). Pictures: [`../diagrams/README.md`](../diagrams/README.md).
 
 Integrates:
 - S7 (`docs/spikes/S7-bb-profile-entry-sync.md`, cited `S7 §n`);
@@ -144,6 +144,7 @@ Approvals needed at execution time:
 | `03-testing.md` | Test layers, strict fake, fixtures, e2e recipe, drift check, dogfood, gates |
 | `04-delivery.md` | Layout, phases, 62 tasks, assumptions, release, rollout, rollback, cleanup |
 | `05-risks.md` | Risk register; kill criteria; exit cost |
+| `../diagrams/README.md` | Pictures of the proposed v1: SVGs, interactive Archify HTML, and their sources |
 | `scope-reset.md` | D46: proposed lean v1, the Later backlog, S8's shared-conversation rules, open questions Q22–Q25, and what the rewrite changes |
 
 ## Plan defaults (reversible)

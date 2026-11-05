@@ -4,7 +4,7 @@
 - Decisions D42–D46 are recorded in `README.md` but not yet applied to `01`–`05`.
 - The lean rewrite starts from this file plus S8 (`docs/spikes/S8-conduit-shared-conversation.md`). The old plan becomes reference material and the source of the Later list.
 - Evidence for the parent's checks: `docs/research/12-verification-log.md` (cited `r12 §n`).
-- Pictures of this proposal: `docs/diagrams/overview.html` (Archify; sized for phones; sources are the `.json` files beside it).
+- Pictures of this proposal, with captions: [`../diagrams/README.md`](../diagrams/README.md). Four are also embedded in their sections below. The rewritten plan embeds them and keeps them current.
 
 ## User decisions
 
@@ -28,6 +28,8 @@
   - D42–D44 stay.
 
 ## Proposed v1 (Q22)
+
+![What runs where (proposed v1)](../diagrams/architecture.svg)
 
 - **Connect:**
   - one setting picks the bb machine that runs Hermes; the Hermes folder defaults to `~/.hermes`;
@@ -85,6 +87,10 @@
 
 ## Shared conversation: rules for bb (S8 §Recommended protocol)
 
+![bb and Conduit share one Bot Chat](../diagrams/shared-bot-chat.svg)
+
+![What bb does when Conduit holds the chat](../diagrams/shared-wait.svg)
+
 1. **Bind by title.** The bot thread is `(profile home, "Bot Chat")`, resolved by title on each send and re-list, as Hermes Desktop does.
 2. **Create lazily.** If no Bot Chat exists, create it on the user's first message, not at setup. `session.create` returns an existing Bot Chat if one appeared meanwhile.
 3. **Wait, never fork.** On `runtime_coordination_required`, Conduit holds a chat the gateway hasn't adopted yet.
@@ -106,6 +112,8 @@
    - a compaction that rotates the session id.
 
 ## bb access for an enabled bot (S8 §Secondary)
+
+![What the per-bot switch does](../diagrams/bot-switch.svg)
 
 Parent default, already told to the user:
 - The host worker writes one wrapper, `<plugin data>/bin/bb-hermes`. It sets `BB_SERVER_URL` only when the bb server is remote, then runs `bb`.
