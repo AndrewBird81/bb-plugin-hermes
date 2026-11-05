@@ -107,10 +107,10 @@
 ## bb access for an enabled bot (S8 §Secondary)
 
 Parent default, already told to the user:
-- The host worker writes a plugin-owned bb skill and a `bb` wrapper into `<profile>/skills/bb-plugin-hermes/`, with a marker file.
-  - The wrapper sets `BB_SERVER_URL` only when the bb server is remote.
+- The host worker writes one wrapper, `<plugin data>/bin/bb-hermes`. It sets `BB_SERVER_URL` only when the bb server is remote, then runs `bb`.
+- For each enabled bot, it writes a plugin-owned bb skill that calls the wrapper to `<profile>/skills/bb-plugin-hermes/`, with a marker file.
 - It needs no `config.yaml` or `.env` edit and no restart, and survives Hermes and profile updates.
-- Switching the bot off deletes both.
+- Switching a bot off deletes its skill, and the wrapper once no bot is on.
 - The skill is general, not Neo's. Neo's setup is an example only (r12 §4).
 
 ## Pending user answers
@@ -119,8 +119,8 @@ Parent default, already told to the user:
 |---|---|---|---|
 | Q22 | The v1 scope above, with its defaults | Accept | Adjust the lists |
 | Q23 | Discord. The user proposed dropping Discord, except that a direct DM with a bot goes to that bot's thread | Mirror no chat-platform sessions (Discord, Telegram, Slack…), with no exception. A DM is a separate Hermes session with its own context, and nothing routes it into the Bot Chat (r12 §2). Bot-to-bot messages already land in the Bot Chat | Mirror DMs as separate read-only threads. Making a DM the same conversation as the bot thread would need a Hermes change |
-| Q24 | Optional, the user's own Hermes config: `compression.in_place: false` in `default` (r12 §5). With bb and Conduit both writing the Bot Chat, a rotating compaction can interleave rows | Leave it in v1 | Set it to `true`, Hermes' default |
-| Q25 | File S8's two race bugs upstream? That is public | Only with the user's OK | Don't file |
+| Q24 | Optional (S8 open question 5), the user's own Hermes config: `compression.in_place: false` in `default` (r12 §5). With bb and Conduit both writing the Bot Chat, a rotating compaction can interleave rows | Leave it in v1 | Set it to `true`, Hermes' default |
+| Q25 | File S8's two race bugs upstream (S8 open question 1)? That is public | Only with the user's OK | Don't file |
 
 ## What the rewrite changes
 
@@ -138,3 +138,17 @@ Parent default, already told to the user:
 | Assumptions | Add A-S8a–d (S8 §Plan changes) |
 | T3.7 and the webui approval | Removed (D45) |
 | D29 | Not needed, if the plugin is published publicly |
+| D40 (no history reader before the go/no-go) | v1 needs one for the 30-day import and for Conduit's own turns (D42). Choose Hermes' REST projection or `node:sqlite`. S8 still cites "REST, D40" |
+| D27 (Stop on mirrored turns) | Stop works only on bb's own turns and on Conduit turns forwarded into the gateway. A turn Conduit runs itself shows "Running in Conduit" |
+| D26, D33, 02 flow 4 (auto-read your own outside turns) | v1: all outside activity marks the thread unread; only approvals and `clarify` send a push |
+| D30 (two settings: Hermes host and root) | One setting picks the Hermes machine; the folder defaults to `~/.hermes` |
+| D36 (privacy filter in 02's bridge) | Later |
+| D6 (Discord as read-only threads) | Per Q23, with D39 |
+| 02 flow 8 and `turn/start` (bot chat created with `title:<handle>`, D35) | D44: find the Bot Chat by title; create it on the first message |
+| S8's "Q5" | S8's open question 5, now Q24 |
+
+Not settled in any doc. Decide these in the rewrite (found while drawing `docs/diagrams/`):
+- When the 30-day import runs for a bot switched on later.
+- What happens to a bot's bb threads when the bot is switched off.
+- Whether v1 keeps 02's step where the user confirms import counts.
+- How CLI and TUI chats reach saved chats. The diagrams assume they write them directly; confirm in source.
