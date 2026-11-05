@@ -4,6 +4,7 @@
 - Decisions D42–D46 are recorded in `README.md` but not yet applied to `01`–`05`.
 - The lean rewrite starts from this file plus S8 (`docs/spikes/S8-conduit-shared-conversation.md`). The old plan becomes reference material and the source of the Later list.
 - Evidence for the parent's checks: `docs/research/12-verification-log.md` (cited `r12 §n`).
+- Pictures of this proposal: `docs/diagrams/overview.html` (Archify; sized for phones; sources are the `.json` files beside it).
 
 ## User decisions
 
