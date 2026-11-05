@@ -1,6 +1,6 @@
 # bb-plugin-hermes — implementation plan
 
-Status: revised 2026-11-04 after reviews R1–R5 (`docs/plan/reviews/`) and user batches 1–4. No user decisions are pending. Integrates:
+Status: revised 2026-11-04 after reviews R1–R6 (`docs/plan/reviews/`), user batches 1–4 and parent batch 5a. Four user decisions are pending (Q18–Q21). Integrates:
 - S7 (`docs/spikes/S7-bb-profile-entry-sync.md`, cited `S7 §n`);
 - H2 (`docs/research/11-hermes-profiles-tools.md`, cited `r11 §n`).
 
@@ -31,7 +31,7 @@ Out:
 
 ## Decisions log
 
-D1–D15, D22–D29 and D34–D39 are user decisions (00 v2, BRIEF, user batches 1–4). D16–D21 and D30–D33 are parent triage, presented to the user with the plan; the R5 changes to D16, D26 and D33 were shown to the user with no objection. All dated 2026-11-04.
+D1–D15, D22–D29 and D34–D39 are user decisions (00 v2, BRIEF, user batches 1–4). D16–D21, D30–D33 and D40–D41 are parent triage, presented to the user with the plan. The R5 changes to D16, D26 and D33, and the R6 changes to D20, D26, D28, D33 and D36 (batch 5a), were shown to the user as "taking unless you object". All dated 2026-11-04.
 
 | # | Decision | Source |
 |---|---|---|
@@ -50,32 +50,34 @@ D1–D15, D22–D29 and D34–D39 are user decisions (00 v2, BRIEF, user batches
 | D13 | Settings v1: health; default and hidden profiles; import sources (Discord included, toggleable) and window; hidden models; default notification level | 00 |
 | D14 | Delegated execution: one writer per seam in its own jj workspace; a gate per phase; Claude-family subagents in the background | BRIEF |
 | D15 | Tagged outside messages may land in bb prompt history. bb refuses sends that start with a source tag (↑-recall resends) | S7 §8; R5 |
-| D16 | Pre-migration sessions render read-only from Hermes' store; Hermes adopts one (`session.resume`) only on the first bb send. No Hermes mutations for a legacy binding until then (they claim it, A23) | R1 M7; R5 C5 |
+| D16 | Pre-migration sessions render read-only from Hermes history; Hermes adopts one (`session.resume`) only on the first bb send. No Hermes mutations for a legacy binding until then (they claim it, A23). Conduit's live legacy rows: pending Q20 | R1 M7; R5 C5; R6 C5 |
 | D17 | Reasoning effort ships in P1 (bb always draws the control). One permission mode, `auto`, is declared and tested in T1.2 (A2) | R2 M1; R5 |
 | D18 | Superseded by D37 (`bb_tools` rules) | R1 M10 |
 | D19 | P1 gate: start a Hermes chat and chat with a bot from bb on the phone | R2 U3 |
-| D20 | The host worker runs the drift check whenever the Hermes version or instance changes. Before `hermes update`: `npm run contract:check --incoming` (checks `origin/main`). After it: the semantic canary. Daily: the `audit` RPC | R3 Q2, M4; R5 C2 |
+| D20 | No human step: the worker runs the drift check on each Hermes version or instance change and `contract:check --incoming` (fetch, check `origin/main`) daily; from P2 the semantic canary on each version change, or health shows "canary due" if it can't drive isolated Hermes. Daily: the `audit` RPC | R3 Q2, M4; R5 C2; R6 |
 | D21 | No keep-awake change: it was already on (verified 2026-11-04, `bb keep-awake status` → enabled, all hosts). Offline UX covers real outages only | R2 U2 |
 | D22 | Hermes icon on rows: a row-metadata badge (Hermes SVG + profile name). The user turns the metadata option on once; if the spike fails, rows have no glyph | user, was Q10 |
 | D23 | Superseded by D39 (Discord rollover notice) | user, was Q3 |
 | D24 | Superseded by D37 (approvals for bb tools in Discord sessions) | user, was Q5 |
 | D25 | Before ACP retires: reasoning, Hermes slash commands and fork are required; service tier is not. Slash and fork gate P3, not the P1 exit | user, was Q6; R5 |
-| D26 | Outside turns the user started (CLI, Desktop/Conduit, Discord) are marked read automatically: no dot, no push. Turns the user didn't start (subagents, Pulse) keep the dot and push. Approvals and clarify always push. Changed after R5: Hermes records no reads (`last_read_at` unset on 0 of 455 sessions) | user, was Q12; parent, R5 C7 |
+| D26 | Outside turns the user started (CLI, Desktop/Conduit, Discord) and hidden-prompt turns (user row hidden, e.g. Pulse) are marked read automatically: no dot, no push. Turns the user didn't start (subagents) keep the dot and push. Approvals and clarify always push. Hermes records no reads (`last_read_at` unset on 0 of 455 sessions) | user, was Q12; parent, R5 C7, R6 C6 |
 | D27 | Stop during a mirrored outside turn interrupts that Hermes turn, fenced by its admission/generation | user, was Q11 |
-| D28 | Work/personal boundary: guidance text in the bb skills, not enforced (D37). $WORK_HOST = work; projects on both hosts count as work | user, was Q13 |
+| D28 | Work/personal rule, guidance text in the bb skills, not enforced (D37): a thread is work when it runs on $WORK_HOST ("$WORK_HOST is always work", `~/.agents/reference/model-routing.md`). The 4 projects on both hosts (nix-config, src, bb-plugin-code-review-workspace, bb-plugin-conductor) are personal. Hermes chats can't be in work projects, which have no $HERMES_HOST checkout | user, was Q13; parent, R6 |
 | D29 | Repo access: `gh auth setup-git` on the bb server (reuses its gh login); P0 `git ls-remote https://github.com/AndrewBird81/bb-plugin-hermes` as the bb server's user. R5's alternative (public code in the `bb-plugins` monorepo, docs private) not taken | user, was Q14 |
 | D30 | Required server settings "Hermes host" (a bb host) and "Hermes root". Unset → unconfigured, no Hermes I/O. Logic never names $HERMES_HOST | parent, R4 |
 | D31 | Removed by D35 | parent, R4 S2 |
 | D32 | Deny-list adds `a2a` and `tool`; `api_server` imports as `[API]`. Verified 2026-11-04: 0 non-empty sessions of all three in 30 days | parent, R4 S9 |
-| D33 | "User-started" (D26): the user's own Discord id, bb, CLI, TUI, Desktop/Conduit. Decided by source: Desktop and Conduit admissions carry no author (R5). Other Discord users and `a2a` push; unknown author: no push. Imports take Hermes' pinned/archived state | parent, R4; R5 |
+| D33 | "User-started" (D26): the user's own Discord id, bb, CLI, TUI, Desktop/Conduit. Decided by source: Desktop and Conduit admissions carry no author (R5). Other Discord users and `a2a` push; unknown author: no push. Imports take Hermes' archived state, never its pin (R6 C6) | parent, R4; R5; R6 |
 | D34 | Scope: the full plan, with a go/no-go checkpoint after P1. The user decides on P2 onward from P1 usage and upkeep data (success metric above; kill criteria in 05) | user, R5 question 1 |
 | D35 | Bots: each bot (Hermes, Alex, David, Neo) is its own pinned bb Hermes chat, a bb-created session in that profile, not bound to the profile's Bot Chat. Supersedes D5's Bot Chat part, Q2 and D31. Built in P1; P3 (bots) removed (user: no objection) | user, R5 question 5 |
-| D36 | Privacy: results of sensitive tools (Conduit health and location, Home Assistant) render in bb by tool name only ("used conduit_location") in every Hermes thread, bb-started chats included (user: no objection). The full result stays in Hermes; the model's reply can still mention the data. The list lives in code, with a test | user, R5 C7 |
-| D37 | Hermes uses bb through skills plus the `bb` CLI, as Neo does today. Neo's `bb-start`, `bb-inquire`, `bb-reply`, `bb-review` and `dev-setup` go to default, alex and david (TS.1). Hermes' smart approvals apply; no Hermes plugin. Threads Hermes starts don't nest under its chat (accepted) | user, was Q15 |
+| D36 | Privacy: sensitive tool results render in bb by tool name only ("used conduit_location") in every Hermes thread, bb-started chats included. Prefix rule: `conduit_*` and `mcp__Home_Assistant__*` (R6 C7). The full result stays in Hermes; the model's reply can still mention the data. The rule lives in code, with a `provides_tools` test | user, R5 C7; parent, R6 C7 |
+| D37 | Hermes uses bb through skills plus the `bb` CLI, as Neo does today. Neo's `bb-start`, `bb-inquire`, `bb-reply`, `bb-review` and `dev-setup` go to default, alex and david (TS.1). Hermes' smart approvals apply; no Hermes plugin. Threads Hermes starts don't nest under its chat (accepted). R6 C2: smart approvals flag no `bb` command; guard pending Q19 | user, was Q15 |
 | D38 | State is one-way, bb → Hermes, for pin, archive and rename. Hermes-side changes never come back; imports read them once. Read state isn't synced | user, was Q16 |
 | D39 | No replies from bb into Discord. Discord sessions mirror live, read-only; "Continue in bb" hands off to a new bb chat with the conversation | user, was Q17 |
+| D40 | Read path (R6 C3, C4): no Hermes history reader before the go/no-go; the P1 handoff block comes from bb's own timeline. In P2, T2.0b spikes Hermes' REST projection (Desktop's `native-http` path) first, with TS `node:sqlite` as fallback; the venv-Python reader is dropped (webui's Python 3.11). Golden files and audit anchors come from Hermes' projection | parent, R6 |
+| D41 | Deny-list fails closed: every deny label checks `source` and `created_source`; more than 5 new automatic imports a day → pause import, health red | parent, R6 |
 Plan-level choices (reversible):
-- **Reads and writes:** reads come from a read-only store reader, writes and live events from canonical. `session.resume` adopts legacy rows and carries no `message_uid` (R1 M2, M7).
+- **Reads and writes:** reads come from Hermes history (P2 on; REST projection first, D40), writes and live events from canonical. `session.resume` adopts legacy rows and carries no `message_uid` (R1 M2, M7).
 - **Mirror path:** one path for hosted and idle threads, a tagged `threads.send` per outside turn. No bridge-opened turns.
 - **Single writer:** the server is the only writer of bb → Hermes state.
 - **Lazy sessions:** a Hermes session is created on the first visible message (r09 M6).
@@ -84,20 +86,21 @@ Plan-level choices (reversible):
 - **Bots:** pinned; no "Bots" section (S7 §4); built in P1.
 - **Titles:** type-first chats use bb's own title generator; empty chats take the first message; bb titles push one-way (D38).
 - **Continue in bb** reuses the verified chip handoff (S7 §1d): a read-only Discord thread's chip shows "Discord · read-only", and a profile pick hands off (A41).
-- **No store polling:** a turn with no canonical events (a legacy writer) renders what is persisted and closes `partial`; later rows arrive by re-list.
+- **No history polling:** a turn with no canonical events (a legacy writer) renders what is persisted and closes `partial`; later rows arrive by re-list.
 - Settings ship with the phase that reads them.
 
-Possible gold-plating (scheduled late, droppable): "Older Hermes chats" (P3); webui retirement (P3, optional). Subagent nesting is a user decision: dropping it needs user OK (R4 S6).
+Possible gold-plating (scheduled late, droppable): "Older Hermes chats" (P3); webui retirement (P3, optional; timing pending Q21). Subagent nesting is a user decision: dropping it needs user OK (R4 S6).
 
 Approvals needed at execution time:
 - `gh auth setup-git` on the bb server, reusing its gh login (D29).
 - TS.1, a live Hermes change in default, alex and david: symlinks to Neo's 5 bb skills; `BB_SERVER_URL` in `.env` and `terminal.env_passthrough`; the work-rule guidance in Neo's `dev-setup` (shared). D1's "no config change" covers the transport only.
 - A live gateway restart in P1 dogfood (drops every live Hermes session, Discord and Conduit included).
 - The first live import; the first live state push to Hermes.
+- The worker's unattended Hermes-side actions: the daily `git fetch` in `<hermesRoot>/hermes-agent` (remote refs only) and, from P2, isolated-Hermes canary runs (they share `mlx_main`).
 - Deleting ACP probe sessions (after a backup); disabling `acp-hermes-agent`; webui retirement.
 - Pushes, tags and live installs.
 - The go/no-go after P1 (D34).
-- Each approval is logged in `docs/operations.md` §Approvals (date, item, answer); gated tasks check it first. Upkeep hours go to §Upkeep (kill criteria).
+- Each approval is logged in `docs/operations.md` §Approvals (date, item, answer); gated tasks check it first. Upkeep goes to §Upkeep: the user's own attention hours apart from agent runs (kill criteria).
 
 ## Glossary
 
@@ -107,8 +110,9 @@ Approvals needed at execution time:
 | hosted | A thread with a live bridge process; released after 30 min idle |
 | canonical | `hermes-gateway-v1` on `/api/ws` (r08 §1) |
 | read-only thread | A Discord-bound thread: mirrored, but bb never sends into it (D39) |
-| store reader | Read-only access to each profile's `state.db`: TypeScript on `node:sqlite` or Hermes' own Python reader (T0.4 picks) |
-| audit / canary | Daily check of Hermes anchors vs bb turns per binding / scripted isolated-Hermes run after each `hermes update`, diffed against golden reader output |
+| history reader | P2 read-only access to Hermes session history: Hermes' REST projection (`native-http` ticket) first, TS `node:sqlite` on `state.db` as fallback (T2.0b picks) |
+| audit / canary | Daily check of Hermes anchors vs bb turns per binding / scripted isolated-Hermes run on each version change, diffing our reader against Hermes' REST projection |
+| hidden-prompt turn | A turn whose user row Hermes hides (`display_kind` set), e.g. Conduit's Pulse; muted and auto-read (D26) |
 | profile home | Hermes `profile_id` (home path) |
 | lineage root | Hermes logical id (`chat_id` owner), stable across compaction. **Tip** = current physical id |
 | anchor | `message_uid` of a turn's user message (or first assistant message); the mirror dedupe key |
@@ -143,15 +147,26 @@ Q3, Q5, Q6 and Q10–Q17 became decisions (D22–D29, D37–D39); Q2 is supersed
 | Q8 | Uncommitted hermes-host bb adapter (r04 §5) | The T0.1 lead asks the user before anything touches hermes-host. Recommended: commit it, then delete it at P3 | Delete now |
 | Q9 | Project chats share one model list per folder (S7 finding 1) | Accept; unoffered model → profile default + warning | Worktree per chat (Hermes then works in a worktree) |
 
+## Pending user decisions (batch 5b)
+
+The plan keeps its current design for these until the user answers.
+
+| # | Question | Applied now | R6 recommends |
+|---|---|---|---|
+| Q18 | Go/no-go metric and P2 shape (R6 C1) | bb-started Hermes messages ≥ ~10/week; then full P2 (D34) | bb's share of the user's typed Hermes messages (≥ 80% in weeks 2–3, dogfood excluded); P2-lite (rail list + Continue in bb, ~4 tasks) unless typed outside messages stay over ~5/week |
+| Q19 | TS.1 and its guard (R6 C2) | TS.1 to default, alex and david, guidance only (D37) | Neo only until a guard exists; or `approvals.deny` globs; or a ~20-line `pre_tool_call` approval hook |
+| Q20 | Conduit legacy chats: read-only vs adoption (R6 C5) | Adopt on first bb send (D16) | Read-only with Continue in bb, like Discord; drops adoption, A23 and the legacy push skip |
+| Q21 | Retire hermes-webui now (R6) | Optional, P3 (T3.7) | Now, after finding what polls `/api/session/status` |
+
 ## Review resolution
 
 | Finding | Fixed in, or why not |
 |---|---|
 | R1 M1, M2 wakes and row ids | 02 `turns` (keyed by `message_uid`; `INSERT OR IGNORE` then send), flow 4; A8; 03 §1 |
-| R1 M3, M8, M9 identity, handoff | 02 identity rules; flow 6 (context from the store; binding state decides); `init` refused unless `pending:` |
+| R1 M3, M8, M9 identity, handoff | 02 identity rules; flow 6 (context from the bb timeline, R6 C4; binding state decides); `init` refused unless `pending:` |
 | R1 M4, M6 fencing, merged sends | 02 protocol mapping, input parsing; A25; 01 F8; 03 bridge tests |
 | R1 M5 mirror never closes | 02 flow 4.3 (no-events mode closes `partial`; rest by re-list) |
-| R1 M7 legacy adoption | D16; 02 placement and store rules, flow 3; A23; `importPreview` legacy count |
+| R1 M7 legacy adoption | D16; 02 placement and history rules, flow 3; A23; `importPreview` legacy count |
 | R1 M10, S11, S12 bb tools | Moot: no `bb_tools` (D37). Accepted risk 05 R20 |
 | R1 S1–S4, S6–S10, S14, S15 | 02 event filter, flow 4, mapping params, `end_reason:null` (A24), `worker_boot_id`, no outbox (push on reconnect), no `running`; A4, A19, A20; 01 F2 |
 | R1 S5, S13 bots | Superseded by D35 |
@@ -164,18 +179,29 @@ Q3, Q5, Q6 and Q10–Q17 became decisions (D22–D29, D37–D39); Q2 is supersed
 | R3 S1–S13, Q1–Q2 | `diagnostics`; flow 3 redo; migrations; 04 work breakdown, runbook, cleanup, T3.6; 03 §5–§9; README approvals |
 | R4 M1 work boundary | D28 → guidance only (D37); accepted risk 05 R20 |
 | R4 M2 `bb_tools` path | Moot (D37). Drift paths stay under `<hermesRoot>` |
-| R4 M3, M4 | 02 store rules (a)–(e); `thread/resume` records identity only |
+| R4 M3, M4 | 02 history rules (mismatch policy, TS-fallback row rules, author, binding, hashes); `thread/resume` records identity only |
 | R4 Hermes host | D30; no $HERMES_HOST in logic |
 | R4 S1, S7–S11 | `reply_uids` + `mirror{rest}`; wake atomicity; A38; D32; `rNN` citations; minor fixes |
 | R4 S2, S4, S5 | Moot: D35 (no Bot Chat pin), D39 (no echo), D37 (no tool approvals) |
 | R4 S3, S6, ambiguities | Approvals list; gold-plating list; A36, D30, D33, A39, `docs/operations.md` §Approvals |
 | R5 C1 scope | D34: full plan, go/no-go after P1. Success metric (README Goal); kill criteria and exit cost (05) |
-| R5 C2 drift | D20: `contract:check --incoming`, semantic canary (T0.13), daily `audit` (T2.11); upkeep budget; R27, R28 |
+| R5 C2 drift | D20: `contract:check --incoming`, semantic canary (T2.0a), daily `audit` (T2.11); upkeep budget; R27, R28 |
 | R5 C3 bb tools boundary | D37: skills + CLI, guidance only (R5 question 2 option "advisory", question 3 option "skills"); accepted risk 05 R20 |
-| R5 C4 alternatives | Python reader compared in T0.4 (A36). `bindings.json` gone with D37. Keep D1 and the mirror. Upstream PRs: optional, never depended on |
+| R5 C4 alternatives | Python reader dropped (R6 C3: wrong interpreter); REST projection first in T2.0b (A36). `bindings.json` gone with D37. Keep D1 and the mirror. Upstream PRs: optional, never depended on |
 | R5 C5 hidden writes | D16 extended (no mutations for legacy bindings; A23); D31 removed by D35 |
 | R5 C6 test realism | 03 §5 (recorded snapshots; legacy `methods` validated), soak gates, smart-escalated command in P1 dogfood |
 | R5 C7 privacy, reads, metric | D36 (every thread); D26 (auto-read); D38 (no read sync); success metric |
 | R5 questions 2–5 | 2–3 → D37; 4 → D38 (sync) and D39 (Discord); 5 → D35 |
 | R5 decision challenges | Adopted: D7/D15 dispatch hook (T2.10), D8 → D39, D9 → D38, D10/D18/D24 → D37, D17 `auto`, D25 P3 gate, D26, D31, D33. Not adopted: D3 lock/handoff later, D6 defer nesting (D34 keeps scope). Kept: D27, D29, D30, Q-defaults |
 | R5 assumptions | A31 rewritten (legacy `commands.catalog`/`slash.exec`); A34, A36, A8 verified; A5 verified no; A23 extended; A35 dropped (D37) |
+| R6 C1 go/no-go metric | Pending Q18 |
+| R6 C2 D37 guard | Pending Q19. Applied now: R20 and D37 state that smart approvals flag no `bb` command; TS.1 work-rule wording (D28) |
+| R6 C3 read path | D40: REST projection first in T2.0b; venv-Python reader dropped; golden files and audit from Hermes' projection; REST key check or schema + table checks (02, 03 §8) |
+| R6 C4 no reader before go/no-go | D40: P1 handoff from the bb timeline (02 flow 6); T0.4 and T0.13 → T2.0b and T2.0a; P0 keeps the contract check |
+| R6 C5 Conduit legacy stream | Pending Q20 (D16 notes it) |
+| R6 C6 Pulse | D26, D33: hidden-prompt turns muted and auto-read; imports never copy the pin |
+| R6 C7 privacy list | D36: prefixes `conduit_*`, `mcp__Home_Assistant__*`; `provides_tools` check (test and drift); A40 resolved |
+| R6 decisions table | D34, D37, D16 → Q18–Q20; D36, D26/D33, D20 applied; webui → Q21. D38 "move F9 to P3": not taken, D38 is a batch-4 user decision |
+| R6 assumptions | Approval timeout 60 s (F8); author: Discord admissions use `native_text_v1` (A4); `schema_version` + per-profile tables (02); voice goes to OpenAI (F2); bot title on `session.create` (F4, flow 8); ACP baseline → Q18 |
+| R6 missed | D41 deny-list both columns + circuit breaker (R32); upkeep counts the user's hours (05); update size (R28); golden files: one human check against Desktop (03 §4); webui → Q21; ACP disable at the go/no-go: not taken (no ruling), stays P3 |
+

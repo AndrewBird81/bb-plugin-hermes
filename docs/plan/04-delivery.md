@@ -10,13 +10,13 @@ bb-plugin-hermes/
   assets/hermes.svg       provider, rail and row icon
   src/shared/             marker.ts, host-contract.ts, rpc-contract.ts, filters.ts (deny-list),
                           sensitive-tools.ts (D36)                                              (lead)
-  src/hermes/             client.ts (canonical), store.ts or store.py helper (T0.4 picks)       (client)
+  src/hermes/             client.ts (canonical), history.ts (P2: REST first, node:sqlite fallback) (client)
   src/bridge/             turns, segmentation, mapper, interactions, replay/mirror              (bridge)
   src/server/             mapping db, import, wakes, state push, bots, handoff, diagnostics, audit (server)
-  src/worker/             watch, store reads, mutate, models, drift                             (worker)
+  src/worker/             watch, history reads, mutate, models, drift, --incoming               (worker)
   src/app/                rail, home send menu, ⇧⌘H, row metadata, banner, settings             (app)
-  test/fake-hermes/       strict fake gateway + snapshot state.db copies; vendored contract     (client)
-  test/fixtures/          recorded frames, store snapshots, golden reader output, redacted      (e2e)
+  test/fake-hermes/       strict fake gateway; vendored contract; recorded REST responses (P2)  (client)
+  test/fixtures/          recorded frames, golden REST projection, redacted                     (e2e)
   e2e/                    isolated-bb scripts, sbb, eligibility, canary                         (e2e)
   contract/               used-surface.json, contract:check                                     (client)
   docs/                   plan, guide.md, operations.md, PLUGIN_OVERVIEW.md                     (lead)
@@ -59,24 +59,22 @@ Go/no-go checkpoint (D34):
 
 - Seams: `lead` (contracts, live steps with the user, docs), `client`, `bridge`, `server`, `worker`, `app`, `e2e` (verifier; never gates its own code).
 - One seam per task (D14). For changes that cross seams, the lead lands the contract first.
-- 62 tasks (was 70): P0 14, P1 22, P2 17, P3 8, standalone 1.
+- 62 tasks: P0 12, P1 22, P2 19, P3 8, standalone 1. T0.4 and T0.13 moved to the start of P2 as T2.0b and T2.0a (R6 C4).
 
 | ID | Task | Seam | Depends |
 |---|---|---|---|
 | T0.1 | Scaffold: manifest, SVG, vitest, `npm run check`, pinned build `bb`. Asks the Q8 hermes-host question before anything touches hermes-host | lead | — |
 | T0.2 | Contracts: markers, host contract, RPC, Hermes host + root settings (D30), deny-list constants | lead | T0.1 |
 | T0.3 | Canonical client port; `gateway.sock.path` fallback; reconnect | client | T0.1 |
-| T0.4 | Store reader: compare TS `node:sqlite` with Hermes' Python reader on the T0.13 snapshots, in the worker and bridge runtimes; record the pick (the one that fails loudly) in `docs/operations.md`; mismatch policy; turn-row rules (02) | client | T0.13 |
-| T0.5 | Strict fake Hermes (vendored contract incl. legacy `methods`, snapshot `state.db` copies) | client | T0.3, T0.4 |
+| T0.5 | Strict fake Hermes (vendored contract incl. legacy `methods`; recorded REST responses added in P2) | client | T0.3 |
 | T0.6 | Mapping db, transactional migrations, dedupe | server | T0.2 |
 | T0.7 | Provider registration (hidden); bridge skeleton; build registry | bridge | T0.2 |
-| T0.8 | Worker: `ensureWatch{root}`, boot id, `describe`, drift check, `diagnostics` | worker | T0.3, T0.4 |
+| T0.8 | Worker: `ensureWatch{root}`, boot id, `describe`, drift check (contract, Conduit prefixes), `diagnostics` | worker | T0.3 |
 | T0.9 | Server: 60 s keep-alive service, `diagnostics` RPC, health | server | T0.6, T0.8 |
 | T0.10 | Settings section: Hermes host and root, health | app | T0.9 |
 | T0.11 | `gh auth setup-git` + `git ls-remote` as the bb server's user; live install `@^0`; one update | lead | T0.1–T0.10 |
 | T0.12 | Protocol check on isolated Hermes: `commands.catalog`, `slash.exec`, `compress`, `branch{through_message_id}` (A31, A33, A34) | client | T0.3 |
-| T0.13 | Record store snapshots + golden reader output from scripted scenarios on isolated Hermes (03 §4); the script is `npm run canary` | e2e | T0.3 |
-| T0.14 | `npm run contract:check [--incoming]` (fetch; `git show origin/main:` contract, schema, symbols) | client | T0.3 |
+| T0.14 | `npm run contract:check [--incoming]` (fetch; `git show origin/main:` contract); the worker runs `--incoming` daily (D20) | client | T0.3 |
 | T1.0 | Fixtures: gateway restart, attachments, second viewer, detach, `hermes chat -c` | e2e | T0.5 |
 | T1.1 | Bridge turns: start/resume/stop, lazy create, identity, segmentation, fencing, `not_found` | bridge | T0.5, T0.7 |
 | T1.2 | Bridge interactions: approvals, clarify, deadlines, session-scoped | bridge | T1.1 |
@@ -84,8 +82,8 @@ Go/no-go checkpoint (D34):
 | T1.4 | App: rail, home send-menu spike (A27) or message box, ⇧⌘H, row metadata spike (A28) | app | T1.3 |
 | T1.5a | Worker `models` + prewarm | worker | T0.8 |
 | T1.5b | Bridge: chip, catalog, model validation, reasoning | bridge | T1.1 |
-| T1.6a | Server: pick detection by binding state, chip revert, realtime `handoff` | server | T1.3 |
-| T1.6b | Bridge: `init`, handoff block from the store, late-pick refusal | bridge | T1.5b |
+| T1.6a | Server: pick detection by binding state, chip revert, realtime `handoff`; handoff block from the bb timeline (`threads.events.list`, R6 C4) | server | T1.3 |
+| T1.6b | Bridge: `init` with the handoff block, late-pick refusal | bridge | T1.5b |
 | T1.6c | App: overlay navigation on `handoff` (A17) | app | T1.6a |
 | T1.7 | Server: project placement (`project-checkout`) | server | T1.3 |
 | T1.8 | Bridge: reconnect and restart | bridge | T1.0, T1.1 |
@@ -96,14 +94,16 @@ Go/no-go checkpoint (D34):
 | T1.13 | Bridge: slash commands (`commands.catalog` → `bb/provider-commands`, `slash.exec`) and `/compact` → `compress` (gate P3) | bridge | T0.12, T1.1 |
 | T1.14a | Bridge: `thread/fork` → `branch`, tip or checkpoint (gate P3) | bridge | T0.12, T1.1 |
 | T1.14b | Server: bind fork threads on `thread.created` (gate P3) | server | T1.3 |
-| T1.15 | Server: bot setup (D35): one pinned `newChat` per visible bot profile, titled by handle; idempotent | server | T1.3 |
-| T1.16 | Bridge: sensitive-tool filter (D36) on every tool item and the handoff block; list test; A40 | bridge | T1.6b |
+| T1.15 | Server: bot setup (D35): one pinned `newChat` per visible bot profile, titled by handle (also on `session.create`); idempotent | server | T1.3 |
+| T1.16 | Bridge: sensitive-tool prefix filter (D36: `conduit_*`, `mcp__Home_Assistant__*`) on every tool item; `provides_tools` test | bridge | T1.6b |
 | T1.11 | P1 e2e + dogfood (phone, two hosts) | e2e | T1.1–T1.12, T1.15, T1.16 |
-| T2.0 | Fixtures: subagent, legacy row (claim, adoption), legacy-writer turn mid-turn, Discord snapshot | e2e | T0.5 |
-| T2.1 | Worker: watch (hint + WAL), `listSessions`, `readTurns` (uids), source → tag table | worker | T0.8, T2.0 |
-| T2.2 | Server: import (deny-list incl. Discord toggle, preview, serial queue, redo, backfill) | server | T2.1 |
-| T2.3 | Bridge: bind/replay/mirror from the store; mirror modes; legacy without resume; read-only chip (A41) | bridge | T1.1, T2.0 |
-| T2.4 | Server: wakes (`turns`, `INSERT OR IGNORE` then send), D26 levels and auto `markRead` | server | T2.1, T2.3 |
+| T2.0a | Record golden files from Hermes' REST projection on isolated Hermes (03 §4), plus `state.db` snapshots; the script is `npm run canary`, driven by the worker if it can (was T0.13) | e2e | go (D34) |
+| T2.0b | History reader: spike REST first (list + messages per profile, alex and david via the host-scoped ticket; `message_uid`; `display_metadata.submission_id`; ancestors); TS `node:sqlite` fallback; record the pick in `docs/operations.md`; change detection (02) (was T0.4) | client | T2.0a |
+| T2.0 | Fixtures: subagent, legacy row (claim, adoption), legacy-writer turn mid-turn, Discord (REST responses) | e2e | T2.0a |
+| T2.1 | Worker: watch (hint + WAL), `listSessions`, `readTurns` (uids) on the T2.0b reader, source → tag table | worker | T2.0b, T2.0 |
+| T2.2 | Server: import (deny-list on both source columns incl. Discord toggle, circuit breaker, preview, serial queue, redo, backfill; archived copied, pin never) | server | T2.1 |
+| T2.3 | Bridge: bind/replay/mirror from history; mirror modes; legacy without resume; read-only chip (A41) | bridge | T1.1, T2.0 |
+| T2.4 | Server: wakes (`turns`, `INSERT OR IGNORE` then send), D26 levels and auto `markRead`; hidden-prompt turns muted (R6 C6) | server | T2.1, T2.3 |
 | T2.5a | Server: state push bb → Hermes (flow 7); skips for placeholder titles, bot pins, legacy, Discord | server | T2.1 |
 | T2.5b | Worker: `mutate` | worker | T2.1 |
 | T2.5c | App: offline thread banner | app | T0.9 |
@@ -114,7 +114,7 @@ Go/no-go checkpoint (D34):
 | T2.8a | Bridge: compression follow | bridge | T2.3 |
 | T2.8b | Worker: tip tracking (`resolved_id`) | worker | T2.1 |
 | T2.10 | Server: `message.dispatch` hook refuses source-tagged sends (D15) and sends to Discord threads (D39) | server | T2.4 |
-| T2.11 | Server: daily `audit` (anchors vs `turns` and rendered markers) in health and `diagnostics` | server | T2.4 |
+| T2.11 | Server: daily `audit` (REST-projection anchors vs `turns` and rendered markers) in health and `diagnostics` | server | T2.4 |
 | T2.9 | P2 e2e, `e2e/eligibility`, dogfood, soak | e2e | T2.1–T2.8, T2.10, T2.11 |
 | T3.1 | App: settings and health polish | app | P2 |
 | T3.2 | Parity checklist; A7 on isolated bb | e2e | P2 |
@@ -126,16 +126,16 @@ Go/no-go checkpoint (D34):
 | T3.7 | Optional stack trim: webui, hermes-host adapter (user OK) | lead | T3.3 |
 | TS.1 | bb skills in default, alex and david (01 F11): symlink Neo's 5 skills; `BB_SERVER_URL` in `.env` + `terminal.env_passthrough`; work-rule guidance in `dev-setup`; A42 | lead | user OK |
 
-- Critical path: T0.1 → T0.3 → T0.13 → T0.4 → T0.5 → T1.1 → T1.5b → T1.6b → T1.11 → go/no-go → T2.3 → T2.4 → T2.9 → P3 (R3 S4).
+- Critical path: T0.1 → T0.3 → T0.5 → T1.1 → T1.5b → T1.6b → T1.11 → go/no-go → T2.0a → T2.0b → T2.1 → T2.3 → T2.4 → T2.9 → P3 (R3 S4).
 
 ## Assumptions to verify
 
 | ID | Assumption | Verify in |
 |---|---|---|
-| A1 | Store columns (`pinned`, `archived`, `title`, `cwd`, `source`, `created_source`, `parent_session_id`, `chat_id`, `message_uid`, `active`) mean what we read | T2.1, read-only on live |
+| A1 | History fields (`archived`, `title`, `cwd`, `source`, `created_source`, `parent_session_id`, `chat_id`, `message_uid`, active rows) are present in the REST list and messages, or as store columns, and mean what we read | T2.0b, read-only on live |
 | A2 | With `approvalEnforcedBy:"provider"`, the declared mode `auto` never answers a Hermes approval. If it does, try `accept-edits`, then `full`; if all answer, stop and ask | T1.2 |
 | A3 | The bridge can close a pending interaction | T1.2 |
-| A4 | `turn_author` `bb:` persists on submits, steers and queued prompts; a repeated `submission_id` runs once | T1.1, T2.1 |
+| A4 | bb's `bb:` marker persists on submits, steers and queued prompts (REST `display_metadata.submission_id`; `cli_turn_v1.turn_author` in the store); a repeated `submission_id` runs once. Discord admissions carry `native_text_v1.source.user_id`, not `cli_turn_v1` (R6) | T1.1, T2.1 |
 | A5 | VERIFIED no (R5): no `conduit` source in any DB, so Conduit is Desktop everywhere. T2.1 builds the tag table from real values | T2.1 |
 | A6 | A delegation item can link to a sub-thread | T2.7a |
 | A7 | Disabled-provider threads stay viewable | T3.2 |
@@ -159,11 +159,11 @@ Go/no-go checkpoint (D34):
 | A31 | There is no canonical slash catalog (R5: only the legacy `commands.catalog` and `slash.exec`, `session_controls.py:219-221`). Assumed: both answer on our host-scoped socket, as `model.options` does, and bb sends a picked command as `turn/start` text | T0.12 |
 | A33 | bb's manual compaction maps to `session.mutate compress` | T0.12, T1.13 |
 | A34 | Verified in code (R5): `branch{through_message_id}` (`hermes_state_mutations.py:58-68`). Live check of tip and checkpoint forks | T0.12, T1.14a |
-| A36 | `node:sqlite` `readOnly` works in the daemon's Node v24.21 (VERIFIED, R5). Open: does it work inside the worker and bridge processes, and does Hermes' Python reader beat it on loud failure | T0.4 |
+| A36 | Hermes' REST projection is reachable per profile over a `native-http` ticket (alex and david via the host-scoped socket) and returns `message_uid`, `display_metadata.submission_id` and ancestors. Fallback: TS `node:sqlite` `readOnly` (works in the daemon's Node v24.21, R5) | T2.0b |
 | A37 | A custom `extension.state` (`hermes/persisted-turn`) reaches the server via `experimental_thread.events` | T1.1 |
 | A38 | Deleting a hidden import thread frees its `providerThreadId` (no 409 orphan, R4 S8) | T2.9 |
 | A39 | The user's own Discord id is the single id in the profile's `DISCORD_ALLOWED_USERS` (read by name only). If there are several, every Discord author pushes. Checked 2026-11-04: one id, the same in all five profiles; recheck in T2.9 | T2.9 |
-| A40 | The live names of the sensitive tools: `conduit_health`, `conduit_location`, and the Home Assistant MCP tools (prefix from live `tool_names`, read-only) | T1.16 |
+| A40 | Resolved (R6 C7): prefix rule `conduit_*` and `mcp__Home_Assistant__*`, checked against `provides_tools` | — |
 | A41 | A read-only thread's chip can show the non-profile current value `discord` ("Discord · read-only"), and a profile pick fires the selection event as in S7 §1d | T2.3, T2.9 |
 | A42 | In default, alex and david: symlinked skills load, and `BB_SERVER_URL` in `.env` + `terminal.env_passthrough` reach the terminal in new sessions without a gateway restart (else a restart needs user OK). Editing alex's and david's hermes-config sources keeps them across a re-distribution | TS.1 |
 
@@ -189,9 +189,9 @@ Go/no-go checkpoint (D34):
 
 Each user approval is logged in `docs/operations.md` §Approvals (date, item, answer). Gated steps (T0.11, T3.3, T3.4, TS.1, the first live import and push, the go/no-go) check it before they run.
 
-- P0: live install; ACP stays enabled as the fallback until P3. Upkeep hours are logged in `docs/operations.md` §Upkeep from here on.
+- P0: live install; ACP stays enabled as the fallback until P3. Upkeep is logged in `docs/operations.md` §Upkeep from here on: the user's own attention hours apart from agent runs (the kill criterion uses the user's hours).
 - P1: bot setup once (D35). Then 3 live weeks and the go/no-go (D34).
-- P2: `VACUUM INTO` a `data.db` copy → `importPreview` → user confirms → import. From P2 on, 7 days of soak with a clean audit before the next phase.
+- P2: T2.0a/T2.0b first; then `VACUUM INTO` a `data.db` copy → `importPreview` → user confirms → import. From P2 on, 7 days of soak with a clean audit before the next phase.
 - P3: parity week → the user confirms the ACP disable, then the cleanup.
 - TS.1: whenever the user approves; independent of the phases.
 
