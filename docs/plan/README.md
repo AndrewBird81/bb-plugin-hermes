@@ -38,7 +38,7 @@ D1–D15, D22–D29 and D34–D39 are user decisions (00 v2, BRIEF, user batches
 | D1 | Local: bridge (one process per hosted thread) and host worker on the Hermes host ($HERMES_HOST), via `~/.hermes/gateway.sock` + `hermes-gateway-v1`. No transport config change, credential or port | 00, S0-S4 §S0 |
 | D2 | Every Hermes session is a real bb thread: Hermes icon, pin/archive/rename, no machine or harness picker, hidden from bb's picker, interoperates with `bb thread tell/spawn/…` | 00 |
 | D3 | Profile chip in every composer and in New Hermes chat; models follow the profile; a profile change in a started chat hands off with context | 00 |
-| D4 | Optional project ($HERMES_HOST only); imports with a matching cwd land in it | 00 |
+| D4 | Optional project (on the Hermes host, D30; $HERMES_HOST today); imports with a matching cwd land in it | 00 |
 | D5 | One pinned thread per bot (Hermes, Alex, David, Neo); hide `todoist`. The Bot Chat binding is superseded by D35 | 00, r04 §3 |
 | D6 | Import interactive and Discord sessions, last 30 days; subagents nested; one-shot and cron off | 00 |
 | D7 | Outside activity mirrored live with progress, unread and notifications; outside user messages are the user's bubble with a source tag | 00 |
@@ -140,7 +140,7 @@ Q3, Q5, Q6 and Q10–Q17 became decisions (D22–D29, D37–D39); Q2 is supersed
 | Q1 | Delete policy | No cross-delete. bb delete → tombstone; a session deleted in Hermes → the bb thread stays, sends fail "Deleted in Hermes" | Mirror deletes |
 | Q4 | One thread per Discord conversation across resets? | No: per session | Merge by route |
 | Q7 | Imported items show import time | Accept; dated tags `[CLI · Oct 12]`; oldest-first import | — |
-| Q8 | Uncommitted hermes-host bb adapter (r04 §5) | The T0.1 lead asks the user before anything touches hermes-host. Recommended: commit it, then delete it at P6 | Delete now |
+| Q8 | Uncommitted hermes-host bb adapter (r04 §5) | The T0.1 lead asks the user before anything touches hermes-host. Recommended: commit it, then delete it at P3 | Delete now |
 | Q9 | Project chats share one model list per folder (S7 finding 1) | Accept; unoffered model → profile default + warning | Worktree per chat (Hermes then works in a worktree) |
 
 ## Review resolution

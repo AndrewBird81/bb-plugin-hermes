@@ -1,5 +1,7 @@
 # Brief: write the bb-plugin-hermes implementation plan
 
+> Historical input. The plan has since changed scope; `README.md` decisions D1–D39 supersede this brief.
+
 ## Objective
 
 Write a complete, vetted-ready implementation plan in `docs/plan/` for bb-plugin-hermes. bb-plugin-hermes is a bb plugin that makes Hermes Agent a first-class citizen in bb: every Hermes session becomes a real bb thread, with profiles, bots, live mirroring and two-way sync.
