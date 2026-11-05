@@ -1,0 +1,235 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Other Hermes apps (proposed v1)",
+    "output": "docs/diagrams/other-apps.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "git@github.com:AndrewBird81/bb-plugin-hermes.git",
+      "revision": "1daef3337b4de9afb12fe6b7aa313f494e1a794c",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "conduit",
+      "type": "frontend",
+      "label": "Conduit",
+      "pos": [
+        14,
+        30
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "iPhone app",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 36,
+          "end_line": 41,
+          "label": "Conduit"
+        }
+      ]
+    },
+    {
+      "id": "dashboard",
+      "type": "backend",
+      "label": "Dashboard",
+      "pos": [
+        14,
+        126
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "Conduit's way in",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 36,
+          "end_line": 41,
+          "label": "How Conduit connects"
+        },
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 54,
+          "end_line": 60,
+          "label": "Hands over when busy"
+        }
+      ]
+    },
+    {
+      "id": "desktop",
+      "type": "external",
+      "label": "Desktop",
+      "pos": [
+        144,
+        126
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "on this machine",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 36,
+          "end_line": 41,
+          "label": "Desktop, local"
+        }
+      ]
+    },
+    {
+      "id": "saved",
+      "type": "database",
+      "label": "Saved chats",
+      "pos": [
+        14,
+        222
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "Hermes history",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 52,
+          "end_line": 52,
+          "label": "When turns are saved"
+        }
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "messagebus",
+      "label": "Gateway",
+      "pos": [
+        144,
+        222
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "queue",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 54,
+          "end_line": 60,
+          "label": "One owner, one queue"
+        }
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "external",
+      "label": "CLI / TUI",
+      "pos": [
+        14,
+        318
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "terminal",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 41,
+          "end_line": 45,
+          "label": "Full mirroring"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "iPhone",
+      "wraps": [
+        "conduit"
+      ],
+      "pad": 10
+    },
+    {
+      "kind": "region",
+      "label": "Hermes machine",
+      "wraps": [
+        "dashboard",
+        "desktop",
+        "saved",
+        "gateway",
+        "cli"
+      ],
+      "pad": 10
+    }
+  ],
+  "connections": [
+    {
+      "id": "c-d",
+      "from": "conduit",
+      "to": "dashboard",
+      "label": "sends"
+    },
+    {
+      "id": "d-s",
+      "from": "dashboard",
+      "to": "saved",
+      "label": "runs, saves"
+    },
+    {
+      "id": "d-g",
+      "from": "dashboard",
+      "to": "gateway",
+      "label": "if busy",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "dt-g",
+      "from": "desktop",
+      "to": "gateway",
+      "label": "sends"
+    },
+    {
+      "id": "g-s",
+      "from": "gateway",
+      "to": "saved"
+    },
+    {
+      "id": "cli-s",
+      "from": "cli",
+      "to": "saved",
+      "label": "saves"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "violet",
+      "title": "Other Hermes apps",
+      "items": [
+        "Conduit talks to the Hermes dashboard. The dashboard runs Conduit's turn itself and saves it, or hands it to the gateway queue when that chat is busy.",
+        "Hermes Desktop on the Hermes machine talks to the gateway directly. The gateway saves every turn it runs.",
+        "CLI and TUI chats land in saved chats. How they get there isn't in the docs; confirm in source."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Open item",
+      "items": [
+        "bb mirrors all of these from saved chats. How v1 reads them is to be decided in the plan rewrite."
+      ]
+    }
+  ]
+}

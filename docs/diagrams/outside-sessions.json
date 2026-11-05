@@ -1,0 +1,375 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Outside chats appear in bb (proposed v1)",
+    "output": "docs/diagrams/outside-sessions.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "git@github.com:AndrewBird81/bb-plugin-hermes.git",
+      "revision": "1daef3337b4de9afb12fe6b7aa313f494e1a794c",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "local",
+      "type": "external",
+      "label": "CLI, TUI",
+      "pos": [
+        14,
+        30
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "and Desktop",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 41,
+          "end_line": 45,
+          "label": "Full mirroring"
+        }
+      ]
+    },
+    {
+      "id": "conduit",
+      "type": "frontend",
+      "label": "Conduit",
+      "pos": [
+        14,
+        126
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "iPhone",
+      "sources": [
+        {
+          "path": "docs/plan/README.md",
+          "line": 83,
+          "end_line": 83,
+          "label": "D42"
+        }
+      ]
+    },
+    {
+      "id": "chatapps",
+      "type": "external",
+      "label": "Discord etc.",
+      "pos": [
+        14,
+        222
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "proposed out",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 121,
+          "end_line": 121,
+          "label": "Q23"
+        },
+        {
+          "path": "docs/research/12-verification-log.md",
+          "line": 25,
+          "end_line": 42,
+          "label": "Discord sessions"
+        }
+      ]
+    },
+    {
+      "id": "cron",
+      "type": "external",
+      "label": "Cron, one-shot",
+      "pos": [
+        14,
+        318
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "always out",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 44,
+          "end_line": 44,
+          "label": "Cron and one-shot"
+        }
+      ]
+    },
+    {
+      "id": "saved",
+      "type": "database",
+      "label": "Saved chats",
+      "pos": [
+        144,
+        30
+      ],
+      "size": [
+        104,
+        338
+      ],
+      "sublabel": "every chat",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 52,
+          "end_line": 52,
+          "label": "When turns are saved"
+        },
+        {
+          "path": "docs/plan/README.md",
+          "line": 81,
+          "end_line": 81,
+          "label": "D40 read path"
+        }
+      ]
+    },
+    {
+      "id": "out",
+      "type": "external",
+      "label": "Not in bb",
+      "pos": [
+        14,
+        414
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "stays in Hermes",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 44,
+          "end_line": 45,
+          "label": "Stays out"
+        }
+      ]
+    },
+    {
+      "id": "plugin",
+      "type": "security",
+      "label": "Plugin sorts",
+      "pos": [
+        144,
+        414
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "enabled bots",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 41,
+          "end_line": 45,
+          "label": "What mirrors"
+        },
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 79,
+          "end_line": 82,
+          "label": "Off bots are absent"
+        }
+      ]
+    },
+    {
+      "id": "import",
+      "type": "backend",
+      "label": "30-day import",
+      "pos": [
+        14,
+        510
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "runs once",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 43,
+          "end_line": 43,
+          "label": "Imported once"
+        }
+      ]
+    },
+    {
+      "id": "live",
+      "type": "backend",
+      "label": "Live mirror",
+      "pos": [
+        144,
+        510
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "keeps updating",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 42,
+          "end_line": 42,
+          "label": "Keeps updating"
+        }
+      ]
+    },
+    {
+      "id": "threads",
+      "type": "frontend",
+      "label": "bb threads",
+      "pos": [
+        14,
+        606
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "one per chat",
+      "sources": [
+        {
+          "path": "docs/plan/README.md",
+          "line": 83,
+          "end_line": 85,
+          "label": "D42, D44"
+        }
+      ]
+    },
+    {
+      "id": "unread",
+      "type": "frontend",
+      "label": "Unread, push",
+      "pos": [
+        144,
+        606
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "push: approvals",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 47,
+          "end_line": 48,
+          "label": "Notifications"
+        }
+      ]
+    }
+  ],
+  "boundaries": [],
+  "connections": [
+    {
+      "id": "l-s",
+      "from": "local",
+      "to": "saved",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c-s",
+      "from": "conduit",
+      "to": "saved",
+      "variant": "emphasis"
+    },
+    {
+      "id": "d-s",
+      "from": "chatapps",
+      "to": "saved"
+    },
+    {
+      "id": "cr-s",
+      "from": "cron",
+      "to": "saved"
+    },
+    {
+      "id": "s-p",
+      "from": "saved",
+      "to": "plugin",
+      "label": "read (TBD)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "p-o",
+      "from": "plugin",
+      "to": "out",
+      "variant": "dashed"
+    },
+    {
+      "id": "p-i",
+      "from": "plugin",
+      "to": "import",
+      "label": "30 days",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "p-l",
+      "from": "plugin",
+      "to": "live",
+      "label": "new turns",
+      "variant": "emphasis"
+    },
+    {
+      "id": "i-t",
+      "from": "import",
+      "to": "threads"
+    },
+    {
+      "id": "l-t",
+      "from": "live",
+      "to": "threads",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "l-u",
+      "from": "live",
+      "to": "unread",
+      "label": "outside"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "What mirrors",
+      "items": [
+        "Every chat of an enabled bot from CLI, TUI, Desktop and Conduit appears in bb by itself and keeps updating. No \"Continue in bb\" step (D42).",
+        "Each bot's Bot Chat goes to that bot's pinned bb thread, not a new one (D44)."
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "What stays out",
+      "items": [
+        "Cron and one-shot runs; chats of bots that are switched off.",
+        "Discord, Telegram, Slack and other chat apps: proposed, pending Q23. A Discord DM is its own Hermes chat, not the Bot Chat."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Notifications and open items",
+      "items": [
+        "Outside activity marks the thread unread. Approvals and clarify questions send a push.",
+        "Open, to be decided in the plan rewrite: how v1 reads saved chats; when the import runs for a bot switched on later; whether you confirm import counts first."
+      ]
+    }
+  ]
+}

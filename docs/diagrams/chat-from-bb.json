@@ -1,0 +1,267 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "A chat from bb (proposed v1)",
+    "output": "docs/diagrams/chat-from-bb.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "git@github.com:AndrewBird81/bb-plugin-hermes.git",
+      "revision": "1daef3337b4de9afb12fe6b7aa313f494e1a794c",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "send",
+      "type": "frontend",
+      "label": "You send",
+      "pos": [
+        14,
+        30
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "bot, model, level",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 35,
+          "end_line": 40,
+          "label": "Chats from bb"
+        }
+      ]
+    },
+    {
+      "id": "queue",
+      "type": "messagebus",
+      "label": "Gateway queue",
+      "pos": [
+        144,
+        126
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "via the bridge",
+      "sources": [
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 160,
+          "end_line": 161,
+          "label": "turn/start"
+        },
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 54,
+          "end_line": 60,
+          "label": "One queue"
+        }
+      ]
+    },
+    {
+      "id": "run",
+      "type": "backend",
+      "label": "Bot runs it",
+      "pos": [
+        144,
+        222
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "profile's bot",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 35,
+          "end_line": 40,
+          "label": "Chats from bb"
+        }
+      ]
+    },
+    {
+      "id": "stream",
+      "type": "frontend",
+      "label": "Reply streams",
+      "pos": [
+        14,
+        318
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "live, in bb",
+      "sources": [
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 185,
+          "end_line": 186,
+          "label": "Events to bb"
+        }
+      ]
+    },
+    {
+      "id": "ask",
+      "type": "security",
+      "label": "Bot asks",
+      "pos": [
+        144,
+        414
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "approval, clarify",
+      "sources": [
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 189,
+          "end_line": 190,
+          "label": "Approval, clarify"
+        }
+      ]
+    },
+    {
+      "id": "card",
+      "type": "frontend",
+      "label": "Card + push",
+      "pos": [
+        14,
+        510
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "in bb",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 47,
+          "end_line": 48,
+          "label": "Push rule"
+        }
+      ]
+    },
+    {
+      "id": "answer",
+      "type": "frontend",
+      "label": "You answer",
+      "pos": [
+        14,
+        606
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "your choice only",
+      "sources": [
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 173,
+          "end_line": 173,
+          "label": "Answer"
+        }
+      ]
+    },
+    {
+      "id": "goon",
+      "type": "backend",
+      "label": "Turn goes on",
+      "pos": [
+        144,
+        702
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "same turn",
+      "sources": [
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 173,
+          "end_line": 173,
+          "label": "Answer"
+        }
+      ]
+    }
+  ],
+  "boundaries": [],
+  "connections": [
+    {
+      "id": "s-q",
+      "from": "send",
+      "to": "queue",
+      "label": "send",
+      "variant": "emphasis"
+    },
+    {
+      "id": "q-r",
+      "from": "queue",
+      "to": "run",
+      "label": "runs",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r-s",
+      "from": "run",
+      "to": "stream",
+      "label": "streams",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r-a",
+      "from": "run",
+      "to": "ask",
+      "label": "may ask",
+      "variant": "security"
+    },
+    {
+      "id": "a-c",
+      "from": "ask",
+      "to": "card",
+      "variant": "security"
+    },
+    {
+      "id": "c-a",
+      "from": "card",
+      "to": "answer"
+    },
+    {
+      "id": "a-g",
+      "from": "answer",
+      "to": "goon",
+      "label": "answer",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Send and stream",
+      "items": [
+        "Left column is bb (app and server); right column is the Hermes machine (plugin bridge, gateway, bot).",
+        "You pick a bot, a model and a reasoning level; the bot stays fixed for the chat. The first message creates the Hermes chat (session.create); each message is one prompt.submit with its own submission_id, never resent.",
+        "The reply arrives as message.delta and tool events. Steer and attachments also work."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Approvals and questions",
+      "items": [
+        "approval.request and clarify.request become a bb card and send a push.",
+        "Your choice goes back as approval.respond or clarify.respond. bb never approves for you."
+      ]
+    }
+  ]
+}

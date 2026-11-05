@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "bb and Conduit share one Bot Chat (proposed v1)",
+    "output": "docs/diagrams/shared-bot-chat.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "git@github.com:AndrewBird81/bb-plugin-hermes.git",
+      "revision": "1daef3337b4de9afb12fe6b7aa313f494e1a794c",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "bbsend",
+      "type": "frontend",
+      "label": "bb sends",
+      "pos": [
+        14,
+        30
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "pinned bot thread",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 87,
+          "end_line": 95,
+          "label": "Bind by title"
+        }
+      ]
+    },
+    {
+      "id": "csend",
+      "type": "external",
+      "label": "Conduit sends",
+      "pos": [
+        144,
+        30
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "iPhone",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 36,
+          "end_line": 41,
+          "label": "Conduit"
+        }
+      ]
+    },
+    {
+      "id": "dash",
+      "type": "backend",
+      "label": "Dashboard",
+      "pos": [
+        144,
+        126
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "chat busy?",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 55,
+          "end_line": 60,
+          "label": "Hands over when busy"
+        }
+      ]
+    },
+    {
+      "id": "queue",
+      "type": "messagebus",
+      "label": "Gateway queue",
+      "pos": [
+        14,
+        222
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "one at a time",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 54,
+          "end_line": 60,
+          "label": "One queue"
+        },
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 112,
+          "end_line": 114,
+          "label": "Concurrent turns"
+        }
+      ]
+    },
+    {
+      "id": "saved",
+      "type": "database",
+      "label": "Saved chat",
+      "pos": [
+        144,
+        222
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "the Bot Chat",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 52,
+          "end_line": 52,
+          "label": "When turns are saved"
+        }
+      ]
+    },
+    {
+      "id": "live",
+      "type": "frontend",
+      "label": "Streams in bb",
+      "pos": [
+        14,
+        318
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "live, in order",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 112,
+          "end_line": 114,
+          "label": "Foreign turn live"
+        }
+      ]
+    },
+    {
+      "id": "later",
+      "type": "frontend",
+      "label": "Shows in bb",
+      "pos": [
+        144,
+        318
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "once it is saved",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 115,
+          "end_line": 117,
+          "label": "Mirror from history"
+        },
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 96,
+          "end_line": 97,
+          "label": "Rule 5"
+        }
+      ]
+    }
+  ],
+  "boundaries": [],
+  "connections": [
+    {
+      "id": "b-q",
+      "from": "bbsend",
+      "to": "queue",
+      "label": "find Bot Chat",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c-d",
+      "from": "csend",
+      "to": "dash"
+    },
+    {
+      "id": "d-q",
+      "from": "dash",
+      "to": "queue",
+      "label": "busy",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "d-s",
+      "from": "dash",
+      "to": "saved",
+      "label": "idle: runs"
+    },
+    {
+      "id": "q-l",
+      "from": "queue",
+      "to": "live",
+      "label": "streams",
+      "variant": "emphasis"
+    },
+    {
+      "id": "s-l",
+      "from": "saved",
+      "to": "later",
+      "label": "read (TBD)",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "One conversation",
+      "items": [
+        "bb's pinned bot thread is the bot's Bot Chat, found by title on every send (session.list title \"Bot Chat\"). bb creates it only on your first message if none exists.",
+        "Both apps add turns to the same chat; each turn sees all earlier turns. No fork, no copy, no takeover."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "How Conduit's turns show",
+      "items": [
+        "Chat busy with a bb turn: the dashboard hands Conduit's message to the gateway queue. It runs after bb's turn and streams live in bb, tagged as outside.",
+        "Chat idle: the dashboard runs the turn and saves it. bb shows your message at once and the reply when the turn ends; neither streams.",
+        "How bb reads saved chats in v1 is to be decided in the plan rewrite."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Known rare Hermes bugs",
+      "items": [
+        "Sends from both apps within about 50 ms, and a compaction that rotates the chat id. Neither lost a message. Accepted for v1; filing upstream is proposed (Q25)."
+      ]
+    }
+  ]
+}

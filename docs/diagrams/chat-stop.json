@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Stop (proposed v1)",
+    "output": "docs/diagrams/chat-stop.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "git@github.com:AndrewBird81/bb-plugin-hermes.git",
+      "revision": "1daef3337b4de9afb12fe6b7aa313f494e1a794c",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "tap",
+      "type": "frontend",
+      "label": "You tap Stop",
+      "pos": [
+        14,
+        30
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "in bb",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 98,
+          "end_line": 100,
+          "label": "Stop rules"
+        }
+      ]
+    },
+    {
+      "id": "stop",
+      "type": "backend",
+      "label": "Turn stops",
+      "pos": [
+        144,
+        126
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "running or queued",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 122,
+          "end_line": 126,
+          "label": "Stop rules"
+        },
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 168,
+          "end_line": 168,
+          "label": "thread/stop"
+        }
+      ]
+    },
+    {
+      "id": "shown",
+      "type": "frontend",
+      "label": "Shows stopped",
+      "pos": [
+        14,
+        222
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "in bb",
+      "sources": [
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 195,
+          "end_line": 195,
+          "label": "turn.boundary"
+        }
+      ]
+    },
+    {
+      "id": "conduit",
+      "type": "external",
+      "label": "Conduit's turn",
+      "pos": [
+        14,
+        318
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "no Stop from bb",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 98,
+          "end_line": 100,
+          "label": "Running in Conduit"
+        }
+      ]
+    }
+  ],
+  "boundaries": [],
+  "connections": [
+    {
+      "id": "t-s",
+      "from": "tap",
+      "to": "stop",
+      "label": "stop",
+      "variant": "emphasis"
+    },
+    {
+      "id": "s-s",
+      "from": "stop",
+      "to": "shown",
+      "label": "ended",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "orange",
+      "title": "Stop",
+      "items": [
+        "A running turn is interrupted (session.interrupt); a queued one is dropped (prompt.cancel).",
+        "Works on bb's own turns, and on Conduit messages handed into the gateway queue.",
+        "A turn Conduit's dashboard runs itself can't be stopped from bb: the button reads \"Running in Conduit\"."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,251 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "The per-bot switch (proposed v1)",
+    "output": "docs/diagrams/bot-switch.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "git@github.com:AndrewBird81/bb-plugin-hermes.git",
+      "revision": "1daef3337b4de9afb12fe6b7aa313f494e1a794c",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "switch",
+      "type": "backend",
+      "label": "Bot switch",
+      "pos": [
+        14,
+        30
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "plugin settings",
+      "sources": [
+        {
+          "path": "docs/plan/README.md",
+          "line": 84,
+          "end_line": 84,
+          "label": "D43"
+        },
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 12,
+          "end_line": 16,
+          "label": "One switch per bot"
+        }
+      ]
+    },
+    {
+      "id": "bb",
+      "type": "backend",
+      "label": "bb server",
+      "pos": [
+        144,
+        30
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "chat + mirror",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 79,
+          "end_line": 82,
+          "label": "Defaults"
+        }
+      ]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Host worker",
+      "pos": [
+        14,
+        126
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "Hermes machine",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 208,
+          "end_line": 213,
+          "label": "Option 1"
+        }
+      ]
+    },
+    {
+      "id": "skill",
+      "type": "security",
+      "label": "bb skill",
+      "pos": [
+        14,
+        222
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "per enabled bot",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 208,
+          "end_line": 213,
+          "label": "Skill per profile"
+        }
+      ]
+    },
+    {
+      "id": "wrapper",
+      "type": "backend",
+      "label": "bb-hermes",
+      "pos": [
+        144,
+        222
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "one per machine",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 208,
+          "end_line": 213,
+          "label": "Wrapper"
+        }
+      ]
+    },
+    {
+      "id": "bot",
+      "type": "backend",
+      "label": "Bot",
+      "pos": [
+        14,
+        318
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "e.g. Neo",
+      "sources": [
+        {
+          "path": "docs/plan/README.md",
+          "line": 84,
+          "end_line": 84,
+          "label": "D43 full access"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "bb server",
+      "wraps": [
+        "switch",
+        "bb"
+      ],
+      "pad": 10
+    },
+    {
+      "kind": "region",
+      "label": "Hermes machine",
+      "wraps": [
+        "worker",
+        "skill",
+        "wrapper",
+        "bot"
+      ],
+      "pad": 10
+    }
+  ],
+  "connections": [
+    {
+      "id": "sw-w",
+      "from": "switch",
+      "to": "worker",
+      "label": "on / off",
+      "variant": "emphasis"
+    },
+    {
+      "id": "w-s",
+      "from": "worker",
+      "to": "skill",
+      "label": "writes, deletes"
+    },
+    {
+      "id": "w-wr",
+      "from": "worker",
+      "to": "wrapper",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "b-s",
+      "from": "bot",
+      "to": "skill",
+      "label": "uses"
+    },
+    {
+      "id": "s-wr",
+      "from": "skill",
+      "to": "wrapper"
+    },
+    {
+      "id": "wr-bb",
+      "from": "wrapper",
+      "to": "bb",
+      "label": "runs bb",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "On grants",
+      "items": [
+        "Chat with the bot in bb; its Bot Chat is a pinned bb thread. All its outside chats mirror into bb.",
+        "Full access to operate bb: the bot's plugin-owned bb skill calls the bb-hermes wrapper, which runs the bb CLI. Restrictions come later."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "What the worker writes",
+      "items": [
+        "One wrapper per Hermes machine: <plugin data>/bin/bb-hermes. It sets BB_SERVER_URL only when the bb server is remote.",
+        "One bb skill per enabled bot: <profile>/skills/bb-plugin-hermes/, with a marker file. No config.yaml or .env edit, no Hermes restart."
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Off means",
+      "items": [
+        "No chat, no mirroring, no bb access. The worker deletes that bot's skill; the wrapper goes once no bot is on. A bot's own bb skills stay untouched.",
+        "Every bot starts off (proposed default, Q22)."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Open items",
+      "items": [
+        "To be decided in the plan rewrite: whether switching a bot on later imports its last 30 days, and what happens to its bb threads when switched off."
+      ]
+    }
+  ]
+}

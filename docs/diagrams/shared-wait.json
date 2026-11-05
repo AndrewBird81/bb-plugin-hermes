@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "When Conduit holds the chat (proposed v1)",
+    "output": "docs/diagrams/shared-wait.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "git@github.com:AndrewBird81/bb-plugin-hermes.git",
+      "revision": "1daef3337b4de9afb12fe6b7aa313f494e1a794c",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "send",
+      "type": "frontend",
+      "label": "bb sends",
+      "pos": [
+        14,
+        30
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "to a chat",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 89,
+          "end_line": 92,
+          "label": "Wait, never fork"
+        }
+      ]
+    },
+    {
+      "id": "held",
+      "type": "messagebus",
+      "label": "Refused",
+      "pos": [
+        14,
+        126
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "Conduit holds it",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 104,
+          "end_line": 108,
+          "label": "runtime_coordination_required"
+        }
+      ]
+    },
+    {
+      "id": "wait",
+      "type": "frontend",
+      "label": "bb waits",
+      "pos": [
+        14,
+        222
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "banner, retries",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 104,
+          "end_line": 108,
+          "label": "Retry schedule"
+        }
+      ]
+    },
+    {
+      "id": "free",
+      "type": "external",
+      "label": "Conduit lets go",
+      "pos": [
+        144,
+        222
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "disconnect, idle",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 67,
+          "end_line": 72,
+          "label": "Writer claim"
+        }
+      ]
+    },
+    {
+      "id": "adopt",
+      "type": "messagebus",
+      "label": "Gateway runs it",
+      "pos": [
+        14,
+        318
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "adopts the chat",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 93,
+          "end_line": 95,
+          "label": "Adoption stays"
+        },
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 109,
+          "end_line": 111,
+          "label": "Send"
+        }
+      ]
+    },
+    {
+      "id": "reply",
+      "type": "frontend",
+      "label": "Reply streams",
+      "pos": [
+        14,
+        414
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "Conduit goes on",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 10,
+          "end_line": 13,
+          "label": "No takeover"
+        }
+      ]
+    }
+  ],
+  "boundaries": [],
+  "connections": [
+    {
+      "id": "s-h",
+      "from": "send",
+      "to": "held",
+      "label": "send",
+      "variant": "emphasis"
+    },
+    {
+      "id": "h-w",
+      "from": "held",
+      "to": "wait",
+      "label": "busy"
+    },
+    {
+      "id": "w-a",
+      "from": "wait",
+      "to": "adopt",
+      "label": "retry",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-a",
+      "from": "free",
+      "to": "adopt",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "right"
+    },
+    {
+      "id": "a-r",
+      "from": "adopt",
+      "to": "reply",
+      "label": "streams",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "Wait, never fork",
+      "items": [
+        "\"Refused\" is runtime_coordination_required: Conduit holds a chat the gateway hasn't adopted yet.",
+        "bb keeps your message queued and shows \"Open in Conduit: sends when it's free\". It retries at 2, 5, 10 and 30 s, then every 60 s.",
+        "Conduit lets go of a Bot Chat when it disconnects, and of other chats after 60 s idle.",
+        "bb never creates a second chat and never takes over. After the gateway adopts the chat, Conduit keeps working."
+      ]
+    }
+  ]
+}

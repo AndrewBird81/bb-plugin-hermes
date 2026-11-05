@@ -1,0 +1,340 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "What runs where (proposed v1)",
+    "output": "docs/diagrams/architecture.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "git@github.com:AndrewBird81/bb-plugin-hermes.git",
+      "revision": "1daef3337b4de9afb12fe6b7aa313f494e1a794c",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "app",
+      "type": "frontend",
+      "label": "bb app",
+      "pos": [
+        14,
+        30
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "phone or desktop",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 29,
+          "end_line": 49,
+          "label": "Proposed v1"
+        }
+      ]
+    },
+    {
+      "id": "bb",
+      "type": "backend",
+      "label": "bb server",
+      "pos": [
+        14,
+        126
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "threads, push",
+      "sources": [
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 47,
+          "end_line": 49,
+          "label": "Notifications"
+        }
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "Plugin server",
+      "pos": [
+        144,
+        126
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "settings",
+      "sources": [
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 7,
+          "end_line": 7,
+          "label": "Server part"
+        },
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 26,
+          "end_line": 31,
+          "label": "Placement rules"
+        },
+        {
+          "path": "docs/plan/scope-reset.md",
+          "line": 31,
+          "end_line": 34,
+          "label": "Connect, settings"
+        }
+      ]
+    },
+    {
+      "id": "bridge",
+      "type": "backend",
+      "label": "Plugin bridge",
+      "pos": [
+        14,
+        222
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "one per chat",
+      "sources": [
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 9,
+          "end_line": 9,
+          "label": "Bridge"
+        },
+        {
+          "path": "docs/plan/README.md",
+          "line": 42,
+          "end_line": 42,
+          "label": "D1 transport"
+        }
+      ]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Host worker",
+      "pos": [
+        144,
+        222
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "one per machine",
+      "sources": [
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 8,
+          "end_line": 8,
+          "label": "Host worker"
+        },
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 32,
+          "end_line": 35,
+          "label": "Canonical connection"
+        },
+        {
+          "path": "docs/plan/README.md",
+          "line": 71,
+          "end_line": 71,
+          "label": "D30"
+        }
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "messagebus",
+      "label": "Hermes gateway",
+      "pos": [
+        14,
+        318
+      ],
+      "size": [
+        234,
+        50
+      ],
+      "sublabel": "one queue per chat",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 54,
+          "end_line": 60,
+          "label": "One owner, one queue"
+        }
+      ]
+    },
+    {
+      "id": "bots",
+      "type": "backend",
+      "label": "Bots",
+      "pos": [
+        14,
+        414
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "e.g. Hermes, Neo",
+      "sources": [
+        {
+          "path": "docs/plan/README.md",
+          "line": 84,
+          "end_line": 84,
+          "label": "D43"
+        }
+      ]
+    },
+    {
+      "id": "saved",
+      "type": "database",
+      "label": "Saved chats",
+      "pos": [
+        144,
+        414
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "Hermes history",
+      "sources": [
+        {
+          "path": "docs/spikes/S8-conduit-shared-conversation.md",
+          "line": 52,
+          "end_line": 52,
+          "label": "When turns are saved"
+        },
+        {
+          "path": "docs/plan/README.md",
+          "line": 81,
+          "end_line": 81,
+          "label": "D40 read path"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Phone or computer",
+      "wraps": [
+        "app"
+      ],
+      "pad": 12
+    },
+    {
+      "kind": "region",
+      "label": "bb server",
+      "wraps": [
+        "bb",
+        "server"
+      ],
+      "pad": 12
+    },
+    {
+      "kind": "region",
+      "label": "Hermes machine",
+      "wraps": [
+        "bridge",
+        "worker",
+        "gateway",
+        "bots",
+        "saved"
+      ],
+      "pad": 12
+    }
+  ],
+  "connections": [
+    {
+      "id": "app-bb",
+      "from": "app",
+      "to": "bb",
+      "label": "message · reply",
+      "variant": "emphasis"
+    },
+    {
+      "id": "server-bb",
+      "from": "server",
+      "to": "bb"
+    },
+    {
+      "id": "server-worker",
+      "from": "server",
+      "to": "worker",
+      "label": "host calls"
+    },
+    {
+      "id": "bb-bridge",
+      "from": "bb",
+      "to": "bridge",
+      "label": "turn · reply",
+      "variant": "emphasis"
+    },
+    {
+      "id": "bridge-gw",
+      "from": "bridge",
+      "to": "gateway",
+      "label": "send · stream",
+      "variant": "emphasis"
+    },
+    {
+      "id": "worker-gw",
+      "from": "worker",
+      "to": "gateway",
+      "label": "watches"
+    },
+    {
+      "id": "gw-bots",
+      "from": "gateway",
+      "to": "bots",
+      "label": "runs turn",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gw-saved",
+      "from": "gateway",
+      "to": "saved",
+      "label": "saves"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Main path",
+      "items": [
+        "You type in bb. The bb server hands the turn to that chat's bridge on the Hermes machine.",
+        "The bridge sends it into the gateway queue (prompt.submit over gateway.sock, hermes-gateway-v1). A bot runs it; the reply streams back the same way."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Plugin parts",
+      "items": [
+        "Server part (bb server): settings and one switch per bot. It never touches Hermes files.",
+        "Host worker: one per Hermes machine, with its own gateway.sock connection. It notices changes and runs the 30-day import.",
+        "Bridge: one process per open chat, started by bb's host daemon, with its own gateway.sock connection."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Open item",
+      "items": [
+        "How the worker reads saved chats (for the import and Conduit's turns): to be decided in the plan rewrite. D40 predates full mirroring.",
+        "Everything here is proposed (Q22). The bb server and the Hermes machine can be one computer."
+      ]
+    }
+  ]
+}
