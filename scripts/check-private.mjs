@@ -46,7 +46,10 @@ function scan(text, where, out) {
 }
 
 const hits = [];
-const files = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' }).split('\0').filter(Boolean);
+// In a jj workspace the git index can lag behind new files, so ask jj (in UTC, since its snapshot stamps @).
+const files = existsSync('.jj')
+  ? execFileSync('jj', ['file', 'list'], { encoding: 'utf8', env: { ...process.env, TZ: 'UTC' } }).split('\n').filter(Boolean)
+  : execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' }).split('\0').filter(Boolean);
 for (const file of files) {
   if (!existsSync(file)) continue;
   const buf = readFileSync(file);
