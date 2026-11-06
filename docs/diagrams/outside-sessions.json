@@ -7,9 +7,8 @@
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
-      "url": "git@github.com:AndrewBird81/bb-plugin-hermes.git",
-      "revision": "1daef3337b4de9afb12fe6b7aa313f494e1a794c",
-      "link_mode": "local-only"
+      "url": "https://github.com/AndrewBird81/bb-plugin-hermes",
+      "revision": "3fd4f54e7921a0cd98246dde450cc08d1f7ed66a"
     }
   },
   "components": [
@@ -29,8 +28,8 @@
       "sources": [
         {
           "path": "docs/plan/scope-reset.md",
-          "line": 41,
-          "end_line": 45,
+          "line": 44,
+          "end_line": 48,
           "label": "Full mirroring"
         }
       ]
@@ -73,8 +72,8 @@
       "sources": [
         {
           "path": "docs/plan/scope-reset.md",
-          "line": 121,
-          "end_line": 121,
+          "line": 130,
+          "end_line": 130,
           "label": "Q23"
         },
         {
@@ -101,8 +100,8 @@
       "sources": [
         {
           "path": "docs/plan/scope-reset.md",
-          "line": 44,
-          "end_line": 44,
+          "line": 47,
+          "end_line": 47,
           "label": "Cron and one-shot"
         }
       ]
@@ -151,8 +150,8 @@
       "sources": [
         {
           "path": "docs/plan/scope-reset.md",
-          "line": 44,
-          "end_line": 45,
+          "line": 47,
+          "end_line": 48,
           "label": "Stays out"
         }
       ]
@@ -173,14 +172,14 @@
       "sources": [
         {
           "path": "docs/plan/scope-reset.md",
-          "line": 41,
-          "end_line": 45,
+          "line": 44,
+          "end_line": 48,
           "label": "What mirrors"
         },
         {
           "path": "docs/plan/scope-reset.md",
-          "line": 79,
-          "end_line": 82,
+          "line": 82,
+          "end_line": 85,
           "label": "Off bots are absent"
         }
       ]
@@ -201,8 +200,8 @@
       "sources": [
         {
           "path": "docs/plan/scope-reset.md",
-          "line": 43,
-          "end_line": 43,
+          "line": 46,
+          "end_line": 46,
           "label": "Imported once"
         }
       ]
@@ -223,8 +222,8 @@
       "sources": [
         {
           "path": "docs/plan/scope-reset.md",
-          "line": 42,
-          "end_line": 42,
+          "line": 45,
+          "end_line": 45,
           "label": "Keeps updating"
         }
       ]
@@ -267,8 +266,8 @@
       "sources": [
         {
           "path": "docs/plan/scope-reset.md",
-          "line": 47,
-          "end_line": 48,
+          "line": 50,
+          "end_line": 51,
           "label": "Notifications"
         }
       ]

@@ -8,13 +8,13 @@ Each chat with an enabled Hermes bot becomes a **bb thread**. bb sends through t
 - One switch per bot turns all of this on, including the bot's access to bb.[](source:readme)
 
 @answer scope="Proposed v1 for any Hermes user, awaiting the owner's OK (Q22). Bot names are examples. Open items are marked TBD."
-@meta locale=en quality_profile=showcase
-@source scope title="Scope reset: proposed v1" path=docs/plan/scope-reset.md lines=29:49
-@source rules title="Scope reset: shared-conversation rules" path=docs/plan/scope-reset.md lines=85:105
+@meta locale=en quality_profile=showcase repo_url=https://github.com/AndrewBird81/bb-plugin-hermes repo_revision=3fd4f54e7921a0cd98246dde450cc08d1f7ed66a
+@source scope title="Scope reset: proposed v1" path=docs/plan/scope-reset.md lines=30:52
+@source rules title="Scope reset: shared-conversation rules" path=docs/plan/scope-reset.md lines=88:112
 @source s8 title="S8: Conduit and bb sharing one conversation" path=docs/spikes/S8-conduit-shared-conversation.md lines=92:130
 @source s8access title="S8: per-profile bb access, option 1" path=docs/spikes/S8-conduit-shared-conversation.md lines=208:213
 @source arch title="02 Architecture: placement" path=docs/plan/02-architecture.md lines=24:27
-@source defaults title="Scope reset: per-bot switch defaults" path=docs/plan/scope-reset.md lines=79:82
+@source defaults title="Scope reset: per-bot switch defaults" path=docs/plan/scope-reset.md lines=82:85
 @source readme title="Decisions D40–D46" path=docs/plan/README.md lines=81:87
 
 ## What runs where? {#big-picture span=4}

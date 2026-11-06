@@ -7,9 +7,8 @@
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
-      "url": "git@github.com:AndrewBird81/bb-plugin-hermes.git",
-      "revision": "1daef3337b4de9afb12fe6b7aa313f494e1a794c",
-      "link_mode": "local-only"
+      "url": "https://github.com/AndrewBird81/bb-plugin-hermes",
+      "revision": "3fd4f54e7921a0cd98246dde450cc08d1f7ed66a"
     }
   },
   "components": [
@@ -29,8 +28,8 @@
       "sources": [
         {
           "path": "docs/plan/scope-reset.md",
-          "line": 89,
-          "end_line": 92,
+          "line": 96,
+          "end_line": 99,
           "label": "Wait, never fork"
         }
       ]
@@ -117,8 +116,8 @@
       "sources": [
         {
           "path": "docs/plan/scope-reset.md",
-          "line": 93,
-          "end_line": 95,
+          "line": 100,
+          "end_line": 102,
           "label": "Adoption stays"
         },
         {

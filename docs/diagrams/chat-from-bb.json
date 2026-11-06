@@ -7,9 +7,8 @@
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
-      "url": "git@github.com:AndrewBird81/bb-plugin-hermes.git",
-      "revision": "1daef3337b4de9afb12fe6b7aa313f494e1a794c",
-      "link_mode": "local-only"
+      "url": "https://github.com/AndrewBird81/bb-plugin-hermes",
+      "revision": "3fd4f54e7921a0cd98246dde450cc08d1f7ed66a"
     }
   },
   "components": [
@@ -29,8 +28,8 @@
       "sources": [
         {
           "path": "docs/plan/scope-reset.md",
-          "line": 35,
-          "end_line": 40,
+          "line": 38,
+          "end_line": 43,
           "label": "Chats from bb"
         }
       ]
@@ -79,8 +78,8 @@
       "sources": [
         {
           "path": "docs/plan/scope-reset.md",
-          "line": 35,
-          "end_line": 40,
+          "line": 38,
+          "end_line": 43,
           "label": "Chats from bb"
         }
       ]
@@ -145,8 +144,8 @@
       "sources": [
         {
           "path": "docs/plan/scope-reset.md",
-          "line": 47,
-          "end_line": 48,
+          "line": 50,
+          "end_line": 51,
           "label": "Push rule"
         }
       ]
