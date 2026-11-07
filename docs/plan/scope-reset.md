@@ -1,7 +1,7 @@
 # Scope reset: v1 for a general Hermes user
 
-**Status:** proposal, 2026-11-04, awaiting the user's OK (Q22–Q25 below).
-- Decisions D42–D46 are recorded in `README.md` but not yet applied to `01`–`05`.
+**Status:** accepted 2026-11-07 (D47–D50, under User answers below). Proposed 2026-11-04.
+- Decisions D42–D46 are recorded in `README.md`, D47–D50 here. None are applied to `01`–`05` yet.
 - The lean rewrite starts from this file plus S8 (`docs/spikes/S8-conduit-shared-conversation.md`). The old plan becomes reference material and the source of the Later list.
 - Evidence for the parent's checks: `docs/research/12-verification-log.md` (cited `r12 §n`).
 - Pictures of this proposal, with captions: [`../diagrams/README.md`](../diagrams/README.md). Four are also embedded in their sections below. The rewritten plan embeds them and keeps them current.
@@ -74,9 +74,7 @@
 
 ## Defaults to confirm with Q22
 
-- **Repo:** keep this repo private as the design archive, and publish the plugin from a clean public repo.
-  - These docs name tailnet hosts, paths, profiles and session ids.
-  - With a public repo, D29 (`gh auth setup-git` on the bb server) isn't needed.
+- **Repo:** superseded (D50). This repo was scrubbed of personal values and made public on 2026-11-06. The plugin code lives here, and D29 (`gh auth setup-git` on the bb server) isn't needed.
 - **No privacy filter in v1 (D36 deferred):** mirrored threads copy tool results into bb, Conduit health and location included.
 - **No go/no-go (D34 dropped):** phases run in order, and the user can stop at any point.
 - **The per-bot switch.** Parent defaults, not yet shown to the user:
@@ -122,7 +120,19 @@ Parent default, already told to the user:
 - Switching a bot off deletes its skill, and the wrapper once no bot is on.
 - The skill is general, not Neo's. Neo's setup is an example only (r12 §4).
 
-## Pending user answers
+## User answers (Q22–Q25)
+
+Answered 2026-11-07:
+- **D47 (Q22):** the v1 scope above is accepted with its defaults.
+- **D48 (new):** switching a bot off archives its bb threads. Switching it back on unarchives them, and mirroring resumes.
+- **D49 (Q23):** no Discord or other chat-app sessions in v1, DMs included. This supersedes D6 and D39. Each bot's one pinned thread, its Bot Chat (D44), stays core v1.
+- **D50 (parent defaults, shown to the user):**
+  - Q24: leave `compression.in_place` as it is;
+  - Q25: don't file the race bugs upstream for now;
+  - the plugin code lives in this repo;
+  - the plan rewrite settles the open items below and flags them for the user.
+
+The questions as asked:
 
 | # | Question | Recommended | Alternative |
 |---|---|---|---|
@@ -158,6 +168,6 @@ Parent default, already told to the user:
 
 Not settled in any doc. Decide these in the rewrite (found while drawing `docs/diagrams/`):
 - When the 30-day import runs for a bot switched on later.
-- What happens to a bot's bb threads when the bot is switched off.
+- What happens to a bot's bb threads when the bot is switched off. Settled: D48.
 - Whether v1 keeps 02's step where the user confirms import counts.
 - How CLI and TUI chats reach saved chats. The diagrams assume they write them directly; confirm in source.
