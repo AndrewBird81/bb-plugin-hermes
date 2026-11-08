@@ -233,10 +233,13 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
   async function readAfter(binding: Binding, target: Target): Promise<{ session_id: string; turns: HistoryTurn[] }> {
     const turns: HistoryTurn[] = [];
     let after = binding.cursor_uid;
+    // No cursor yet (nothing shown, or only a running turn): never older than the import window.
+    const enabledAt = botRecord(db, binding.profile_home)?.enabled_at ?? Date.now();
+    const window = after ? {} : { since: enabledAt - IMPORT_WINDOW_MS };
     for (let page = 1; ; page++) {
       const read = await host.call(
         "readTurns",
-        { root: target.root, profile_home: binding.profile_home, lineage_root: binding.lineage_root!, ...(after ? { after_uid: after } : {}) },
+        { root: target.root, profile_home: binding.profile_home, lineage_root: binding.lineage_root!, ...(after ? { after_uid: after } : window) },
         { hostId: target.machine },
       );
       turns.push(...read.turns);
@@ -360,7 +363,9 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
       }
       let sent = false;
       try {
-        sent = await wakeExists(row.thread_id, row.anchor_uid);
+        // A rest claim shares its anchor with the first wake, which ran: only a queued message proves it was sent.
+        // Re-sending a rest is safe (the bridge skips reply rows already shown).
+        sent = row.prev_state ? await queuedWakeExists(row.thread_id, row.anchor_uid) : await wakeExists(row.thread_id, row.anchor_uid);
       } catch (error) {
         fail(errorCode(error, "recover_failed"));
         continue;
@@ -370,10 +375,13 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
     }
   }
 
+  async function queuedWakeExists(threadId: string, anchorUid: string): Promise<boolean> {
+    return JSON.stringify(await bb.sdk.threads.queuedMessages.list({ threadId })).includes(anchorUid);
+  }
+
   /** bb holds a turn (queued or requested) whose input names this anchor. */
   async function wakeExists(threadId: string, anchorUid: string): Promise<boolean> {
-    const queued = await bb.sdk.threads.queuedMessages.list({ threadId });
-    if (JSON.stringify(queued).includes(anchorUid)) return true;
+    if (await queuedWakeExists(threadId, anchorUid)) return true;
     // Every turn request of the thread, newest first, page by page (R1 M1: a wake that ran is never sent twice).
     let before: string | undefined;
     for (;;) {

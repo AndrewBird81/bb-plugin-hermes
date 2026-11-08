@@ -98,7 +98,7 @@ describe("mapping db", () => {
     const turn = { thread_id: "thr_1", anchor_uid: "uid_1", kind: "mirror" as const, at: 1 };
     // 3 re-lists during one outside turn → 1 wake (03 §Unit).
     expect([claimTurn(db, turn), claimTurn(db, turn), claimTurn(db, turn)]).toEqual([true, false, false]);
-    expect(queuedTurns(db)).toEqual([turn]);
+    expect(queuedTurns(db)).toEqual([{ ...turn, prev_state: null }]);
 
     releaseTurn(db, "thr_1", "uid_1");
     expect(queuedTurns(db)).toEqual([]);

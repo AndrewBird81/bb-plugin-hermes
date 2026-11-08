@@ -297,12 +297,13 @@ export function addTombstone(db: Db, profileHome: string, lineageRoot: string, a
 }
 
 /** Boot recovery (02 flow 9): `queued` rows; the caller re-sends those with no bb turn, or deletes them. */
-export function queuedTurns(db: Db): { thread_id: string; anchor_uid: string; kind: TurnKind; at: number }[] {
-  return db.prepare(`SELECT thread_id, anchor_uid, kind, at FROM turns WHERE state = 'queued' ORDER BY at, rowid`).all() as {
+export function queuedTurns(db: Db): { thread_id: string; anchor_uid: string; kind: TurnKind; at: number; prev_state: "done" | "partial" | null }[] {
+  return db.prepare(`SELECT thread_id, anchor_uid, kind, at, prev_state FROM turns WHERE state = 'queued' ORDER BY at, rowid`).all() as {
     thread_id: string;
     anchor_uid: string;
     kind: TurnKind;
     at: number;
+    prev_state: "done" | "partial" | null;
   }[];
 }
 

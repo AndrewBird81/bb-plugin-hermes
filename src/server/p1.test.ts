@@ -6,7 +6,7 @@ import type { BotRow, Diagnostics, ThreadInfo } from "../shared/rpc-contract.js"
 import { segmentInput } from "../shared/marker.js";
 import { formatTag } from "../shared/sources.js";
 import { HELD_RETRY_MS } from "./bots.js";
-import { bindingByThread, botRecord, claimTurn, MIGRATIONS, openMappingDb, turnRow } from "./db.js";
+import { bindingByThread, botRecord, claimRest, claimTurn, MIGRATIONS, openMappingDb, turnRow } from "./db.js";
 import { BOB, MACHINE, NEO, turn, UID, world, type World } from "./fake-world.js";
 import { RESTORE_DELAY_MS } from "./notify.js";
 import { deriveProviderOptions } from "./provider-options.js";
@@ -107,6 +107,20 @@ describe("switches (T1.9)", () => {
     expect(w.access.at(-1)).toEqual({ profile_home: NEO, on: false, enabled_bots: [] });
   });
 
+  it("switch-on: the worker learns the bot before the spawn; a failed spawn is retried at the next keep-alive", async () => {
+    const w = await world();
+    await w.connect();
+    // The spawn at switch-on and the retry right after it fail.
+    w.state.failSpawn = 2;
+    expect(await on(w)).toMatchObject({ enabled: true, thread_id: null });
+    expect(await errors(w)).toContain("model_catalog_unavailable");
+    await w.connect();
+    expect((await w.rpc<{ bots: BotRow[] }>("bots")).bots[0]).toMatchObject({ enabled: true, thread_id: "thr_1" });
+    expect(w.thread("thr_1")).toMatchObject({ pinned: true, title: "Neo" });
+    await w.connect();
+    expect(w.threads.size).toBe(1);
+  });
+
   it("setBotAccess answered without refresh stays pending and is retried", async () => {
     const w = await world();
     await w.connect();
@@ -132,6 +146,16 @@ describe("switches (T1.9)", () => {
       ["neo", true],
       ["bob", false],
     ]);
+    // Never claimed unserved offline.
+    const offline = await world({
+      seed: (db) => {
+        db.prepare(`INSERT INTO bots (profile_home, name, enabled) VALUES (?, 'bob', 0)`).run(BOB);
+      },
+    });
+    offline.state.online = false;
+    await offline.connect();
+    expect((await offline.rpc<{ bots: BotRow[] }>("bots")).bots).toMatchObject([{ profile: "bob", served: true, enabled: false }]);
+    await expect(offline.harness.behavior.callRpc("setBot", { profile_home: BOB, on: true })).rejects.toThrow("Hermes isn't connected.");
     expect(await off(w)).toMatchObject({ profile_home: NEO, enabled: false });
     expect(w.thread("thr_1").archivedAt).toBe(1);
 
@@ -346,6 +370,30 @@ describe("wakes (T1.11)", () => {
     await w.connect();
     expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u2", labeled: true }]);
     expect(turnRow(w.db, "thr_1", "u3")?.state).toBe("done");
+  });
+
+  it("a live binding with no cursor never wakes turns older than the import window", async () => {
+    const w = await liveBotThread([]);
+    expect(bindingByThread(w.db, "thr_1")?.cursor_uid).toBeNull();
+    const day = 86_400_000;
+    w.history.get("root_bc")!.turns.push(turn("old", { ts: Date.now() - 40 * day }), turn("new", { ts: Date.now() - day }));
+    await w.changed(NEO);
+    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "new", labeled: true }]);
+    expect(w.hostCalls("readTurns").at(-1)?.input).toMatchObject({ since: botRecord(w.db, NEO)!.enabled_at! - IMPORT_WINDOW_MS });
+  });
+
+  it("boot: a rest claim whose first wake ran is released and re-sent, not settled", async () => {
+    const w = await liveBotThread();
+    // u1 was Conduit's own turn: shown partial, so the cursor stays before it.
+    w.db.prepare(`UPDATE turns SET state = 'partial', reply_uids = '[]' WHERE anchor_uid = 'u1'`).run();
+    w.db.prepare(`UPDATE bindings SET cursor_uid = NULL`).run();
+    w.history.get("root_bc")!.turns[0] = turn("u1", { reply_uids: ["u1-r", "u1-r2"] });
+    // The import's turn request names u1; a previous run then claimed u1's rest and died before sending it.
+    w.event("thr_1", "client/turn/requested", { input: [{ type: "text", text: '<hermes-bb>{"op":"bind","anchor_uid":"u1"}</hermes-bb>' }] });
+    expect(claimRest(w.db, "thr_1", "u1", ["u1-r", "u1-r2"])).toBe(true);
+    w.state.boot = "boot_2";
+    await w.connect();
+    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u1", rest: true }]);
   });
 
   it("a truncated wake read pages on: every turn of a long outage wakes once, in order", async () => {

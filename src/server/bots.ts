@@ -88,8 +88,8 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
       }
     }
     if (described) return described.profiles.map(row);
-    // On record only: an enabled bot was served when switched on.
-    return allBots(db).map((b) => row({ name: b.name, home: b.profile_home, handle: b.handle, terminal_cwd: b.cwd, served: b.enabled }));
+    // On record only: offline, never claim a bot unserved (a switch-on fails with "Hermes isn't connected").
+    return allBots(db).map((b) => row({ name: b.name, home: b.profile_home, handle: b.handle, terminal_cwd: b.cwd, served: true }));
   }
 
   // ---- bb access (skill + wrapper): retried until the worker confirms, so an off bot never keeps it ----
@@ -239,6 +239,9 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
   async function switchOnNow(profileHome: string, target: Target): Promise<void> {
     setBotEnabled(db, profileHome, true, Date.now());
     await syncAccessNow(target, profileHome, true);
+    // The worker writes `worker.json` with this bot before the spawn: bb fills the thread's model catalog
+    // at spawn, and the bridge lists only enabled bots (else `model_catalog_unavailable`).
+    await connection.ensureNow();
     const bot = botRecord(db, profileHome)!;
     const binding = botBinding(db, profileHome);
     // D48: the bot thread and what the switch archived come back; threads the user archived stay archived.
@@ -252,7 +255,15 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
       }
     }
     for (const b of bindingsOf(db, profileHome)) if (b.archived_by_switch) updateBinding(db, b.thread_id, { archived_by_switch: false });
-    if (!botBinding(db, profileHome)) await spawnBotThreadNow(bot, target);
+    if (!botBinding(db, profileHome)) {
+      try {
+        await spawnBotThreadNow(bot, target);
+      } catch (error) {
+        // The bot stays on; every keep-alive reconcile spawns it until it exists (01 §3).
+        fail(errorCode(error, "spawn_failed"));
+        return;
+      }
+    }
     await bindBotChatNow(profileHome, target);
     await reconcileProfileNow(profileHome, target, { relook: false });
   }
@@ -303,7 +314,12 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
 
   /** The connection hook (flows 9, 10): describe again, retry bb access, reconcile every enabled bot. */
   async function onConnectedNow(target: Target, { newBoot, reconnected }: { newBoot: boolean; reconnected: boolean }): Promise<void> {
-    if (!newBoot && !reconnected && described) return;
+    if (!newBoot && !reconnected && described) {
+      // An enabled bot with no bot thread (a failed spawn, a deleted thread) gets one at the next keep-alive.
+      const missing = enabledBots(db).filter((b) => !botBinding(db, b.profile_home)).map((b) => b.profile_home);
+      if (missing.length) await reconcileAllNow(missing, target);
+      return;
+    }
     await describe(target);
     for (const [home, on] of Object.entries(pendingAccess())) await syncAccessNow(target, home, on);
     if (newBoot || reconnected) await reconcileAllNow(enabledBots(db).map((b) => b.profile_home), target, { full: newBoot });

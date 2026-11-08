@@ -55,7 +55,7 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
   const history = new Map<string, { session_id: string; turns: HistoryTurn[]; truncated?: boolean; pageSize?: number }>();
   const botChats = new Map<string, BotChat>();
   const access: { profile_home: string; on: boolean; enabled_bots: string[] }[] = [];
-  const state = { failSend: 0, failAccess: false, refreshed: true, online: true, boot: "boot_1", supported: true, seq: 0, ids: 0 };
+  const state = { failSpawn: 0, watched: [] as string[], failSend: 0, failAccess: false, refreshed: true, online: true, boot: "boot_1", supported: true, seq: 0, ids: 0 };
 
   const thread = (id: string) => {
     const t = threads.get(id);
@@ -81,6 +81,7 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
     const input = call.input as { profile_home: string; on: boolean; enabled_bots: string[]; lineage_root: string; after_uid?: string; since?: number };
     switch (call.method) {
       case "ensureWatch":
+        state.watched = input.enabled_bots;
         return answer();
       case "describe":
         return { uid: UID, profiles };
@@ -126,8 +127,14 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
       },
       threads: {
         spawn: async (args) => {
-          const id = `thr_${++state.ids}`;
           const a = args as unknown as Record<string, unknown>;
+          // bb fills the model catalog at spawn; the bridge lists only bots in worker.json (ensureWatch's enabled_bots).
+          const home = profiles.find((p) => p.name === (a.sessionOptions as { profile?: string } | undefined)?.profile)?.home;
+          if (state.failSpawn > 0 || !home || !state.watched.includes(home)) {
+            state.failSpawn = Math.max(0, state.failSpawn - 1);
+            throw Object.assign(new Error("HTTP 503: The hermes model catalog is empty"), { code: "model_catalog_unavailable" });
+          }
+          const id = `thr_${++state.ids}`;
           threads.set(id, {
             id,
             title: (a.title as string) ?? null,
