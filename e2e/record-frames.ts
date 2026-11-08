@@ -5,147 +5,19 @@
 // its own lock dir, HOME and TMPDIR, an ephemeral gateway port, a dashboard on a free port with a session token
 // (the legacy client Conduit uses) and a stub model on 127.0.0.1. Never touches the live gateway: its pid is
 // checked before and after. The home is removed afterwards unless --keep.
-import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import http from "node:http";
+import { mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import Database from "better-sqlite3";
-import { HermesClient, HermesRpcError, localDial } from "../src/hermes/client.js";
-import { discoverEndpoint } from "../src/hermes/control.js";
+import { HermesRpcError } from "../src/hermes/client.js";
 import { listSessions, readMessages } from "../src/hermes/history.js";
-import type { GatewayEvent, Snapshot } from "../src/hermes/types.js";
+import type { Snapshot } from "../src/hermes/types.js";
 import type { RecordedExchange } from "../test/fake-hermes/index.js";
+import { type IsolatedHermes, type ModelCall, sleep, startIsolatedHermes, until } from "./isolated-hermes.js";
 
-const HERMES = path.join(os.homedir(), ".hermes");
 const H = "/private/tmp/bb-hermes-test/e2e-frames";
 const OUT = path.join(import.meta.dirname, "../test/fixtures/frames");
 const keep = process.argv.includes("--keep");
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const until = async (what: string, fn: () => boolean, ms = 90_000) => {
-  for (const end = Date.now() + ms; !fn(); await sleep(100)) if (Date.now() > end) throw new Error(`timeout: ${what}`);
-};
-const home = (profile: string) => (profile === "default" ? H : `${H}/profiles/${profile}`);
-
-// ---- stub model: echoes the last user message. "slow" → ~6 s stream; "very slow" → ~20 s. Every call is logged.
-type Msg = { role: string; content?: unknown };
-type Part = { type?: string; text?: string };
-const text = (c: unknown) => (typeof c === "string" ? c : Array.isArray(c) ? (c as Part[]).map((p) => p.text ?? "").join("") : "");
-// Long user texts (Hermes appends skill notes) keep their head and tail.
-const clip = (s: string) => (s.length > 400 ? `${s.slice(0, 200)} … ${s.slice(-200)}` : s);
-let calls: { user_texts: string[]; parts: string[][]; messages: number }[] = [];
-const stub = http.createServer(async (req, res) => {
-  let body = "";
-  for await (const chunk of req) body += chunk;
-  const j = JSON.parse(body || "{}") as { messages?: Msg[]; tools?: unknown[]; stream?: boolean };
-  const msgs = j.messages ?? [];
-  const users = msgs.filter((m) => m.role === "user");
-  const lastUser = text(users.at(-1)?.content);
-  let reply = `echo(${msgs.length}): ${lastUser.slice(-120)}`;
-  let delay = 0;
-  if (!j.tools) reply = /summariz/i.test(JSON.stringify(msgs)) ? "Summary of the earlier turns." : "Stub chat";
-  else {
-    calls.push({
-      messages: msgs.length,
-      user_texts: users.map((m) => clip(text(m.content))),
-      parts: users.map((m) => (Array.isArray(m.content) ? (m.content as Part[]).map((p) => p.type ?? "?") : ["string"])),
-    });
-    if (/\bvery slow\b/.test(lastUser)) delay = 1000;
-    else if (/\bslow\b/.test(lastUser)) delay = 500;
-    if (delay) reply += " one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen";
-  }
-  const id = "chatcmpl-stub";
-  const created = Math.floor(Date.now() / 1000);
-  const chunk = (delta: object, finish: string | null) => ({ id, object: "chat.completion.chunk", created, model: "stub", choices: [{ index: 0, delta, finish_reason: finish }] });
-  try {
-    if (!j.stream) {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ id, object: "chat.completion", created, model: "stub", choices: [{ index: 0, message: { role: "assistant", content: reply }, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }));
-      return;
-    }
-    res.writeHead(200, { "content-type": "text/event-stream" });
-    const send = (o: object) => res.write(`data: ${JSON.stringify(o)}\n\n`);
-    for (const [i, w] of reply.split(/(?<= )/).entries()) {
-      if (res.destroyed) return;
-      send(chunk(i === 0 ? { role: "assistant", content: w } : { content: w }, null));
-      if (delay) await sleep(delay);
-    }
-    send({ ...chunk({}, "stop"), usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } });
-    res.end("data: [DONE]\n\n");
-  } catch {}
-});
-
-// ---- isolated Hermes
-const procs: ChildProcess[] = [];
-type Proc = ChildProcess & { lines: string[] };
-function hermes(args: string[], log: string, opts: { env?: Record<string, string>; cwd?: string } = {}): Proc {
-  const env = { HOME: `${H}/home`, PATH: "/usr/bin:/bin:/usr/sbin:/sbin", TMPDIR: `${H}/tmp`, LANG: "en_US.UTF-8", HERMES_HOME: H, HERMES_GATEWAY_LOCK_DIR: `${H}/locks`, ...opts.env };
-  const p = spawn(path.join(HERMES, "hermes-agent/venv/bin/python"), ["-m", "hermes_cli.main", ...args], { cwd: opts.cwd ?? H, env, stdio: ["ignore", "pipe", "pipe"] }) as Proc;
-  p.lines = [];
-  p.stdout!.on("data", (d) => p.lines.push(String(d)));
-  p.stderr!.on("data", (d) => p.lines.push(String(d)));
-  p.on("exit", () => writeFileSync(`${H}/${log}.log`, p.lines.join("")));
-  procs.push(p);
-  return p;
-}
-/** A CLI run to its end: exit code and its last output lines, scrubbed. */
-async function cli(args: string[], log: string, cwd = `${H}/work`) {
-  const p = hermes(args, log, { cwd });
-  const code = await new Promise<number | null>((r) => p.on("exit", r));
-  return { args, code, tail: scrubText(p.lines.join("")).trim().split("\n").slice(-4) };
-}
-
-function config(port: number, extra = ""): string {
-  return `model:
-  default: stub
-  provider: stub
-  base_url: http://127.0.0.1:${port}/v1
-providers:
-  stub:
-    name: stub
-    base_url: http://127.0.0.1:${port}/v1
-    api_key: stub
-    api_mode: chat_completions
-    default_model: stub
-    discover_models: false
-    context_length: 65536
-    models:
-      stub:
-        name: Stub echo
-fallback_providers: []
-approvals:
-  mode: manual
-toolsets:
-  - hermes-cli
-terminal:
-  backend: local
-  cwd: ${H}/work
-${extra}`;
-}
-
-const livePid = () => readFileSync(path.join(HERMES, "gateway.pid"), "utf8");
-let gateway: Proc;
-async function startGateway(notInstance?: string) {
-  gateway = hermes(["gateway", "run"], `gateway-${procs.length}`);
-  for (let i = 0; ; i++) {
-    try {
-      const ep = await discoverEndpoint(H);
-      if (ep.instanceId !== notInstance) return ep;
-    } catch (err) {
-      if (i > 240) throw err;
-    }
-    await sleep(500);
-  }
-}
-/** SIGKILL: the turn's outcome is lost, as in a crash (S8 E11b). Hermes may relaunch itself: kill its pid file's pid too. */
-async function killGateway() {
-  try {
-    const rec = JSON.parse(readFileSync(`${H}/gateway.pid`, "utf8")) as { pid: number; hermes_home: string };
-    if (rec.hermes_home === H) process.kill(rec.pid, "SIGKILL");
-  } catch {}
-  gateway.kill("SIGKILL");
-  await new Promise((r) => (gateway.exitCode !== null || gateway.signalCode ? r(null) : gateway.on("exit", r)));
-}
+let calls: ModelCall[] = [];
 
 // ---- recording: frames from every client, REST answers, model calls; reset by save().
 type Frame = { t: number; client: string; dir: "in" | "out"; frame: unknown };
@@ -163,13 +35,11 @@ function redact(v: unknown): unknown {
 function scrubText(s: string): string {
   return s.replaceAll(os.homedir(), "~").replaceAll(os.hostname(), "<host>").replace(/\buid:\d+/g, "uid:<n>");
 }
-function tap(client: string) {
-  return (dir: "in" | "out", raw: string) => {
-    let frame = JSON.parse(raw);
-    // The ready event carries Hermes' skin (colors, banners): not part of the protocol bb reads.
-    if (frame?.params?.type === "gateway.ready" && frame.params.payload?.skin) frame = { ...frame, params: { ...frame.params, payload: { ...frame.params.payload, skin: "<trimmed>" } } };
-    frames.push({ t: Date.now() - t0, client, dir, frame: redact(frame) });
-  };
+function tap(client: string, dir: "in" | "out", raw: string) {
+  let frame = JSON.parse(raw);
+  // The ready event carries Hermes' skin (colors, banners): not part of the protocol bb reads.
+  if (frame?.params?.type === "gateway.ready" && frame.params.payload?.skin) frame = { ...frame, params: { ...frame.params, payload: { ...frame.params.payload, skin: "<trimmed>" } } };
+  frames.push({ t: Date.now() - t0, client, dir, frame: redact(frame) });
 }
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, init) => {
@@ -203,89 +73,19 @@ const ALL = { order: "recent", archived: "include", limit: 100 } as const;
 const PAGE = { order: "oldest", limit: 500 } as const;
 const reason = (e: unknown) => (e instanceof HermesRpcError ? e.reason : String((e as Error).message));
 
-// ---- read-only peek into the isolated state.db: the row's ownership columns and its state_meta keys.
-function dbRow(profile: string, id: string) {
-  const db = new Database(`${home(profile)}/state.db`, { readonly: true, fileMustExist: true });
-  try {
-    const row = db.prepare("SELECT id, source, chat_id, session_key IS NOT NULL AS has_session_key, ended_at IS NOT NULL AS ended, end_reason, title FROM sessions WHERE id=?").get(id) as Record<string, unknown> | undefined;
-    const meta = (db.prepare("SELECT key FROM state_meta WHERE key LIKE ?").all(`%${id}%`) as { key: string }[]).map((r) => r.key.replace(id, "<id>")).sort();
-    return { row: row ?? null, state_meta: meta };
-  } finally {
-    db.close();
-  }
+let h!: IsolatedHermes;
+const canonical = (name: string) => h.canonical(name);
+const dashboard = () => h.dashboard();
+const home = (profile: string) => h.profileHome(profile);
+const dbRow = (profile: string, id: string) => h.dbRow(profile, id);
+async function cli(args: string[], log: string, cwd = `${H}/work`) {
+  const r = await h.cli(args, log, cwd);
+  return { args: r.args, code: r.code, tail: scrubText(r.output).trim().split("\n").slice(-4) };
 }
-
-// ---- canonical client (src/hermes, as bb's bridge and worker use it)
-async function canonical(name: string) {
-  const c = await HermesClient.connect((await localDial(H)).dial, { onFrame: tap(name) });
-  const events: GatewayEvent[] = [];
-  c.onEvent((e) => events.push(e));
-  const completes = (sid: string, from = 0) => events.slice(from).filter((e) => e.type === "message.complete" && e.session_id === sid).length;
-  const turn = async (profile: string, session_id: string, text: string, submission_id: string, extra: object = {}) => {
-    const from = events.length;
-    const adm = await c.submit({ profile, session_id, text, submission_id, turn_author: { id: "bb:thr_rec", name: "bb" }, ...extra });
-    await until(`${name} turn`, () => completes(session_id, from) > 0);
-    return adm;
-  };
-  const create = async (profile: string, request_id: string, source: "cli" | "gui" = "cli") => (await c.create({ profile, request_id, source, cwd: `${H}/work` })).session_id;
-  return { c, events, completes, turn, create };
-}
-
-// ---- a legacy dashboard client (Conduit's path): `/api/ws?token=` on the dashboard, legacy methods.
-type LegacyFrame = { id?: number; result?: Record<string, unknown>; error?: { code?: number; message?: string; data?: unknown } };
-async function dashboard(port: number, token: string, name = "conduit") {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/api/ws?token=${token}`);
-  let n = 0;
-  const pending = new Map<number, (f: LegacyFrame) => void>();
-  const events: GatewayEvent[] = [];
-  const t = tap(name);
-  ws.onmessage = (m) => {
-    t("in", String(m.data));
-    const f = JSON.parse(String(m.data));
-    if (f.id && pending.has(f.id)) pending.get(f.id)!(f);
-    else if (f.method === "event") events.push(f.params);
-  };
-  await new Promise((r, j) => ((ws.onopen = r), (ws.onerror = j)));
-  /** The whole answer frame: a refusal is data here, not an exception. */
-  const call = (method: string, params: object) =>
-    new Promise<LegacyFrame>((resolve) => {
-      const id = ++n;
-      pending.set(id, resolve);
-      const raw = JSON.stringify({ jsonrpc: "2.0", id, method, params });
-      t("out", raw);
-      ws.send(raw);
-    });
-  const rpc = async (method: string, params: object) => {
-    const f = await call(method, params);
-    if (f.error) throw new Error(JSON.stringify(f.error));
-    return f.result!;
-  };
-  const completes = (sid: string, from = 0) => events.slice(from).filter((e) => e.type === "message.complete" && e.session_id === sid).length;
-  return { call, rpc, events, completes, close: () => ws.close() };
-}
-const freePort = () =>
-  new Promise<number>((r) => {
-    const s = http.createServer().listen(0, "127.0.0.1", () => {
-      const p = (s.address() as { port: number }).port;
-      s.close(() => r(p));
-    });
-  });
 
 async function main() {
-  const before = livePid();
-  rmSync(H, { recursive: true, force: true });
   mkdirSync(OUT, { recursive: true });
-  for (const d of ["", "/locks", "/home", "/tmp", "/work", "/elsewhere", "/profiles/alex", "/profiles/bob", "/profiles/carol"]) mkdirSync(H + d, { recursive: true, mode: 0o700 });
-  await new Promise<void>((r) => stub.listen(0, "127.0.0.1", () => r()));
-  const port = (stub.address() as { port: number }).port;
-  writeFileSync(`${H}/config.yaml`, config(port), { mode: 0o600 });
-  for (const p of ["alex", "bob", "carol"]) writeFileSync(`${H}/profiles/${p}/config.yaml`, config(port), { mode: 0o600 });
-
-  let endpoint = await startGateway();
-  const token = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, "0")).join("");
-  const dashPort = await freePort();
-  const dash = hermes(["dashboard", "--host", "127.0.0.1", "--port", String(dashPort), "--isolated", "--skip-build", "--no-open"], "dashboard", { env: { HERMES_DASHBOARD_SESSION_TOKEN: token } });
-  await until("dashboard", () => dash.lines.join("").includes("HERMES_DASHBOARD_READY"), 120_000);
+  h = await startIsolatedHermes({ home: H, profiles: ["alex", "bob", "carol"], tap, onModelCall: (c) => calls.push(c) });
   begin();
 
   // ---- A19: a turn by another canonical client (the real CLI, then a second canonical client), seen live by a viewer that resumed the session.
@@ -459,7 +259,7 @@ async function main() {
   const bb = await canonical("bb");
   const bot = (await bb.c.create({ profile: "alex", title: "Bot Chat", hidden: true, follow_profile_config: true, request_id: "bb:botchat:alex" })).session_id;
   await bb.turn("alex", bot, "hello bot", "bb:thr_rec_bot:1");
-  const conduit = await dashboard(dashPort, token);
+  const conduit = await dashboard();
   const opened = await conduit.rpc("session.resume", { session_id: bot, profile: "alex" });
   const live = String(opened.session_id);
   {
@@ -503,10 +303,8 @@ async function main() {
     const from = bb.events.length;
     const adm = await bb.c.submit({ profile: "alex", session_id: bot, text: "very slow turn before the restart", submission_id: "bb:thr_rec_bot:3", turn_author: { id: "bb:thr_rec", name: "bb" } });
     await until("bb turn streams", () => bb.events.slice(from).filter((e) => e.session_id === bot && e.type === "message.delta").length >= 3);
-    const oldInstance = endpoint.instanceId;
-    await killGateway();
-    await sleep(500);
-    endpoint = await startGateway(oldInstance);
+    const oldInstance = h.endpoint.instanceId;
+    const endpoint = await h.restartGateway();
     const after = await canonical("bb");
     const snap: Snapshot = await after.c.resume({ profile: "alex", session_id: bot, omit_messages: true });
     const unknown = snap.pending.find((p) => p.admission_id === adm.admission_id);
@@ -536,7 +334,7 @@ async function main() {
   // ---- E6: Conduit mints bob's Bot Chat (legacy) and holds it; bb's lookup, create and resume; adoption once Conduit leaves.
   {
     const k = await canonical("bb");
-    const d = await dashboard(dashPort, token);
+    const d = await dashboard();
     const minted = await d.rpc("session.create", { profile: "bob", source: "desktop", title: "Bot Chat", hidden: true, follow_profile_config: true });
     const mLive = String(minted.session_id);
     const legacy = String(minted.stored_session_id);
@@ -561,7 +359,7 @@ async function main() {
     const adoptedAfterS = Math.round((Date.now() - left) / 1000);
     const rowAfter = dbRow("bob", legacy);
     if (adopted) await k.turn("bob", adopted.session_id, "bb after adoption", "bb:thr_rec_bob:1");
-    const d2 = await dashboard(dashPort, token);
+    const d2 = await dashboard();
     const reopened = await d2.rpc("session.resume", { session_id: legacy, profile: "bob" });
     const c2From = d2.events.length;
     const again = await d2.call("prompt.submit", { session_id: String(reopened.session_id), profile: "bob", text: "conduit after adoption" });
@@ -594,7 +392,7 @@ async function main() {
     const resumed = await k2.c.resume({ profile: "alex", session_id: owned, omit_messages: true });
     const ownedAfter = dbRow("alex", owned);
 
-    const d = await dashboard(dashPort, token);
+    const d = await dashboard();
     const made = await d.rpc("session.create", { profile: "alex", source: "desktop" });
     const cFrom = d.events.length;
     await d.rpc("prompt.submit", { session_id: String(made.session_id), profile: "alex", text: "a legacy chat to rename" });
@@ -619,7 +417,7 @@ async function main() {
     }
     const legacyAfter = dbRow("alex", legacy);
     await listSessions(H, "alex", ALL);
-    const d2 = await dashboard(dashPort, token);
+    const d2 = await dashboard();
     const reopened = await d2.rpc("session.resume", { session_id: legacy, profile: "alex" });
     const c2From = d2.events.length;
     const conduitAfter = await d2.call("prompt.submit", { session_id: String(reopened.session_id), profile: "alex", text: "conduit after the rename" });
@@ -639,21 +437,11 @@ async function main() {
     k2.c.close();
     d2.close();
   }
-
-  if (livePid() !== before) throw new Error("the live gateway pid changed");
-  console.log("live gateway pid unchanged");
 }
 
 try {
   await main();
 } finally {
-  try {
-    const rec = JSON.parse(readFileSync(`${H}/gateway.pid`, "utf8")) as { pid: number; hermes_home: string };
-    if (rec.hermes_home === H) process.kill(rec.pid, "SIGINT");
-  } catch {}
-  for (const p of procs) if (p.exitCode === null && !p.signalCode) p.kill("SIGINT");
-  await sleep(4000);
-  for (const p of procs) if (p.exitCode === null && !p.signalCode) p.kill("SIGKILL");
-  stub.close();
-  if (!keep) rmSync(H, { recursive: true, force: true });
+  if (h) await h.stop(keep);
+  console.log("stopped; live gateway pid unchanged");
 }

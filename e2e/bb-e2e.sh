@@ -6,9 +6,10 @@
 #   e2e/bb-e2e.sh install <repo>     sbb plugin install <repo> --yes
 #   e2e/bb-e2e.sh dev <repo>         sbb plugin dev <repo>, in the background
 #   e2e/bb-e2e.sh fake <folder>      the strict fake (npm run fake-hermes) in <folder> under /private/tmp/bb-hermes-test/
+#   e2e/bb-e2e.sh hermes <folder>    or an isolated Hermes there (e2e/isolated-hermes.ts: stub model, dashboard for Conduit)
 #   e2e/bb-e2e.sh connect <folder>   setConnection: the machine = the isolated host daemon, the folder = <folder>
-#   e2e/bb-e2e.sh check [<id>]       diagnostics.instance_id must equal <id> (default: the running fake's); else exit 1
-#   e2e/bb-e2e.sh stop               stops dev, the fake and bb-app; keeps ~/.bb-hermes-e2e (03 step 8 deletes it: the lead reuses it)
+#   e2e/bb-e2e.sh check [<id>]       diagnostics.instance_id must equal <id> (default: the running fake's or Hermes'); else exit 1
+#   e2e/bb-e2e.sh stop               stops dev, the fake or Hermes, and bb-app; keeps ~/.bb-hermes-e2e (03 step 8 deletes it: the lead reuses it)
 set -euo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
 data="$HOME/.bb-hermes-e2e"
@@ -90,10 +91,10 @@ start() {
 # with their children; bb-app gets SIGINT, as 03 step 8 says, and handles it.
 stop() {
   local p pid
-  for p in dev fake bb-app server-only; do
+  for p in dev fake hermes bb-app server-only; do
     if alive "$p"; then
       pid=$(cat "$run/$p.pid")
-      case $p in dev | fake) pkill -TERM -P "$pid" 2>/dev/null || true; kill -TERM "$pid" ;; *) kill -INT "$pid" ;; esac
+      case $p in dev | fake | hermes) pkill -TERM -P "$pid" 2>/dev/null || true; kill -TERM "$pid" ;; *) kill -INT "$pid" ;; esac
       wait_down "$pid"
     fi
     rm -f "$run/$p.pid"
@@ -111,19 +112,21 @@ case "${1:-}" in
     alive dev && die "dev already running"
     ( cd "$2"; nohup "$sbb" plugin dev "$2" >"$run/dev.log" 2>&1 & echo $! >"$run/dev.pid" )
     echo "plugin dev pid $(cat "$run/dev.pid") (log $run/dev.log)" ;;
-  fake)
-    case "${2:-}" in /private/tmp/bb-hermes-test/*) ;; *) die "usage: fake </private/tmp/bb-hermes-test/…>" ;; esac
-    alive fake && die "fake already running"
-    rm -f "$run/fake.json"
-    ( cd "$repo"; nohup node --import tsx test/fake-hermes/run.ts "$2" >"$run/fake.json" 2>"$run/fake.log" & echo $! >"$run/fake.pid" )
-    for _ in $(seq 1 60); do [ -s "$run/fake.json" ] && break; sleep 0.5; done
-    cat "$run/fake.json" ;;
+  fake | hermes)
+    case "${2:-}" in /private/tmp/bb-hermes-test/*) ;; *) die "usage: $1 </private/tmp/bb-hermes-test/…>" ;; esac
+    alive fake || alive hermes && die "a Hermes folder is already served"
+    rm -f "$run/fake.json" "$run/hermes.json"
+    entry=test/fake-hermes/run.ts; [ "$1" = hermes ] && entry=e2e/isolated-hermes.ts
+    ( cd "$repo"; nohup node --import tsx "$entry" "$2" >"$run/$1.json" 2>"$run/$1.log" & echo $! >"$run/$1.pid" )
+    for _ in $(seq 1 240); do [ -s "$run/$1.json" ] && break; alive "$1" || die "$1 exited (log $run/$1.log)"; sleep 0.5; done
+    cat "$run/$1.json" ;;
   connect)
     [ -n "${2:-}" ] || die "usage: connect <folder>"
     printf '{"machine":"%s","folder":"%s"}' "$(cat "$data/host-id")" "$2" >"$run/connect.json"
     "$sbb" plugin rpc call hermes setConnection --input-file "$run/connect.json" --json ;;
   check)
-    want=${2:-$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).instance_id)' "$run/fake.json")}
+    served=$run/fake.json; alive hermes && served=$run/hermes.json
+    want=${2:-$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).instance_id)' "$served")}
     got=$("$sbb" plugin rpc call hermes diagnostics --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);console.log((j.result??j).instance_id)})')
     [ "$got" = "$want" ] || die "diagnostics.instance_id is $got, not $want: abort (R3 M3)"
     echo "instance_id ok: $got" ;;
