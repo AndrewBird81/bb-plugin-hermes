@@ -21,10 +21,22 @@ export const persistedTurnRecordSchema = z
   })
   .strict();
 
+/** One outside turn the bridge rendered for a `mirror` marker, with the reply rows it showed (none for Conduit's own turn). */
+export const mirroredTurnRecordSchema = z
+  .object({
+    anchor_uid: z.string(),
+    reply_uids: z.array(z.string()),
+    /** The bridge closed it `partial` (no canonical admission): the reply rows come later by `mirror{rest:true}`. */
+    partial: z.boolean(),
+    at: z.number(),
+  })
+  .strict();
+
 /**
  * Cumulative, so a server that reads only the latest state (events are debounced, S7 finding 2) misses
- * nothing: the newest `PERSISTED_TURNS_KEPT` records, oldest first. `lineage_root`/`session_id` let the
- * server fill a `pending` binding once the first send created the session.
+ * nothing: the newest `PERSISTED_TURNS_KEPT` records of each list, oldest first. `lineage_root`/`session_id`
+ * let the server fill a `pending` binding once the first send created the session. `mirrored` tells the
+ * server which reply rows a mirror turn showed, so it wakes `mirror{rest:true}` only for rows not shown.
  */
 export const persistedTurnStateSchema = z
   .object({
@@ -32,6 +44,7 @@ export const persistedTurnStateSchema = z
     lineage_root: z.string(),
     session_id: z.string(),
     turns: z.array(persistedTurnRecordSchema),
+    mirrored: z.array(mirroredTurnRecordSchema).default([]),
   })
   .strict();
 export type PersistedTurnState = z.infer<typeof persistedTurnStateSchema>;
