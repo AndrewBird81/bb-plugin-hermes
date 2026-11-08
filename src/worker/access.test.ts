@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
@@ -92,11 +93,27 @@ describe("bbTarget (A44)", () => {
     expect(at("x; rm")).toBeNull();
   });
 
+  it("the wrapper runs a `#!/usr/bin/env node` bb with a PATH that has no node", () => {
+    const { base, dataDir } = setup();
+    const bb = script(path.join(base, "bb-js", "bb"), "");
+    writeFileSync(bb, "#!/usr/bin/env node\nconsole.log(['bb', process.env.BB_SERVER_URL, ...process.argv.slice(2)].join(' '));\n");
+    const target = bbTarget({ BB_CLI: bb, BB_SERVER_URL: "http://127.0.0.1:48886" })!;
+    expect(target.nodeDir).toBe(path.dirname(process.execPath));
+    const wrapper = path.join(dataDir, WRAPPER_PATH);
+    mkdirSync(path.dirname(wrapper), { recursive: true });
+    writeFileSync(wrapper, wrapperScript(target), { mode: 0o755 });
+    const minimal = { PATH: "/usr/bin:/bin", HOME: base };
+    expect(spawnSync("/bin/sh", ["-c", "command -v node"], { env: minimal }).status).not.toBe(0);
+    const run = spawnSync(wrapper, ["thread", "list"], { env: minimal, encoding: "utf8" });
+    expect([run.status, run.stdout.trim(), run.stderr]).toEqual([0, "bb http://127.0.0.1:48886 thread list", ""]);
+  });
+
   it("wrapper: exports only what it needs, quotes, execs bb", () => {
-    expect(wrapperScript({ bb: "/opt/bb/bb", serverUrl: null, daemonPort: null })).toBe(
-      "#!/bin/sh\n# bb for Hermes bots, written by the bb Hermes plugin (bb-plugin-hermes). Rewritten when bb moves: don't edit.\nexec /opt/bb/bb \"$@\"\n",
+    expect(wrapperScript({ bb: "/opt/bb/bb", serverUrl: null, daemonPort: null, nodeDir: "/opt/node/bin" })).toBe(
+      "#!/bin/sh\n# bb for Hermes bots, written by the bb Hermes plugin (bb-plugin-hermes). Rewritten when bb moves: don't edit.\nPATH=/opt/node/bin:\"$PATH\"\nexport PATH\nexec /opt/bb/bb \"$@\"\n",
     );
-    const remote = wrapperScript({ bb: "/Apps/b b/bb", serverUrl: "https://bb.example.test/a'b", daemonPort: "48887" });
+    const remote = wrapperScript({ bb: "/Apps/b b/bb", serverUrl: "https://bb.example.test/a'b", daemonPort: "48887", nodeDir: "/n o/bin" });
+    expect(remote).toContain(`PATH='/n o/bin':"$PATH"\nexport PATH\n`);
     expect(remote).toContain("BB_SERVER_URL='https://bb.example.test/a'\\''b'\nexport BB_SERVER_URL\n");
     expect(remote).toContain("BB_HOST_DAEMON_PORT=48887\nexport BB_HOST_DAEMON_PORT\n");
     expect(remote).toContain(`exec '/Apps/b b/bb' "$@"`);
@@ -159,7 +176,7 @@ describe("setBotAccess", () => {
     const wrapper = path.join(dataDir, WRAPPER_PATH);
     expect(readFileSync(path.join(alex, SKILL_DIR, "SKILL.md"), "utf8")).toContain(`\`${wrapper} thread list --json\``);
     expect(JSON.parse(readFileSync(path.join(alex, SKILL_DIR, MARKER_FILE), "utf8"))).toEqual({ plugin: "bb-plugin-hermes", version: expect.any(String), profile_home: alex });
-    expect(readFileSync(wrapper, "utf8")).toContain(`BB_SERVER_URL=https://bb.example.test\nexport BB_SERVER_URL\nexec ${bb} "$@"`);
+    expect(readFileSync(wrapper, "utf8")).toContain(`BB_SERVER_URL=https://bb.example.test\nexport BB_SERVER_URL\nPATH=${path.dirname(process.execPath)}:"$PATH"\nexport PATH\nexec ${bb} "$@"`);
     expect(calls).toEqual([[path.join(root, "hermes-agent", ".hermes", "bin", "hermes"), root, "alex"]]);
     expect(readFileSync(path.join(alex, "skills/own-skill/SKILL.md"), "utf8")).toBe("the bot's own skill\n");
 

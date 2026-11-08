@@ -26,6 +26,8 @@ export interface BbTarget {
   /** Set in the wrapper only when bb's default would miss the server (remote, or a non-default port). */
   serverUrl: string | null;
   daemonPort: string | null;
+  /** The directory of the node this worker runs on: bb's CLI is a `#!/usr/bin/env node` script, and a bot's PATH may lack node. */
+  nodeDir: string;
 }
 
 const isExecutable = (file: string) => {
@@ -58,7 +60,7 @@ function isDefaultServer(url: string): boolean {
  * (`BB_CLI`, `BB_SERVER_URL`, `BB_HOST_DAEMON_PORT`, `PATH` with bb's directory). Read it at the start
  * of a call: the worker restores its own environment after the call. Null: no `bb` found.
  */
-export function bbTarget(env: NodeJS.ProcessEnv, exists: (file: string) => boolean = isExecutable): BbTarget | null {
+export function bbTarget(env: NodeJS.ProcessEnv, exists: (file: string) => boolean = isExecutable, node = process.execPath): BbTarget | null {
   const cli = env.BB_CLI?.trim();
   const bb = cli && path.isAbsolute(cli) && exists(cli) ? cli : onPath("bb", env.PATH, exists);
   if (!bb) return null;
@@ -68,6 +70,7 @@ export function bbTarget(env: NodeJS.ProcessEnv, exists: (file: string) => boole
     bb,
     serverUrl: server && !isDefaultServer(server) ? server : null,
     daemonPort: port && /^\d{1,5}$/.test(port) && port !== DEFAULT_DAEMON_PORT ? port : null,
+    nodeDir: path.dirname(node),
   };
 }
 
@@ -79,6 +82,8 @@ export function wrapperScript(target: BbTarget): string {
     `# bb for Hermes bots, written by the bb Hermes plugin (${PLUGIN}). Rewritten when bb moves: don't edit.`,
     ...(target.serverUrl ? [`BB_SERVER_URL=${shellQuote(target.serverUrl)}`, "export BB_SERVER_URL"] : []),
     ...(target.daemonPort ? [`BB_HOST_DAEMON_PORT=${target.daemonPort}`, "export BB_HOST_DAEMON_PORT"] : []),
+    `PATH=${shellQuote(target.nodeDir)}:"$PATH"`,
+    "export PATH",
     `exec ${shellQuote(target.bb)} "$@"`,
     "",
   ].join("\n");
