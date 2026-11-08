@@ -266,4 +266,55 @@ describe("T1.14 on the isolated bb", () => {
     expect(rig.requests("approval.respond")).toHaveLength(0);
   });
 
+
+  const liveCard = async (threadId: string) => {
+    const cli = await rig.cli();
+    const snap = await cli.create({ profile: "alex", request_id: `cli-${threadId}`, source: "cli" });
+    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id, tag: "CLI" };
+    await startThread(rig, threadId, opts("alex", view));
+    rig.fake.outsideTurn("alex", snap.session_id, "ask me", { script: { tool: true, approval: { kind: "command", timeout_s: 600 } } });
+    const anchor = await userRow("alex", snap.session_id, "ask me");
+    await rig.call("turn/start", { threadId, providerThreadId: "x", input: [text("[CLI] ask me"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })], clientRequestId: creq(), options: { ...AUTO, ...opts("alex", view) } });
+    const req = await rig.waitFor(() => rig.rpc.messages.find((m) => m.method === "interaction/request" && (m.params as { threadId: string }).threadId === threadId));
+    await stop(threadId);
+    return { sid: snap.session_id, view, req };
+  };
+  const deadOf = (threadId: string) =>
+    (deltas(rig, threadId).filter((d) => d.extensionKind === "hermes/status").at(-1)?.payload as { dead_requests?: string[] } | undefined)?.dead_requests ?? [];
+
+  it("after Stop, a live card answered in the CLI is seen settling: it dies, then the session goes", async () => {
+    const { sid, req } = await liveCard("thr_cli_ans");
+    const promptId = [...rig.fake.session("alex", sid)!.prompts.keys()][0]!;
+    rig.fake.answerElsewhere("alex", sid, promptId, "once");
+    await rig.waitFor(() => deadOf("thr_cli_ans").includes(String(req.id)));
+    expect(rig.requests("approval.respond")).toHaveLength(0);
+    // The last card settled: nothing listens any more, so a gateway restart resumes nothing.
+    await rig.waitFor(() => !rig.fake.session("alex", sid)!.running);
+    const before = rig.fake.requests.length;
+    await rig.fake.restart();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(rig.fake.requests.slice(before)).toEqual([]);
+    // The server releases the idle thread to close the card: harmless.
+    const res = await rig.call("thread/stop", { threadId: "thr_cli_ans", providerThreadId: "x", intent: "release", activeTurnId: null });
+    expect(res.result).toEqual({});
+  });
+
+  it("a switched-off bot: an answer to its live card never reaches Hermes; the card dies", async () => {
+    const { view, req } = await liveCard("thr_off_ans");
+    await rig.call("thread/resume", { threadId: "thr_off_ans", cwd: "/w", providerThreadId: "x", options: { ...AUTO, ...opts("alex", { ...view, enabled: false }) }, instructionMode: "append" });
+    rig.bridge.handleLine(JSON.stringify({ jsonrpc: "2.0", id: req.id, result: { decision: "allow_once", grantedPermissions: null } }));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(rig.requests("approval.respond")).toHaveLength(0);
+    expect(deadOf("thr_off_ans")).toContain(String(req.id));
+  });
+
+  it("no machine (the folder changed) is off too: a send re-raises no card and touches no Hermes", async () => {
+    const { view } = await liveCard("thr_nomach");
+    const raised = rig.rpc.messages.filter((m) => m.method === "interaction/request").length;
+    const before = rig.fake.requests.length;
+    const options = { ...rig.options("alex", view as never), machine: null };
+    await turn(rig, "thr_nomach", [text("hi")], { providerOptions: options });
+    expect(rig.rpc.messages.filter((m) => m.method === "interaction/request")).toHaveLength(raised);
+    expect(rig.fake.requests.slice(before)).toEqual([]);
+  });
 });

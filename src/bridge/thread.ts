@@ -228,7 +228,8 @@ export class HostedThread {
       this.banner = null;
       this.emit([this.statusState()]);
     }
-    for (const entry of this.prompts.values()) this.raise(entry);
+    this.noteOptions(params.options.providerOptions);
+    if (!this.off) for (const entry of this.prompts.values()) this.raise(entry);
     let outcome: Outcome = { status: "completed" };
     try {
       const segments = segmentInput(params.input);
@@ -306,7 +307,9 @@ export class HostedThread {
 
   /** Every command's provider options: a switched-off bot drops the session and its reconnect hook. */
   noteOptions(providerOptions: unknown): void {
-    this.off = readProviderOptions(providerOptions)?.thread?.enabled === false;
+    const options = readProviderOptions(providerOptions);
+    // No machine (unset, or the folder changed) is off too: no Hermes I/O.
+    this.off = !options?.machine || options.thread?.enabled === false;
     if (this.off) this.dropSession();
   }
 
@@ -499,10 +502,36 @@ export class HostedThread {
   // ---- sessions ----------------------------------------------------------------------------------------
 
   /** Unsubscribe and forget the session; admissions not seen to finish go too (a later match would hang on them). */
+  /**
+   * Unsubscribe and forget the session; admissions not seen to finish go too (a later match would hang on
+   * them). Its open cards can't be answered or seen to settle any more: they die (`dead_requests`).
+   */
   private dropSession(): void {
+    this.lingering = false;
     this.session?.unsubscribe();
     this.session = null;
     for (const [id, log] of this.logs) if (!log.done) this.logs.delete(id);
+    for (const [promptId, entry] of this.prompts) {
+      this.prompts.delete(promptId);
+      if (entry.requestId && !entry.answered) this.markDead(entry.requestId);
+    }
+  }
+
+  /** Stop kept the session for live cards: drop it once the last one settles or dies. */
+  private lingering = false;
+
+  private liveCards(): boolean {
+    return [...this.prompts.values()].some((e) => e.requestId !== null && !e.answered);
+  }
+
+  /** After Stop: keep listening (and the reconnect hook) while a card is live, so its settling is seen. */
+  private dropUnlessCardsLive(): void {
+    if (this.liveCards()) this.lingering = true;
+    else this.dropSession();
+  }
+
+  private maybeDropLingering(): void {
+    if (this.lingering && !this.turn && !this.liveCards()) this.dropSession();
   }
 
   private async ensureSession(turn: BbTurn, ctx: ThreadContext, choice: ModelChoice | null = null): Promise<SessionState> {
@@ -856,10 +885,15 @@ export class HostedThread {
   /** Only bb's user answers: the bridge never answers for them (A2), and sends only a choice Hermes offered. */
   private async answer(entry: PromptEntry, id: string, resolution: unknown): Promise<void> {
     if (entry.requestId !== id || !this.prompts.has(entry.card.promptId)) return;
+    if (this.off) {
+      // Switched off: no Hermes I/O; the card dies.
+      this.prompts.delete(entry.card.promptId);
+      this.markDead(id);
+      return;
+    }
     const answer = answerFor(entry.card, resolution);
-    // Stop may have dropped the session while the card stayed live: answer on the bound session.
-    const session = answer === null ? null : (this.session ?? (this.ctx ? await this.watch(this.ctx) : null));
-    if (answer === null || !session || !this.prompts.has(entry.card.promptId)) {
+    const session = this.session;
+    if (answer === null || !session) {
       entry.requestId = null;
       return;
     }
@@ -880,13 +914,13 @@ export class HostedThread {
     const entry = this.prompts.get(promptId);
     if (!entry) return;
     this.prompts.delete(promptId);
-    if (entry.answered) return;
-    if (entry.requestId) {
+    if (!entry.answered && entry.requestId) {
       // Withdraw it (a later bb honours `notifications/cancelled`; 0.49.0 doesn't) and have the server close it.
       this.host.cancel(entry.requestId);
       this.markDead(entry.requestId);
     }
-    if (dropped || !this.turn) return;
+    this.maybeDropLingering();
+    if (entry.answered || dropped || !this.turn) return;
     const timedOut = entry.card.deadline !== null && Date.now() >= entry.card.deadline - 1000;
     this.emit([{ kind: "provider.warning", summary: timedOut ? TIMED_OUT_TEXT : ANSWERED_ELSEWHERE_TEXT }]);
   }
@@ -896,7 +930,7 @@ export class HostedThread {
   /** `thread/stop{interrupt}` (02 §Protocol mapping; S8 step 8; D27 narrowed). Settles before it returns. */
   async stop(): Promise<void> {
     const turn = this.turn;
-    if (!turn) return this.dropSession();
+    if (!turn) return this.dropUnlessCardsLive();
     turn.stop();
     await Promise.all(turn.units.filter((u) => !u.done).map((u) => this.stopUnit(u)));
     const timer = setTimeout(() => {
@@ -904,8 +938,8 @@ export class HostedThread {
     }, STOP_SETTLE_MS);
     await turn.finished.promise;
     clearTimeout(timer);
-    // Stop leaves nothing listening: the next send resolves its session again (bot off, gateway restart).
-    this.dropSession();
+    // Stop leaves nothing listening once no card is live: the next send resolves its session again.
+    this.dropUnlessCardsLive();
   }
 
   private async stopUnit(unit: Unit): Promise<void> {
