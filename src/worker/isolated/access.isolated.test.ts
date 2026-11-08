@@ -232,18 +232,23 @@ async function main(): Promise<Record<string, any>> {
     state_meta: sqlite(bobDb, "SELECT key FROM state_meta WHERE key LIKE 'gateway.local_policy.v1:%' OR key LIKE 'gateway.local_legacy.v1:%'"),
   });
   const beforeLookup = rows();
+  // `profiles.list{include_sessions}`: the roster's `canonical_session` (ids only kept; it also carries a text preview).
+  const roster = async () => {
+    const { profiles } = await c.profilesList({ profile: "bob", include_sessions: true });
+    const cs = profiles.find((p) => p.name === "bob")?.canonical_session ?? null;
+    return cs && { id: cs.id, resolved_id: cs.resolved_id, title: cs.title ?? null };
+  };
+  const rosterHeld = { result: await roster(), rows: rows() };
   const held = await findBotChat(c, "bob").catch((e) => ({ error: (e as Error).message }));
   const whileHeld = rows();
   ws.close();
-  let afterLeave: unknown = null;
-  let rowsAfter: unknown = null;
-  for (let i = 0; i < 12; i++) {
-    await sleep(5000);
-    afterLeave = await findBotChat(c, "bob").catch((e) => ({ error: (e as Error).message }));
-    if ((afterLeave as { state?: string }).state !== "held") break;
-  }
-  rowsAfter = rows();
+  await sleep(25_000); // Conduit's claim lapses (S8 E6: ~21 s); the lookup below must then find it at once
+  const rosterUnheld = { result: await roster(), rows: rows() };
+  const afterLeave = await findBotChat(c, "bob").catch((e) => ({ error: (e as Error).message }));
+  const rowsAfter = rows();
+  const rosterAdopted = { result: await roster(), rows: rows() };
   evidence.bot_chat_lookup_on_legacy = { before_lookup: beforeLookup, while_held: { result: held, rows: whileHeld }, after_conduit_left: { result: afterLeave, rows: rowsAfter } };
+  evidence.roster_on_legacy = { while_held: rosterHeld, unheld_before_lookup: rosterUnheld, after_adoption: rosterAdopted };
 
   c.close();
   evidence.live_gateway_pid_unchanged = livePid() === before;
@@ -287,5 +292,12 @@ describe.skipIf(process.env.HERMES_ISOLATED_RUN !== "1")("isolated Hermes: setBo
     expect(lookup.while_held.rows.sessions[0].chat_id).toBeNull();
     expect(lookup.after_conduit_left.result).toMatchObject({ state: "found", legacy: false });
     expect(lookup.after_conduit_left.rows.sessions[0].chat_id).toBe(lookup.after_conduit_left.rows.sessions[0].id);
+    // profiles.list{include_sessions} is read-only: it ignores an unadopted legacy Bot Chat and names an adopted one.
+    const r = ev.roster_on_legacy;
+    expect(r.while_held.result).toBeNull();
+    expect(r.unheld_before_lookup.result).toBeNull();
+    expect(r.unheld_before_lookup.rows).toEqual(lookup.before_lookup);
+    const id = lookup.after_conduit_left.rows.sessions[0].id;
+    expect(r.after_adoption.result).toMatchObject({ id, resolved_id: id });
   });
 });
