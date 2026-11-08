@@ -100,9 +100,9 @@ Critical path: T0.1 → T0.3 → T0.4 → T1.1 → T1.4 → T1.6 → T1.13 → T
 | A36 | VERIFIED (T0.5, isolated; live: 5 of 5 served profiles answered one read-only list) | T0.5 |
 | A37 | VERIFIED (T1.14, isolated bb): `hermes/persisted-turn` reaches the server; it binds side chats from bb's stored turns | T1.1 |
 | A38 | Deleting a hidden import thread frees its `providerThreadId` (no 409, R4 S8) | T2.5 |
-| A-S8a | Conduit finds Bot Chats by exact title (S) | T1.14, real app |
-| A-S8b | Conduit refreshes the open chat on `sessions.changed` (S) | T1.14, real app |
-| A-S8c | Conduit looks up before minting a Bot Chat (S) | T1.14, real app |
+| A-S8a | Conduit finds Bot Chats by exact title (S). Dogfood only: the two-client harness drives Hermes' own dashboard client, not the closed Conduit app | T1.14, real app |
+| A-S8b | Conduit refreshes the open chat on `sessions.changed` (S). Dogfood only: the two-client harness drives Hermes' own dashboard client, not the closed Conduit app | T1.14, real app |
+| A-S8c | Conduit looks up before minting a Bot Chat (S). Dogfood only: the two-client harness drives Hermes' own dashboard client, not the closed Conduit app | T1.14, real app |
 | A-S8d | VERIFIED: compaction is in place by default (`config_defaults.py:668-672`) | — |
 | A43 | VERIFIED (T1.8, isolated): a skill in `<profile>/skills/` is listed in new sessions with no restart (S8 E14), and in a continuing session only after `refresh-prompts` (`[before, written, refreshed, off]` → `[no, no, yes, no]`). Live Bot Chat: dogfood | T1.8, T1.14 |
 | A44 | VERIFIED (T1.8 + T1.14, isolated): the wrapper takes `BB_CLI`, `BB_SERVER_URL` and `BB_HOST_DAEMON_PORT` from the daemon's per-call environment and puts the worker's node on `PATH`; on isolated Hermes the bot ran `bb-hermes thread list` through its terminal tool against the isolated bb. Remote server: dogfood | T1.8, T1.14 |
