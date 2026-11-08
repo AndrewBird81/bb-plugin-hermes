@@ -1,0 +1,356 @@
+{
+ "$comment": "Ported from spike/hermes src/hermes/fixtures/s4g-mutate.json (port-spike.ts), redacted.",
+ "hermes": "c314285f07",
+ "frames": [
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "gateway.ready",
+     "payload": {
+      "skin": "<omitted>",
+      "change_events": true,
+      "heartbeat": true,
+      "replay_epoch": "16dd15a214f2482082afc1e33bda82df",
+      "session_authority": true
+     }
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "session.resume",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "omit_messages": true
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "stored_session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "messages": [],
+     "messages_omitted": true,
+     "message_count": 15,
+     "todo_state": null,
+     "running": false,
+     "authority_epoch": 30,
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "last_sequence": 163,
+     "subscription_id": "77d0c4eaa2454e1680f18d7128dc65d2",
+     "revision": 5,
+     "execution_generation": 5,
+     "pending": [],
+     "prompts": [],
+     "info": {
+      "tools": "<omitted>",
+      "skills": "<omitted>",
+      "mcp_servers": "<omitted>",
+      "version": "0.22.6",
+      "release_date": "2026.9.24",
+      "update_behind": 0,
+      "update_command": "hermes update",
+      "branch": "",
+      "project": null,
+      "provider": "custom:mlx-main",
+      "system_prompt": "<omitted>",
+      "context_length": 262144,
+      "enabled_toolsets": "<omitted>",
+      "tool_availability": "<omitted>",
+      "tool_availability_warnings": "<omitted>",
+      "unknown_toolsets": "<omitted>",
+      "source": "cli",
+      "model": "mlx_main",
+      "lazy": false,
+      "profile_id": "~/.hermes",
+      "desktop_protocol": "hermes-gateway-v1",
+      "profile_name": "default",
+      "cwd": "/private/tmp/bb-spike",
+      "reasoning_effort": "medium",
+      "reasoning_effort_wire": "medium",
+      "service_tier": "",
+      "fast": false,
+      "launch_request": {
+       "cwd": "/private/tmp/bb-spike",
+       "model": "mlx_main",
+       "provider": "mlx-main",
+       "source": "cli"
+      },
+      "title": "[bb-spike] S4b stream",
+      "started_at": 1793807334.248571,
+      "last_active_at": 1793807555.8096588,
+      "yolo": false,
+      "api_mode": "chat_completions",
+      "tool_count": 21,
+      "credential_hint": "<omitted>",
+      "usage": {
+       "model": "mlx_main",
+       "input": 634,
+       "output": 2427,
+       "reasoning": 1335,
+       "prompt": 83038,
+       "completion": 2427,
+       "total": 85465,
+       "calls": 5,
+       "context_used": 16939,
+       "context_max": 262144,
+       "context_percent": 6,
+       "context_source": "provider_usage",
+       "context_estimated": false,
+       "compressions": 0,
+       "cache_hit_pct": 99,
+       "avg_latency_s": 5.7,
+       "avg_tps": 86,
+       "active_subagents": 0
+      }
+     },
+     "pending_connection": null,
+     "open_requests": []
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "session.mutate",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "request_id": "c292fe9f-6fad-49da-b169-b30d1f102907",
+     "expected_revision": 5,
+     "operation": "rename",
+     "payload": {
+      "title": "[bb-spike] S4b renamed"
+     }
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "revision": 6,
+     "execution_generation": 5,
+     "operation": "rename",
+     "title": "[bb-spike] S4b renamed"
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "session.updated",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+      "revision": 6,
+      "execution_generation": 5,
+      "operation": "rename",
+      "title": "[bb-spike] S4b renamed"
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 164
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "sessions.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "platforms.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "session.mutate",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "request_id": "d40817e2-cacb-40ae-a060-77f4a0369636",
+     "expected_revision": 6,
+     "operation": "sidebar",
+     "payload": {
+      "pinned": true,
+      "unread": true
+     }
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "result": {
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "revision": 7,
+     "execution_generation": 5,
+     "operation": "sidebar",
+     "pinned": true,
+     "unread": true
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "session.updated",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+      "revision": 7,
+      "execution_generation": 5,
+      "operation": "sidebar",
+      "pinned": true,
+      "unread": true
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 165
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "session.mutate",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "request_id": "4bbfe17f-dbd9-4cac-a2b0-441f98e78fce",
+     "expected_revision": 6,
+     "operation": "sidebar",
+     "payload": {
+      "pinned": false
+     }
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "error": {
+     "code": 4001,
+     "message": "revision_conflict",
+     "data": {
+      "reason": "revision_conflict",
+      "revision": 7,
+      "execution_generation": 5
+     }
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "session.mutate",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "request_id": "6d3f0434-3802-493c-9b83-4b4181427c6c",
+     "expected_revision": 7,
+     "operation": "sidebar",
+     "payload": {
+      "pinned": false,
+      "unread": false
+     }
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "result": {
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "revision": 8,
+     "execution_generation": 5,
+     "operation": "sidebar",
+     "pinned": false,
+     "unread": false
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "session.updated",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+      "revision": 8,
+      "execution_generation": 5,
+      "operation": "sidebar",
+      "pinned": false,
+      "unread": false
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 166
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "sessions.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,584 @@
+{
+ "$comment": "Ported from spike/hermes src/hermes/fixtures/s4b-create-submit-stream.json (port-spike.ts), redacted.",
+ "hermes": "c314285f07",
+ "frames": [
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "gateway.ready",
+     "payload": {
+      "skin": "<omitted>",
+      "change_events": true,
+      "heartbeat": true,
+      "replay_epoch": "16dd15a214f2482082afc1e33bda82df",
+      "session_authority": true
+     }
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "session.create",
+    "params": {
+     "profile": "default",
+     "request_id": "bb-spike-s4b-5930e8c4",
+     "source": "cli",
+     "cwd": "/private/tmp/bb-spike",
+     "title": "[bb-spike] S4b stream",
+     "model": "mlx_main",
+     "provider": "mlx-main"
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "stored_session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "messages": [],
+     "message_count": 0,
+     "todo_state": null,
+     "running": false,
+     "authority_epoch": 30,
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "last_sequence": 0,
+     "subscription_id": "44d01c165d9f40e1b194b5ff1cbacc2e",
+     "revision": 0,
+     "execution_generation": 0,
+     "pending": [],
+     "prompts": [],
+     "info": {
+      "tools": "<omitted>",
+      "skills": "<omitted>",
+      "mcp_servers": "<omitted>",
+      "version": "0.22.6",
+      "release_date": "2026.9.24",
+      "update_behind": 0,
+      "update_command": "hermes update",
+      "branch": "",
+      "project": null,
+      "provider": "mlx-main",
+      "enabled_toolsets": "<omitted>",
+      "tool_availability": "<omitted>",
+      "tool_availability_warnings": "<omitted>",
+      "unknown_toolsets": "<omitted>",
+      "source": "cli",
+      "model": "mlx_main",
+      "lazy": true,
+      "profile_id": "~/.hermes",
+      "desktop_protocol": "hermes-gateway-v1",
+      "profile_name": "default",
+      "cwd": "/private/tmp/bb-spike",
+      "reasoning_effort": "medium",
+      "reasoning_effort_wire": "medium",
+      "service_tier": "",
+      "fast": false,
+      "launch_request": {
+       "cwd": "/private/tmp/bb-spike",
+       "model": "mlx_main",
+       "provider": "mlx-main",
+       "source": "cli"
+      },
+      "title": "[bb-spike] S4b stream",
+      "started_at": 1793807334.248571,
+      "last_active_at": 1793807334.248571,
+      "yolo": false,
+      "api_mode": null,
+      "tool_count": 21,
+      "credential_hint": null,
+      "usage": {
+       "model": "mlx_main",
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "prompt": 0,
+       "completion": 0,
+       "total": 0,
+       "calls": 0
+      }
+     },
+     "pending_connection": null,
+     "open_requests": []
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "prompt.submit",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "text": "Reply with exactly the single word: pong",
+     "submission_id": "d9d93497-a53c-4112-8f6d-d728deaa7182"
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+     "admission_id": "09dbb9ebeac4407b9aad94bbabacf8f4",
+     "ref": {
+      "profile_id": "~/.hermes",
+      "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0"
+     },
+     "sequence": 57,
+     "status": "queued",
+     "outcome": null,
+     "authority_epoch": 30,
+     "execution_generation": null
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "session.info",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "stored_session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+      "pending": [
+       {
+        "admission_id": "09dbb9ebeac4407b9aad94bbabacf8f4",
+        "ref": {
+         "profile_id": "~/.hermes",
+         "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0"
+        },
+        "sequence": 57,
+        "status": "queued",
+        "outcome": null,
+        "authority_epoch": 30,
+        "execution_generation": null,
+        "input_id": "d9d93497-a53c-4112-8f6d-d728deaa7182",
+        "text": "Reply with exactly the single word: pong",
+        "controls": [
+         "steer",
+         "replace"
+        ],
+        "steering": false
+       }
+      ],
+      "authority_epoch": 30,
+      "desktop_protocol": "hermes-gateway-v1",
+      "running": false,
+      "execution_generation": 0,
+      "revision": 0
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 1
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 1,
+     "admission_id": "09dbb9ebeac4407b9aad94bbabacf8f4",
+     "type": "message.start",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {},
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 2
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 1,
+     "admission_id": "09dbb9ebeac4407b9aad94bbabacf8f4",
+     "type": "session.info",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "stored_session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+      "pending": [
+       {
+        "admission_id": "09dbb9ebeac4407b9aad94bbabacf8f4",
+        "ref": {
+         "profile_id": "~/.hermes",
+         "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0"
+        },
+        "sequence": 57,
+        "status": "started",
+        "outcome": null,
+        "authority_epoch": 30,
+        "execution_generation": 1,
+        "input_id": "d9d93497-a53c-4112-8f6d-d728deaa7182",
+        "text": "Reply with exactly the single word: pong",
+        "controls": [],
+        "steering": false
+       }
+      ],
+      "authority_epoch": 30,
+      "desktop_protocol": "hermes-gateway-v1",
+      "running": true,
+      "execution_generation": 1,
+      "revision": 0
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 3
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 1,
+     "admission_id": "09dbb9ebeac4407b9aad94bbabacf8f4",
+     "type": "agent.step",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "iteration": 1
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 4
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 1,
+     "admission_id": "09dbb9ebeac4407b9aad94bbabacf8f4",
+     "type": "thinking.delta",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": "(⌐■_■) contemplating..."
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 5
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "sessions.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "platforms.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 1,
+     "admission_id": "09dbb9ebeac4407b9aad94bbabacf8f4",
+     "type": "thinking.delta",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": ""
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 6
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 1,
+     "admission_id": "09dbb9ebeac4407b9aad94bbabacf8f4",
+     "type": "message.delta",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": "pong",
+      "turn_id": "532c47f5e0ca48fd9af1a199a3f25032",
+      "segment": 0,
+      "offset": 0
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 7
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 1,
+     "admission_id": "09dbb9ebeac4407b9aad94bbabacf8f4",
+     "type": "thinking.delta",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": ""
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 8
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 1,
+     "admission_id": "09dbb9ebeac4407b9aad94bbabacf8f4",
+     "type": "session.usage",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "usage": {
+       "model": "mlx_main",
+       "input": 8080,
+       "output": 17,
+       "reasoning": 15,
+       "prompt": 16272,
+       "completion": 17,
+       "total": 16289,
+       "calls": 1,
+       "context_used": 16272,
+       "context_max": 262144,
+       "context_percent": 6,
+       "context_source": "provider_usage",
+       "context_estimated": false,
+       "compressions": 0,
+       "cache_hit_pct": 50,
+       "avg_latency_s": 4.5,
+       "avg_tps": 3.8,
+       "active_subagents": 0
+      },
+      "input_tokens": "<redacted>",
+      "output_tokens": "<redacted>",
+      "cache_read_tokens": "<redacted>",
+      "cache_write_tokens": "<redacted>",
+      "prompt_tokens": "<redacted>",
+      "completion_tokens": "<redacted>",
+      "total_tokens": "<redacted>",
+      "reasoning_tokens": "<redacted>",
+      "api_calls": 1,
+      "last_prompt_tokens": "<redacted>",
+      "context_tokens": "<redacted>",
+      "context_length": 262144,
+      "config_context_length": 262144,
+      "context_source": "provider_usage",
+      "compression_count": 0,
+      "avg_latency_s": 4.46,
+      "tokens_per_s": "<redacted>",
+      "last_turn_tokens": "<redacted>",
+      "rate_limit": null,
+      "active_subagents": 0,
+      "model": "mlx_main",
+      "provider": "custom",
+      "fallback_model": null
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 9
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 1,
+     "admission_id": "09dbb9ebeac4407b9aad94bbabacf8f4",
+     "type": "session.info",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "provider": "custom:mlx-main",
+      "tools": "<omitted>",
+      "system_prompt": "<omitted>",
+      "context_length": 262144,
+      "source": "cli",
+      "model": "mlx_main",
+      "lazy": false,
+      "profile_id": "~/.hermes",
+      "desktop_protocol": "hermes-gateway-v1",
+      "profile_name": "default",
+      "cwd": "/private/tmp/bb-spike",
+      "reasoning_effort": "medium",
+      "reasoning_effort_wire": "medium",
+      "service_tier": "",
+      "fast": false,
+      "launch_request": {
+       "cwd": "/private/tmp/bb-spike",
+       "model": "mlx_main",
+       "provider": "mlx-main",
+       "source": "cli"
+      },
+      "title": "[bb-spike] S4b stream",
+      "started_at": 1793807334.248571,
+      "last_active_at": 1793807334.435818,
+      "yolo": false,
+      "api_mode": "chat_completions",
+      "tool_count": 21,
+      "credential_hint": "<omitted>"
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 10
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 1,
+     "admission_id": "09dbb9ebeac4407b9aad94bbabacf8f4",
+     "type": "message.complete",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": "pong",
+      "content": "pong",
+      "admission_id": "09dbb9ebeac4407b9aad94bbabacf8f4",
+      "outcome": "completed",
+      "status": "complete",
+      "reasoning": "The user is just asking for a simple \"pong\" response.",
+      "usage": {
+       "model": "mlx_main",
+       "input": 8080,
+       "output": 17,
+       "reasoning": 15,
+       "prompt": 16272,
+       "completion": 17,
+       "total": 16289,
+       "calls": 1,
+       "context_used": 16272,
+       "context_max": 262144,
+       "context_percent": 6,
+       "context_source": "provider_usage",
+       "context_estimated": false,
+       "compressions": 0,
+       "cache_hit_pct": 50,
+       "avg_latency_s": 4.5,
+       "avg_tps": 3.8,
+       "active_subagents": 0
+      },
+      "persisted_turn": {
+       "row_ids": [
+        3162,
+        3163
+       ],
+       "complete": true,
+       "user_row_id": 3162,
+       "user_row_ids": [
+        3162
+       ],
+       "final_assistant_row_id": 3163,
+       "submission_id": "d9d93497-a53c-4112-8f6d-d728deaa7182"
+      }
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 11
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 1,
+     "admission_id": "09dbb9ebeac4407b9aad94bbabacf8f4",
+     "type": "session.info",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "stored_session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+      "pending": [],
+      "authority_epoch": 30,
+      "desktop_protocol": "hermes-gateway-v1",
+      "running": false,
+      "execution_generation": 1,
+      "revision": 1
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 12
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "sessions.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "platforms.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,892 @@
+{
+ "$comment": "Ported from spike/hermes src/hermes/fixtures/s4f-viewer-resume.json (port-spike.ts), redacted.",
+ "hermes": "c314285f07",
+ "frames": [
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "gateway.ready",
+     "payload": {
+      "skin": "<omitted>",
+      "change_events": true,
+      "heartbeat": true,
+      "replay_epoch": "16dd15a214f2482082afc1e33bda82df",
+      "session_authority": true
+     }
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "session.list",
+    "params": {
+     "profile": "default",
+     "scope": "stored",
+     "limit": 50
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+     "sessions": [
+      {
+       "id": "local-be3ff38f655f05007a3a77af32ee72be9ddfb0b7030034803fc3c2f87c70476b",
+       "session_id": "local-be3ff38f655f05007a3a77af32ee72be9ddfb0b7030034803fc3c2f87c70476b",
+       "resolved_id": "local-be3ff38f655f05007a3a77af32ee72be9ddfb0b7030034803fc3c2f87c70476b",
+       "title": "[bb-spike] T1 editor MCP",
+       "source": "local",
+       "started_at": 1793807393.988142,
+       "message_count": 8,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "local-7ee57fc8b209b767ee77a20e39cfd1e698fc55a3e7275a977ba96576e6ee5492",
+       "session_id": "local-7ee57fc8b209b767ee77a20e39cfd1e698fc55a3e7275a977ba96576e6ee5492",
+       "resolved_id": "local-7ee57fc8b209b767ee77a20e39cfd1e698fc55a3e7275a977ba96576e6ee5492",
+       "title": "<title>",
+       "source": "local",
+       "started_at": 1793802788.101641,
+       "message_count": 19,
+       "model": "gpt-6.1-terra",
+       "running": false
+      },
+      {
+       "id": "local-c20accffa5e8eaac4a2df2074e0dc927ad5cfdf53b6d7ffba47b5adf03f3e0f9",
+       "session_id": "local-c20accffa5e8eaac4a2df2074e0dc927ad5cfdf53b6d7ffba47b5adf03f3e0f9",
+       "resolved_id": "local-c20accffa5e8eaac4a2df2074e0dc927ad5cfdf53b6d7ffba47b5adf03f3e0f9",
+       "title": "<title>",
+       "source": "tui",
+       "started_at": 1793802469.756881,
+       "message_count": 0,
+       "model": "gpt-6.1-terra",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_38",
+       "session_id": "$HERMES_SESSION_38",
+       "resolved_id": "$HERMES_SESSION_38",
+       "title": "<title>",
+       "source": "desktop",
+       "started_at": 1793795171.4189591,
+       "message_count": 6,
+       "model": "gpt-6.1-terra",
+       "running": false
+      },
+      {
+       "id": "local-40262e72eb7a1e7187defb1292ebb8b4fdaa5799207120e3cc2bfaf1ea01385b",
+       "session_id": "local-40262e72eb7a1e7187defb1292ebb8b4fdaa5799207120e3cc2bfaf1ea01385b",
+       "resolved_id": "local-40262e72eb7a1e7187defb1292ebb8b4fdaa5799207120e3cc2bfaf1ea01385b",
+       "title": "<title>",
+       "source": "cron",
+       "started_at": 1793767555.811765,
+       "message_count": 10,
+       "model": "gpt-6.1-terra",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_37",
+       "session_id": "$HERMES_SESSION_37",
+       "resolved_id": "$HERMES_SESSION_37",
+       "title": "<title>",
+       "source": "desktop",
+       "started_at": 1793764017.257045,
+       "message_count": 21,
+       "model": "gpt-6.1-sol",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_34",
+       "session_id": "$HERMES_SESSION_34",
+       "resolved_id": "$HERMES_SESSION_34",
+       "title": "<title>",
+       "source": "desktop",
+       "started_at": 1793734279.852823,
+       "message_count": 8,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "local-ffb7e69a274e2228d117c81d74258f767b005fcd37e2df14e3dc712f15b8d828",
+       "session_id": "local-ffb7e69a274e2228d117c81d74258f767b005fcd37e2df14e3dc712f15b8d828",
+       "resolved_id": "local-ffb7e69a274e2228d117c81d74258f767b005fcd37e2df14e3dc712f15b8d828",
+       "title": "<title>",
+       "source": "local",
+       "started_at": 1793727934.006449,
+       "message_count": 48,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "local-b5ba0715df23fd7e8c70537a4165c2bcdaf019ed7143ba0e2f6524e8bab36170",
+       "session_id": "local-b5ba0715df23fd7e8c70537a4165c2bcdaf019ed7143ba0e2f6524e8bab36170",
+       "resolved_id": "local-b5ba0715df23fd7e8c70537a4165c2bcdaf019ed7143ba0e2f6524e8bab36170",
+       "title": "<title>",
+       "source": "local",
+       "started_at": 1793676300.877834,
+       "message_count": 79,
+       "model": "claude-opus-5-5",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_33",
+       "session_id": "$HERMES_SESSION_33",
+       "resolved_id": "$HERMES_SESSION_33",
+       "title": "<title>",
+       "source": "discord",
+       "started_at": 1793502203.161403,
+       "message_count": 80,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "local-c36b2ad1898dc5e682f4274fd2c89982ffda9fdac15f463961c4f419dd1e48e4",
+       "session_id": "local-c36b2ad1898dc5e682f4274fd2c89982ffda9fdac15f463961c4f419dd1e48e4",
+       "resolved_id": "local-c36b2ad1898dc5e682f4274fd2c89982ffda9fdac15f463961c4f419dd1e48e4",
+       "title": "<title>",
+       "source": "local",
+       "started_at": 1793576043.970281,
+       "message_count": 5,
+       "model": "claude-opus-5-5",
+       "running": false
+      },
+      {
+       "id": "local-3a47a4a52bbe54589561b8c18662fc420ab0ebb0f36aa217f2fcd5fdd9062616",
+       "session_id": "local-3a47a4a52bbe54589561b8c18662fc420ab0ebb0f36aa217f2fcd5fdd9062616",
+       "resolved_id": "local-3a47a4a52bbe54589561b8c18662fc420ab0ebb0f36aa217f2fcd5fdd9062616",
+       "title": "<title>",
+       "source": "local",
+       "started_at": 1793544366.900631,
+       "message_count": 35,
+       "model": "claude-opus-5-5",
+       "running": false
+      },
+      {
+       "id": "local-bc687a4c747556546df8e39663a1c69521195ccbd6618ebef997b8ff79ffd9b3",
+       "session_id": "local-bc687a4c747556546df8e39663a1c69521195ccbd6618ebef997b8ff79ffd9b3",
+       "resolved_id": "local-bc687a4c747556546df8e39663a1c69521195ccbd6618ebef997b8ff79ffd9b3",
+       "title": "<title>",
+       "source": "local",
+       "started_at": 1793387305.554104,
+       "message_count": 2,
+       "model": "claude-haiku-5-5",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_32",
+       "session_id": "$HERMES_SESSION_32",
+       "resolved_id": "$HERMES_SESSION_32",
+       "title": "<title>",
+       "source": "discord",
+       "started_at": 1792898132.9949691,
+       "message_count": 67,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "local-62b15fb4d48a6970389e3f54c1fbea4e0246853b8e04d87dd4f3f52bd8bbb19f",
+       "session_id": "local-62b15fb4d48a6970389e3f54c1fbea4e0246853b8e04d87dd4f3f52bd8bbb19f",
+       "resolved_id": "local-62b15fb4d48a6970389e3f54c1fbea4e0246853b8e04d87dd4f3f52bd8bbb19f",
+       "title": "<title>",
+       "source": "cron",
+       "started_at": 1793160025.503686,
+       "message_count": 22,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "local-6b60cf72c154897553b691accfad18f9a198efe725a71cb7c80a004166b27b4d",
+       "session_id": "local-6b60cf72c154897553b691accfad18f9a198efe725a71cb7c80a004166b27b4d",
+       "resolved_id": "local-6b60cf72c154897553b691accfad18f9a198efe725a71cb7c80a004166b27b4d",
+       "title": "<title>",
+       "source": "cron",
+       "started_at": 1793073625.655674,
+       "message_count": 31,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "local-a98c0a6eefcf85364e7bdd98d1e2d518b9ac943219591e4af603d1e7c593e0f1",
+       "session_id": "local-a98c0a6eefcf85364e7bdd98d1e2d518b9ac943219591e4af603d1e7c593e0f1",
+       "resolved_id": "local-a98c0a6eefcf85364e7bdd98d1e2d518b9ac943219591e4af603d1e7c593e0f1",
+       "title": "<title>",
+       "source": "cron",
+       "started_at": 1792987225.775122,
+       "message_count": 54,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "local-bc2f7c2f03609e7693ac20df9c81716245fcd168b449a4c41936a7c7f605d0b8",
+       "session_id": "local-bc2f7c2f03609e7693ac20df9c81716245fcd168b449a4c41936a7c7f605d0b8",
+       "resolved_id": "local-bc2f7c2f03609e7693ac20df9c81716245fcd168b449a4c41936a7c7f605d0b8",
+       "title": "<title>",
+       "source": "local",
+       "started_at": 1792933023.77334,
+       "message_count": 50,
+       "model": "claude-opus-5-5",
+       "running": false
+      },
+      {
+       "id": "local-06fb1e54a443393b37220d93e851014a3968bef85ebcc1ecc10683974f3a7f65",
+       "session_id": "local-06fb1e54a443393b37220d93e851014a3968bef85ebcc1ecc10683974f3a7f65",
+       "resolved_id": "local-06fb1e54a443393b37220d93e851014a3968bef85ebcc1ecc10683974f3a7f65",
+       "title": "<title>",
+       "source": "local",
+       "started_at": 1792932932.409469,
+       "message_count": 6,
+       "model": "gpt-6.1-sol",
+       "running": false
+      },
+      {
+       "id": "local-7749f800a1608b3f1fac9ff162e2caeaa50ff3ed18a0dd50e179dc2a77d7d229",
+       "session_id": "local-7749f800a1608b3f1fac9ff162e2caeaa50ff3ed18a0dd50e179dc2a77d7d229",
+       "resolved_id": "local-7749f800a1608b3f1fac9ff162e2caeaa50ff3ed18a0dd50e179dc2a77d7d229",
+       "title": "<title>",
+       "source": "cron",
+       "started_at": 1792900842.921311,
+       "message_count": 40,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "local-a85513e0651a9cb43ac5cb6056c0b002007f1851a715116c38663b382c5a1c81",
+       "session_id": "local-a85513e0651a9cb43ac5cb6056c0b002007f1851a715116c38663b382c5a1c81",
+       "resolved_id": "local-a85513e0651a9cb43ac5cb6056c0b002007f1851a715116c38663b382c5a1c81",
+       "title": "<title>",
+       "source": "local",
+       "started_at": 1792897757.839411,
+       "message_count": 2,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "local-c716e797156c6f7d1b515fd2ebdf87a4527e20ec06204cf895445fa6f8ffb3d6",
+       "session_id": "local-c716e797156c6f7d1b515fd2ebdf87a4527e20ec06204cf895445fa6f8ffb3d6",
+       "resolved_id": "local-c716e797156c6f7d1b515fd2ebdf87a4527e20ec06204cf895445fa6f8ffb3d6",
+       "title": "<title>",
+       "source": "local",
+       "started_at": 1792791837.66207,
+       "message_count": 30,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_31",
+       "session_id": "$HERMES_SESSION_31",
+       "resolved_id": "$HERMES_SESSION_31",
+       "title": "<title>",
+       "source": "desktop",
+       "started_at": 1792791516.781999,
+       "message_count": 22,
+       "model": "gpt-6-luna",
+       "running": false
+      },
+      {
+       "id": "local-6b0c2a153070f0ec2ba673f0791f006d7b44ad14360b2e36e3a3a5710a360cab",
+       "session_id": "local-6b0c2a153070f0ec2ba673f0791f006d7b44ad14360b2e36e3a3a5710a360cab",
+       "resolved_id": "local-6b0c2a153070f0ec2ba673f0791f006d7b44ad14360b2e36e3a3a5710a360cab",
+       "title": "<title>",
+       "source": "local",
+       "started_at": 1792617277.655563,
+       "message_count": 18,
+       "model": "claude-opus-5-5",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_30",
+       "session_id": "$HERMES_SESSION_30",
+       "resolved_id": "$HERMES_SESSION_30",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1792608017.3592849,
+       "message_count": 2,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_29",
+       "session_id": "$HERMES_SESSION_29",
+       "resolved_id": "$HERMES_SESSION_29",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1792608012.998456,
+       "message_count": 2,
+       "model": "gpt-6.1-sol",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_28",
+       "session_id": "$HERMES_SESSION_28",
+       "resolved_id": "$HERMES_SESSION_28",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1792607390.228672,
+       "message_count": 2,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_27",
+       "session_id": "$HERMES_SESSION_27",
+       "resolved_id": "$HERMES_SESSION_27",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1792607385.703542,
+       "message_count": 2,
+       "model": "claude-opus-5-5",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_26",
+       "session_id": "$HERMES_SESSION_26",
+       "resolved_id": "$HERMES_SESSION_26",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1792607381.544117,
+       "message_count": 2,
+       "model": "claude-haiku-5-5",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_25",
+       "session_id": "$HERMES_SESSION_25",
+       "resolved_id": "$HERMES_SESSION_25",
+       "title": "<title>",
+       "source": "discord",
+       "started_at": 1792462514.398457,
+       "message_count": 22,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_24",
+       "session_id": "$HERMES_SESSION_24",
+       "resolved_id": "$HERMES_SESSION_24",
+       "title": "<title>",
+       "source": "discord",
+       "started_at": 1789525894.436936,
+       "message_count": 9,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_23",
+       "session_id": "$HERMES_SESSION_23",
+       "resolved_id": "$HERMES_SESSION_23",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1789155401.82415,
+       "message_count": 4,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_22",
+       "session_id": "$HERMES_SESSION_22",
+       "resolved_id": "$HERMES_SESSION_22",
+       "title": "<title>",
+       "source": "discord",
+       "started_at": 1789094483.358637,
+       "message_count": 19,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_21",
+       "session_id": "$HERMES_SESSION_21",
+       "resolved_id": "$HERMES_SESSION_21",
+       "title": "<title>",
+       "source": "discord",
+       "started_at": 1788922275.694268,
+       "message_count": 25,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_19",
+       "session_id": "$HERMES_SESSION_19",
+       "resolved_id": "$HERMES_SESSION_19",
+       "title": "<title>",
+       "source": "discord",
+       "started_at": 1788404553.79894,
+       "message_count": 16,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_18",
+       "session_id": "$HERMES_SESSION_18",
+       "resolved_id": "$HERMES_SESSION_18",
+       "title": "<title>",
+       "source": "discord",
+       "started_at": 1788317074.490748,
+       "message_count": 13,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_17",
+       "session_id": "$HERMES_SESSION_17",
+       "resolved_id": "$HERMES_SESSION_17",
+       "title": "<title>",
+       "source": "discord",
+       "started_at": 1788233595.581114,
+       "message_count": 10,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_16",
+       "session_id": "$HERMES_SESSION_16",
+       "resolved_id": "$HERMES_SESSION_16",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1788050489.365607,
+       "message_count": 2,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_15",
+       "session_id": "$HERMES_SESSION_15",
+       "resolved_id": "$HERMES_SESSION_15",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1788050461.418137,
+       "message_count": 2,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_14",
+       "session_id": "$HERMES_SESSION_14",
+       "resolved_id": "$HERMES_SESSION_14",
+       "title": "<title>",
+       "source": "desktop",
+       "started_at": 1788045774.1318731,
+       "message_count": 18,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_13",
+       "session_id": "$HERMES_SESSION_13",
+       "resolved_id": "$HERMES_SESSION_13",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1787961547.5421572,
+       "message_count": 2,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_12",
+       "session_id": "$HERMES_SESSION_12",
+       "resolved_id": "$HERMES_SESSION_12",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1787957840.499619,
+       "message_count": 2,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_11",
+       "session_id": "$HERMES_SESSION_11",
+       "resolved_id": "$HERMES_SESSION_11",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1787953715.9036858,
+       "message_count": 2,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_10",
+       "session_id": "$HERMES_SESSION_10",
+       "resolved_id": "$HERMES_SESSION_10",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1787952369.985173,
+       "message_count": 2,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_09",
+       "session_id": "$HERMES_SESSION_09",
+       "resolved_id": "$HERMES_SESSION_09",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1787950538.7958322,
+       "message_count": 2,
+       "model": "mlx_main",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_08",
+       "session_id": "$HERMES_SESSION_08",
+       "resolved_id": "$HERMES_SESSION_08",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1787917874.300375,
+       "message_count": 4,
+       "model": "sonnet",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_07",
+       "session_id": "$HERMES_SESSION_07",
+       "resolved_id": "$HERMES_SESSION_07",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1787917849.9222348,
+       "message_count": 4,
+       "model": "sonnet",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_06",
+       "session_id": "$HERMES_SESSION_06",
+       "resolved_id": "$HERMES_SESSION_06",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1787917820.3520808,
+       "message_count": 6,
+       "model": "sonnet",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_05",
+       "session_id": "$HERMES_SESSION_05",
+       "resolved_id": "$HERMES_SESSION_05",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1787917785.5638232,
+       "message_count": 2,
+       "model": "fable",
+       "running": false
+      },
+      {
+       "id": "$HERMES_SESSION_04",
+       "session_id": "$HERMES_SESSION_04",
+       "resolved_id": "$HERMES_SESSION_04",
+       "title": "<title>",
+       "source": "cli",
+       "started_at": 1787786574.2978408,
+       "message_count": 2,
+       "model": "mlx_main",
+       "running": false
+      }
+     ],
+     "scope": "stored"
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "session.resume",
+    "params": {
+     "profile": "default",
+     "session_id": "$HERMES_SESSION_38",
+     "omit_messages": true
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+     "session_id": "$HERMES_SESSION_38",
+     "stored_session_id": "$HERMES_SESSION_38",
+     "messages": [],
+     "messages_omitted": true,
+     "message_count": 6,
+     "todo_state": null,
+     "running": false,
+     "authority_epoch": 30,
+     "replay_epoch": "3bde157a7a154a758d1f8532d8016c37",
+     "last_sequence": 0,
+     "subscription_id": "a0e9a154d859460c853c756998224422",
+     "revision": 4,
+     "execution_generation": 3,
+     "pending": [],
+     "prompts": [],
+     "info": {
+      "tools": "<omitted>",
+      "skills": "<omitted>",
+      "mcp_servers": "<omitted>",
+      "version": "0.22.6",
+      "release_date": "2026.9.24",
+      "update_behind": 0,
+      "update_command": "hermes update",
+      "branch": "",
+      "project": null,
+      "provider": "openai-codex",
+      "enabled_toolsets": "<omitted>",
+      "tool_availability": "<omitted>",
+      "source": "gui",
+      "model": "gpt-6.1-terra",
+      "lazy": true,
+      "profile_id": "~/.hermes",
+      "desktop_protocol": "hermes-gateway-v1",
+      "profile_name": "default",
+      "cwd": "~/src",
+      "reasoning_effort": "medium",
+      "reasoning_effort_wire": "medium",
+      "service_tier": "",
+      "fast": false,
+      "launch_request": {
+       "model": "gpt-6.1-terra",
+       "source": "gui"
+      },
+      "title": "<title>",
+      "started_at": 1793795171.4189591,
+      "last_active_at": 1793797203.3588312,
+      "yolo": false,
+      "api_mode": "codex_responses",
+      "tool_count": 21,
+      "credential_hint": null,
+      "usage": {
+       "model": "gpt-6.1-terra",
+       "input": 49086,
+       "output": 58,
+       "reasoning": 0,
+       "prompt": 49086,
+       "completion": 58,
+       "total": 49144,
+       "calls": 3
+      }
+     },
+     "pending_connection": null,
+     "open_requests": []
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "session.list",
+    "params": {
+     "profile": "alex",
+     "title": "Bot Chat",
+     "include_hidden": true
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "result": {
+     "sessions": [
+      {
+       "session_id": "$HERMES_SESSION_20",
+       "id": "$HERMES_SESSION_20",
+       "resolved_id": "$HERMES_SESSION_20",
+       "title": "Bot Chat",
+       "root_title": "Bot Chat",
+       "source": "tui",
+       "started_at": 1788748970.3644989,
+       "message_count": 6,
+       "running": true
+      }
+     ],
+     "scope": "stored"
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "session.resume",
+    "params": {
+     "profile": "alex",
+     "session_id": "$HERMES_SESSION_20",
+     "omit_messages": true
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "result": {
+     "session_id": "$HERMES_SESSION_20",
+     "stored_session_id": "$HERMES_SESSION_20",
+     "messages": [],
+     "messages_omitted": true,
+     "message_count": 6,
+     "todo_state": null,
+     "running": false,
+     "authority_epoch": 27,
+     "replay_epoch": "1cd974e8ecbb444fa56609b94f8e50e0",
+     "last_sequence": 0,
+     "subscription_id": "b6e6ca00de4443e584513813ca546c71",
+     "revision": 0,
+     "execution_generation": 0,
+     "pending": [],
+     "prompts": [],
+     "info": {
+      "tools": "<omitted>",
+      "skills": "<omitted>",
+      "mcp_servers": "<omitted>",
+      "version": "0.22.6",
+      "release_date": "2026.9.24",
+      "update_behind": 0,
+      "update_command": "hermes update",
+      "branch": "",
+      "project": null,
+      "provider": "mlx-main",
+      "enabled_toolsets": "<omitted>",
+      "tool_availability": "<omitted>",
+      "source": "tui",
+      "model": "mlx_main",
+      "lazy": true,
+      "profile_id": "~/.hermes/profiles/alex",
+      "desktop_protocol": "hermes-gateway-v1",
+      "profile_name": "alex",
+      "cwd": "~/Documents/$OBSIDIAN_VAULT",
+      "reasoning_effort": "medium",
+      "reasoning_effort_wire": "medium",
+      "service_tier": "",
+      "fast": false,
+      "launch_request": {
+       "cwd": "~/Documents/$OBSIDIAN_VAULT",
+       "follow_profile_config": true,
+       "source": "tui"
+      },
+      "title": "Bot Chat",
+      "started_at": 1788748970.3644989,
+      "last_active_at": 1793714511.4355352,
+      "yolo": false,
+      "api_mode": null,
+      "tool_count": 21,
+      "credential_hint": null,
+      "usage": {
+       "model": "mlx_main",
+       "input": 17858,
+       "output": 556,
+       "reasoning": 204,
+       "prompt": 52603,
+       "completion": 556,
+       "total": 18414,
+       "calls": 3,
+       "cache_hit_pct": 66
+      }
+     },
+     "pending_connection": null,
+     "open_requests": []
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "sessions.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "platforms.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "sessions.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "session.detach",
+    "params": {
+     "profile": "default",
+     "session_id": "$HERMES_SESSION_38",
+     "subscription_id": "a0e9a154d859460c853c756998224422"
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "result": {
+     "session_id": "$HERMES_SESSION_38",
+     "subscription_id": "a0e9a154d859460c853c756998224422",
+     "detached": true
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "session.detach",
+    "params": {
+     "profile": "alex",
+     "session_id": "$HERMES_SESSION_20",
+     "subscription_id": "b6e6ca00de4443e584513813ca546c71"
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "result": {
+     "session_id": "$HERMES_SESSION_20",
+     "subscription_id": "b6e6ca00de4443e584513813ca546c71",
+     "detached": true
+    }
+   }
+  }
+ ]
+}

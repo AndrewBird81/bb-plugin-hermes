@@ -1,0 +1,828 @@
+{
+ "$comment": "Ported from spike/hermes src/hermes/fixtures/s4d-steer-interrupt.json (port-spike.ts), redacted.",
+ "hermes": "c314285f07",
+ "frames": [
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "gateway.ready",
+     "payload": {
+      "skin": "<omitted>",
+      "change_events": true,
+      "heartbeat": true,
+      "replay_epoch": "16dd15a214f2482082afc1e33bda82df",
+      "session_authority": true
+     }
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "session.resume",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "omit_messages": true
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "stored_session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "messages": [],
+     "messages_omitted": true,
+     "message_count": 6,
+     "todo_state": null,
+     "running": false,
+     "authority_epoch": 30,
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "last_sequence": 35,
+     "subscription_id": "1b4ddd55753a49ada199d73fd757b1e3",
+     "revision": 2,
+     "execution_generation": 2,
+     "pending": [],
+     "prompts": [],
+     "info": {
+      "tools": "<omitted>",
+      "skills": "<omitted>",
+      "mcp_servers": "<omitted>",
+      "version": "0.22.6",
+      "release_date": "2026.9.24",
+      "update_behind": 0,
+      "update_command": "hermes update",
+      "branch": "",
+      "project": null,
+      "provider": "custom:mlx-main",
+      "system_prompt": "<omitted>",
+      "context_length": 262144,
+      "enabled_toolsets": "<omitted>",
+      "tool_availability": "<omitted>",
+      "tool_availability_warnings": "<omitted>",
+      "unknown_toolsets": "<omitted>",
+      "source": "cli",
+      "model": "mlx_main",
+      "lazy": false,
+      "profile_id": "~/.hermes",
+      "desktop_protocol": "hermes-gateway-v1",
+      "profile_name": "default",
+      "cwd": "/private/tmp/bb-spike",
+      "reasoning_effort": "medium",
+      "reasoning_effort_wire": "medium",
+      "service_tier": "",
+      "fast": false,
+      "launch_request": {
+       "cwd": "/private/tmp/bb-spike",
+       "model": "mlx_main",
+       "provider": "mlx-main",
+       "source": "cli"
+      },
+      "title": "[bb-spike] S4b stream",
+      "started_at": 1793807334.248571,
+      "last_active_at": 1793807495.799063,
+      "yolo": false,
+      "api_mode": "chat_completions",
+      "tool_count": 21,
+      "credential_hint": "<omitted>",
+      "usage": {
+       "model": "mlx_main",
+       "input": 156,
+       "output": 105,
+       "reasoning": 58,
+       "prompt": 32807,
+       "completion": 105,
+       "total": 32912,
+       "calls": 2,
+       "context_used": 16476,
+       "context_max": 262144,
+       "context_percent": 6,
+       "context_source": "provider_usage",
+       "context_estimated": false,
+       "compressions": 0,
+       "cache_hit_pct": 100,
+       "avg_latency_s": 1.1,
+       "avg_tps": 50,
+       "active_subagents": 0
+      }
+     },
+     "pending_connection": null,
+     "open_requests": []
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "session.steer",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "execution_generation": 2,
+     "text": "noop"
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "error": {
+     "code": 4001,
+     "message": "stale_generation",
+     "data": {
+      "reason": "stale_generation"
+     }
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "prompt.submit",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "submission_id": "ce57d5eb-622e-4424-91a8-af4f43a110a7",
+     "text": "Use the terminal tool to run exactly: sleep 30 && echo slept . Then reply with its output."
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "result": {
+     "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+     "ref": {
+      "profile_id": "~/.hermes",
+      "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0"
+     },
+     "sequence": 60,
+     "status": "queued",
+     "outcome": null,
+     "authority_epoch": 30,
+     "execution_generation": null
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "session.info",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "stored_session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+      "pending": [
+       {
+        "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+        "ref": {
+         "profile_id": "~/.hermes",
+         "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0"
+        },
+        "sequence": 60,
+        "status": "queued",
+        "outcome": null,
+        "authority_epoch": 30,
+        "execution_generation": null,
+        "input_id": "ce57d5eb-622e-4424-91a8-af4f43a110a7",
+        "text": "Use the terminal tool to run exactly: sleep 30 && echo slept . Then reply with its output.",
+        "controls": [
+         "steer",
+         "replace"
+        ],
+        "steering": false
+       }
+      ],
+      "authority_epoch": 30,
+      "desktop_protocol": "hermes-gateway-v1",
+      "running": false,
+      "execution_generation": 2,
+      "revision": 2
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 36
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 3,
+     "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+     "type": "message.start",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {},
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 37
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 3,
+     "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+     "type": "session.info",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "stored_session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+      "pending": [
+       {
+        "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+        "ref": {
+         "profile_id": "~/.hermes",
+         "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0"
+        },
+        "sequence": 60,
+        "status": "started",
+        "outcome": null,
+        "authority_epoch": 30,
+        "execution_generation": 3,
+        "input_id": "ce57d5eb-622e-4424-91a8-af4f43a110a7",
+        "text": "Use the terminal tool to run exactly: sleep 30 && echo slept . Then reply with its output.",
+        "controls": [],
+        "steering": false
+       }
+      ],
+      "authority_epoch": 30,
+      "desktop_protocol": "hermes-gateway-v1",
+      "running": true,
+      "execution_generation": 3,
+      "revision": 2
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 38
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 3,
+     "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+     "type": "agent.step",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "iteration": 1
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 39
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 3,
+     "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+     "type": "thinking.delta",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": "(¬‿¬) ruminating..."
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 40
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "sessions.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 3,
+     "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+     "type": "thinking.delta",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": ""
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 41
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "platforms.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 3,
+     "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+     "type": "tool.generating",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "name": "terminal"
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 42
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 3,
+     "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+     "type": "thinking.delta",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": ""
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 43
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 3,
+     "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+     "type": "message.delta",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": null
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 44
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 3,
+     "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+     "type": "tool.start",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "tool_id": "call_a49e4769",
+      "name": "terminal",
+      "context": "sleep 30 + 1 command",
+      "tool_call_id": "call_a49e4769",
+      "tool_name": "terminal",
+      "args": {
+       "command": "sleep 30 && echo slept"
+      }
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 45
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "session.steer",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "execution_generation": 3,
+     "text": "Also include the word banana in your final reply."
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "result": {
+     "status": "queued",
+     "text": "Also include the word banana in your final reply.",
+     "execution_generation": 3,
+     "authority_epoch": 30
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "session.interrupt",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "execution_generation": 2
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "error": {
+     "code": 4001,
+     "message": "stale_generation",
+     "data": {
+      "reason": "stale_generation"
+     }
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "sessions.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "session.interrupt",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "execution_generation": 3
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "result": {
+     "ref": {
+      "profile_id": "~/.hermes",
+      "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0"
+     },
+     "instance_id": "2850fe5079b8433c95651572b37b3969",
+     "authority_epoch": 30,
+     "revision": 2,
+     "execution_generation": 3,
+     "execution_state": "running"
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 3,
+     "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+     "type": "tool.complete",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "tool_id": "call_a49e4769",
+      "name": "terminal",
+      "context": "sleep 30 + 1 command",
+      "tool_call_id": "call_a49e4769",
+      "tool_name": "terminal",
+      "args": {
+       "command": "sleep 30 && echo slept"
+      },
+      "is_error": true,
+      "result": "{\"output\": \"[Command interrupted]\", \"exit_code\": 130, \"error\": null}",
+      "duration_s": 2.247574375011027,
+      "inline_diff": null
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 46
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 3,
+     "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+     "type": "session.usage",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "usage": {
+       "model": "mlx_main",
+       "input": 213,
+       "output": 182,
+       "reasoning": 103,
+       "prompt": 49335,
+       "completion": 182,
+       "total": 49517,
+       "calls": 3,
+       "context_used": 16528,
+       "context_max": 262144,
+       "context_percent": 6,
+       "context_source": "provider_usage",
+       "context_estimated": false,
+       "compressions": 0,
+       "cache_hit_pct": 100,
+       "avg_latency_s": 1.1,
+       "avg_tps": 56,
+       "active_subagents": 0
+      },
+      "input_tokens": 213,
+      "output_tokens": 182,
+      "cache_read_tokens": 49122,
+      "cache_write_tokens": 0,
+      "prompt_tokens": 49335,
+      "completion_tokens": 182,
+      "total_tokens": 49517,
+      "reasoning_tokens": 103,
+      "api_calls": 3,
+      "last_prompt_tokens": 16528,
+      "context_tokens": 16772,
+      "context_length": 262144,
+      "config_context_length": 262144,
+      "context_source": "provider_usage",
+      "compression_count": 0,
+      "avg_latency_s": 1.08,
+      "tokens_per_s": 55.96,
+      "last_turn_tokens": 77,
+      "rate_limit": null,
+      "active_subagents": 0,
+      "model": "mlx_main",
+      "provider": "custom",
+      "fallback_model": null
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 47
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 3,
+     "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+     "type": "session.info",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "provider": "custom:mlx-main",
+      "tools": "<omitted>",
+      "system_prompt": "<omitted>",
+      "context_length": 262144,
+      "source": "cli",
+      "model": "mlx_main",
+      "lazy": false,
+      "profile_id": "~/.hermes",
+      "desktop_protocol": "hermes-gateway-v1",
+      "profile_name": "default",
+      "cwd": "/private/tmp/bb-spike",
+      "reasoning_effort": "medium",
+      "reasoning_effort_wire": "medium",
+      "service_tier": "",
+      "fast": false,
+      "launch_request": {
+       "cwd": "/private/tmp/bb-spike",
+       "model": "mlx_main",
+       "provider": "mlx-main",
+       "source": "cli"
+      },
+      "title": "[bb-spike] S4b stream",
+      "started_at": 1793807334.248571,
+      "last_active_at": 1793807495.799063,
+      "yolo": false,
+      "api_mode": "chat_completions",
+      "tool_count": 21,
+      "credential_hint": "<omitted>"
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 48
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 3,
+     "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+     "type": "message.complete",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": "",
+      "content": "",
+      "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+      "outcome": "cancelled",
+      "status": "interrupted",
+      "usage": {
+       "model": "mlx_main",
+       "input": 213,
+       "output": 182,
+       "reasoning": 103,
+       "prompt": 49335,
+       "completion": 182,
+       "total": 49517,
+       "calls": 3,
+       "context_used": 16528,
+       "context_max": 262144,
+       "context_percent": 6,
+       "context_source": "provider_usage",
+       "context_estimated": false,
+       "compressions": 0,
+       "cache_hit_pct": 100,
+       "avg_latency_s": 1.1,
+       "avg_tps": 56,
+       "active_subagents": 0
+      },
+      "persisted_turn": {
+       "row_ids": [
+        3176,
+        3177,
+        3178,
+        3179,
+        3180
+       ],
+       "complete": false,
+       "user_row_id": 3176,
+       "user_row_ids": [
+        3176,
+        3179
+       ],
+       "submission_id": "ce57d5eb-622e-4424-91a8-af4f43a110a7"
+      }
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 49
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "session.interrupt",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "execution_generation": 3
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 3,
+     "admission_id": "8ff26341dd8f453ea716b4f947aab20e",
+     "type": "session.info",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "stored_session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+      "pending": [],
+      "authority_epoch": 30,
+      "desktop_protocol": "hermes-gateway-v1",
+      "running": false,
+      "execution_generation": 3,
+      "revision": 3
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 50
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "result": {
+     "ref": {
+      "profile_id": "~/.hermes",
+      "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0"
+     },
+     "instance_id": "2850fe5079b8433c95651572b37b3969",
+     "authority_epoch": 30,
+     "revision": 3,
+     "execution_generation": 3,
+     "execution_state": "idle"
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "approval.respond",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "execution_generation": 3,
+     "prompt_id": "nope",
+     "choice": "once"
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "error": {
+     "code": 4001,
+     "message": "stale_generation",
+     "data": {
+      "reason": "stale_generation"
+     }
+    }
+   }
+  }
+ ]
+}

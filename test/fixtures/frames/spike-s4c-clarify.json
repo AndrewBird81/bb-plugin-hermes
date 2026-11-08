@@ -1,0 +1,916 @@
+{
+ "$comment": "Ported from spike/hermes src/hermes/fixtures/s4c-clarify.json (port-spike.ts), redacted.",
+ "hermes": "c314285f07",
+ "frames": [
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "gateway.ready",
+     "payload": {
+      "skin": "<omitted>",
+      "change_events": true,
+      "heartbeat": true,
+      "replay_epoch": "16dd15a214f2482082afc1e33bda82df",
+      "session_authority": true
+     }
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "session.resume",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "omit_messages": true
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "stored_session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "messages": [],
+     "messages_omitted": true,
+     "message_count": 2,
+     "todo_state": null,
+     "running": false,
+     "authority_epoch": 30,
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "last_sequence": 12,
+     "subscription_id": "a3580c5f035d47cdbab376ff14ee3378",
+     "revision": 1,
+     "execution_generation": 1,
+     "pending": [],
+     "prompts": [],
+     "info": {
+      "tools": "<omitted>",
+      "skills": "<omitted>",
+      "mcp_servers": "<omitted>",
+      "version": "0.22.6",
+      "release_date": "2026.9.24",
+      "update_behind": 0,
+      "update_command": "hermes update",
+      "branch": "",
+      "project": null,
+      "provider": "custom:mlx-main",
+      "system_prompt": "<omitted>",
+      "context_length": 262144,
+      "enabled_toolsets": "<omitted>",
+      "tool_availability": "<omitted>",
+      "tool_availability_warnings": "<omitted>",
+      "unknown_toolsets": "<omitted>",
+      "source": "cli",
+      "model": "mlx_main",
+      "lazy": false,
+      "profile_id": "~/.hermes",
+      "desktop_protocol": "hermes-gateway-v1",
+      "profile_name": "default",
+      "cwd": "/private/tmp/bb-spike",
+      "reasoning_effort": "medium",
+      "reasoning_effort_wire": "medium",
+      "service_tier": "",
+      "fast": false,
+      "launch_request": {
+       "cwd": "/private/tmp/bb-spike",
+       "model": "mlx_main",
+       "provider": "mlx-main",
+       "source": "cli"
+      },
+      "title": "[bb-spike] S4b stream",
+      "started_at": 1793807334.248571,
+      "last_active_at": 1793807334.435818,
+      "yolo": false,
+      "api_mode": "chat_completions",
+      "tool_count": 21,
+      "credential_hint": "<omitted>",
+      "usage": {
+       "model": "mlx_main",
+       "input": 8080,
+       "output": 17,
+       "reasoning": 15,
+       "prompt": 16272,
+       "completion": 17,
+       "total": 16289,
+       "calls": 1,
+       "context_used": 16272,
+       "context_max": 262144,
+       "context_percent": 6,
+       "context_source": "provider_usage",
+       "context_estimated": false,
+       "compressions": 0,
+       "cache_hit_pct": 50,
+       "avg_latency_s": 4.5,
+       "avg_tps": 3.8,
+       "active_subagents": 0
+      }
+     },
+     "pending_connection": null,
+     "open_requests": []
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "prompt.submit",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "submission_id": "d4650895-dc34-4572-b32e-adac20cea35f",
+     "text": "Use the clarify tool to ask me one question: \"red or blue?\" with exactly the choices red and blue. Then reply with only my answer."
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "ref": {
+      "profile_id": "~/.hermes",
+      "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0"
+     },
+     "sequence": 59,
+     "status": "queued",
+     "outcome": null,
+     "authority_epoch": 30,
+     "execution_generation": null
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "session.info",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "stored_session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+      "pending": [
+       {
+        "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+        "ref": {
+         "profile_id": "~/.hermes",
+         "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0"
+        },
+        "sequence": 59,
+        "status": "queued",
+        "outcome": null,
+        "authority_epoch": 30,
+        "execution_generation": null,
+        "input_id": "d4650895-dc34-4572-b32e-adac20cea35f",
+        "text": "Use the clarify tool to ask me one question: \"red or blue?\" with exactly the choices red and blue. Then reply with only my answer.",
+        "controls": [
+         "steer",
+         "replace"
+        ],
+        "steering": false
+       }
+      ],
+      "authority_epoch": 30,
+      "desktop_protocol": "hermes-gateway-v1",
+      "running": false,
+      "execution_generation": 1,
+      "revision": 1
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 13
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "message.start",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {},
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 14
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "session.info",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "stored_session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+      "pending": [
+       {
+        "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+        "ref": {
+         "profile_id": "~/.hermes",
+         "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0"
+        },
+        "sequence": 59,
+        "status": "started",
+        "outcome": null,
+        "authority_epoch": 30,
+        "execution_generation": 2,
+        "input_id": "d4650895-dc34-4572-b32e-adac20cea35f",
+        "text": "Use the clarify tool to ask me one question: \"red or blue?\" with exactly the choices red and blue. Then reply with only my answer.",
+        "controls": [],
+        "steering": false
+       }
+      ],
+      "authority_epoch": 30,
+      "desktop_protocol": "hermes-gateway-v1",
+      "running": true,
+      "execution_generation": 2,
+      "revision": 1
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 15
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "agent.step",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "iteration": 1
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 16
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "thinking.delta",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": "◉_◉ musing..."
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 17
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "sessions.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "thinking.delta",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": ""
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 18
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "platforms.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "tool.generating",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "name": "clarify"
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 19
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "thinking.delta",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": ""
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 20
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "message.delta",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": null
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 21
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "tool.start",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "tool_id": "call_ef4690fc",
+      "name": "clarify",
+      "context": "red or blue?",
+      "tool_call_id": "call_ef4690fc",
+      "tool_name": "clarify",
+      "args": {
+       "questions": [
+        {
+         "question": "red or blue?",
+         "choices": [
+          "red",
+          "blue"
+         ]
+        }
+       ]
+      }
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 22
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "clarify.request",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "kind": "clarify",
+      "prompt_id": "0a71907598",
+      "execution_generation": 2,
+      "question": "red or blue?",
+      "choices": [
+       "red (Recommended)",
+       "blue"
+      ],
+      "multi_select": false,
+      "timeout_s": 600
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 23
+    }
+   }
+  },
+  {
+   "dir": "out",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "clarify.respond",
+    "params": {
+     "profile": "default",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "execution_generation": 2,
+     "prompt_id": "0a71907598",
+     "answer": "blue"
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "result": {
+     "status": "resolved",
+     "prompt_id": "0a71907598"
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "clarify.settled",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "prompt_id": "0a71907598",
+      "execution_generation": 2
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 24
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "sessions.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "tool.complete",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "tool_id": "call_ef4690fc",
+      "name": "clarify",
+      "context": "red or blue?",
+      "tool_call_id": "call_ef4690fc",
+      "tool_name": "clarify",
+      "args": {
+       "questions": [
+        {
+         "question": "red or blue?",
+         "choices": [
+          "red",
+          "blue"
+         ]
+        }
+       ]
+      },
+      "is_error": false,
+      "result": "{\"responses\": [{\"question\": \"red or blue?\", \"choices_offered\": [\"red\", \"blue\"], \"status\": \"answered\", \"user_response\": \"blue\"}], \"outcome\": \"submitted\"}",
+      "duration_s": 2.6550036668777466,
+      "inline_diff": null
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 25
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "agent.step",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "iteration": 2
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 26
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "session.usage",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "usage": {
+       "model": "mlx_main",
+       "input": 64,
+       "output": 87,
+       "reasoning": 42,
+       "prompt": 16331,
+       "completion": 87,
+       "total": 16418,
+       "calls": 1,
+       "context_used": 16331,
+       "context_max": 262144,
+       "context_percent": 6,
+       "context_source": "provider_usage",
+       "context_estimated": false,
+       "compressions": 0,
+       "cache_hit_pct": 100,
+       "avg_latency_s": 1.4,
+       "avg_tps": 62.8,
+       "active_subagents": 0
+      },
+      "input_tokens": 64,
+      "output_tokens": 87,
+      "cache_read_tokens": 16267,
+      "cache_write_tokens": 0,
+      "prompt_tokens": 16331,
+      "completion_tokens": 87,
+      "total_tokens": 16418,
+      "reasoning_tokens": 42,
+      "api_calls": 1,
+      "last_prompt_tokens": 16331,
+      "context_tokens": 16489,
+      "context_length": 262144,
+      "config_context_length": 262144,
+      "context_source": "provider_usage",
+      "compression_count": 0,
+      "avg_latency_s": 1.39,
+      "tokens_per_s": 62.75,
+      "last_turn_tokens": 87,
+      "rate_limit": null,
+      "active_subagents": 0,
+      "model": "mlx_main",
+      "provider": "custom",
+      "fallback_model": null
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 27
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "thinking.delta",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": "(◔_◔) cogitating..."
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 28
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "thinking.delta",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": ""
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 29
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "message.delta",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": "\n\n\n\nblue",
+      "turn_id": "447a4dbe1ee44958a46df1fb08a83e28",
+      "segment": 0,
+      "offset": 0
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 30
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "thinking.delta",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": ""
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 31
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "session.usage",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "usage": {
+       "model": "mlx_main",
+       "input": 156,
+       "output": 105,
+       "reasoning": 58,
+       "prompt": 32807,
+       "completion": 105,
+       "total": 32912,
+       "calls": 2,
+       "context_used": 16476,
+       "context_max": 262144,
+       "context_percent": 6,
+       "context_source": "provider_usage",
+       "context_estimated": false,
+       "compressions": 0,
+       "cache_hit_pct": 100,
+       "avg_latency_s": 1.1,
+       "avg_tps": 50,
+       "active_subagents": 0
+      },
+      "input_tokens": 156,
+      "output_tokens": 105,
+      "cache_read_tokens": 32651,
+      "cache_write_tokens": 0,
+      "prompt_tokens": 32807,
+      "completion_tokens": 105,
+      "total_tokens": 32912,
+      "reasoning_tokens": 58,
+      "api_calls": 2,
+      "last_prompt_tokens": 16476,
+      "context_tokens": 16536,
+      "context_length": 262144,
+      "config_context_length": 262144,
+      "context_source": "provider_usage",
+      "compression_count": 0,
+      "avg_latency_s": 1.05,
+      "tokens_per_s": 50.04,
+      "last_turn_tokens": 105,
+      "rate_limit": null,
+      "active_subagents": 0,
+      "model": "mlx_main",
+      "provider": "custom",
+      "fallback_model": null
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 32
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "session.info",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "provider": "custom:mlx-main",
+      "tools": "<omitted>",
+      "system_prompt": "<omitted>",
+      "context_length": 262144,
+      "source": "cli",
+      "model": "mlx_main",
+      "lazy": false,
+      "profile_id": "~/.hermes",
+      "desktop_protocol": "hermes-gateway-v1",
+      "profile_name": "default",
+      "cwd": "/private/tmp/bb-spike",
+      "reasoning_effort": "medium",
+      "reasoning_effort_wire": "medium",
+      "service_tier": "",
+      "fast": false,
+      "launch_request": {
+       "cwd": "/private/tmp/bb-spike",
+       "model": "mlx_main",
+       "provider": "mlx-main",
+       "source": "cli"
+      },
+      "title": "[bb-spike] S4b stream",
+      "started_at": 1793807334.248571,
+      "last_active_at": 1793807495.799063,
+      "yolo": false,
+      "api_mode": "chat_completions",
+      "tool_count": 21,
+      "credential_hint": "<omitted>"
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 33
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "message.complete",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "text": "blue",
+      "content": "blue",
+      "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+      "outcome": "completed",
+      "status": "complete",
+      "reasoning": "The user answered \"blue\". Please reply with only the answer content.",
+      "usage": {
+       "model": "mlx_main",
+       "input": 156,
+       "output": 105,
+       "reasoning": 58,
+       "prompt": 32807,
+       "completion": 105,
+       "total": 32912,
+       "calls": 2,
+       "context_used": 16476,
+       "context_max": 262144,
+       "context_percent": 6,
+       "context_source": "provider_usage",
+       "context_estimated": false,
+       "compressions": 0,
+       "cache_hit_pct": 100,
+       "avg_latency_s": 1.1,
+       "avg_tps": 50,
+       "active_subagents": 0
+      },
+      "persisted_turn": {
+       "row_ids": [
+        3172,
+        3173,
+        3174,
+        3175
+       ],
+       "complete": true,
+       "user_row_id": 3172,
+       "user_row_ids": [
+        3172
+       ],
+       "final_assistant_row_id": 3175,
+       "submission_id": "d4650895-dc34-4572-b32e-adac20cea35f"
+      }
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 34
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "authority_epoch": 30,
+     "execution_generation": 2,
+     "admission_id": "bb1efcb72bd1432a9c62e2a723136875",
+     "type": "session.info",
+     "session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+     "payload": {
+      "stored_session_id": "local-faa11c7c2802bd0a161911bb247b7669d0375314451969104bb8ca6a8811e7f0",
+      "pending": [],
+      "authority_epoch": 30,
+      "desktop_protocol": "hermes-gateway-v1",
+      "running": false,
+      "execution_generation": 2,
+      "revision": 2
+     },
+     "replay_epoch": "87bc61fa9c8944949b991cd813a8de7a",
+     "seq": 35
+    }
+   }
+  },
+  {
+   "dir": "in",
+   "frame": {
+    "jsonrpc": "2.0",
+    "method": "event",
+    "params": {
+     "type": "sessions.changed",
+     "session_id": "",
+     "payload": {}
+    }
+   }
+  }
+ ]
+}
