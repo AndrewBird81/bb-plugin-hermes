@@ -22,6 +22,6 @@
   },
   "rest": {
     "list": ["id", "title", "source", "created_source", "chat_id", "hidden", "archived", "cwd", "message_count", "last_activity_at"],
-    "messages": ["session_id", "message_uid", "role", "content", "display_kind", "display_metadata", "timestamp", "tool_calls", "tool_call_id", "tool_name", "reasoning"]
+    "messages": ["id", "session_id", "message_uid", "role", "content", "display_kind", "display_metadata", "timestamp", "tool_calls", "tool_call_id", "tool_name", "reasoning"]
   }
 }
