@@ -124,6 +124,23 @@ describe("engine: create, resume, submit, stream", () => {
     expect(resumed).toMatchObject({ revision: 2, execution_generation: 2, message_count: 4, messages: [], messages_omitted: true, running: false });
   });
 
+  it("flushes a canonical turn's rows per step: the user row mid-turn, the tool rows when the tool ends, the reply at the end", async () => {
+    const f = await fake();
+    const k = await client(f);
+    const { session_id: sid } = await k.create("alex", "bb:thr_flush");
+    const roles = async () => (await readMessages(f.folder, "alex", sid, { order: "oldest", limit: 500 })).messages.map((m) => m.role);
+    f.nextTurn("alex", { tool: true, approval: {}, chunkMs: 40, reply: "a b c d e f" });
+    await k.submit("alex", sid, "go");
+    await k.until(() => k.of("approval.request", sid).length === 1);
+    expect(await roles()).toEqual(["user"]);
+    const { prompt_id } = k.of("approval.request", sid)[0]!.payload as { prompt_id: string };
+    await k.c.approvalRespond({ profile: "alex", session_id: sid, execution_generation: 1, prompt_id, choice: "once" });
+    await k.until(() => k.of("message.delta", sid).filter((e) => e.payload!.text).length >= 1);
+    expect(await roles()).toEqual(["user", "assistant", "tool"]);
+    await k.until(() => k.completes(sid).length === 1);
+    expect(await roles()).toEqual(["user", "assistant", "tool", "assistant"]);
+  });
+
   it("runs one turn per submission_id and queues the rest in order (FIFO)", async () => {
     const f = await fake();
     const k = await client(f);

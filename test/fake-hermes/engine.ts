@@ -122,6 +122,8 @@ export interface Admission {
   attachments: Json[] | null;
   turn_author: Json | null;
   script: TurnScript;
+  /** The user row, once the turn flushed it (at its start). */
+  userRow?: Row;
 }
 
 interface Prompt {
@@ -499,8 +501,8 @@ export class Engine {
         if (a.status === "terminal" && a.outcome === "interrupted" && a.generation === params.execution_generation) return this.admissionStatus(a);
         if (a.status !== "unknown" || a.generation !== params.execution_generation) throw new Refusal("stale_generation");
         this.settle(s, a, "interrupted");
-        // The discarded turn keeps its user row, closed by a note (`close_discarded_turn`).
-        this.addRow(s, this.userRow(a));
+        // The discarded turn keeps its user row (flushed at its start), closed by a note (`close_discarded_turn`).
+        if (!a.userRow) a.userRow = this.addRow(s, this.userRow(a));
         this.addRow(s, { tpl: "assistant", role: "assistant", content: LOST_TURN, display_kind: "failed_turn", finish_reason: null });
         s.revision++;
         this.publishInfo(s);
@@ -671,9 +673,21 @@ export class Engine {
       this.publish(s, "status.update", { kind: "status", text: WAITING }, stamp);
       await s.lease;
     }
+    const command = COMMAND_REPLIES[a.text.trim()];
+    const context = this.count(s) + 2;
+    // Canonical turns flush their rows per step (`_flush_messages_to_session_db`): the user row first, so REST
+    // shows it mid-turn; the tool rows when the tool ends; the reply at the end. Commands store nothing.
+    const user = command ? null : (a.userRow = this.addRow(s, this.userRow(a)));
+    if (user) this.changed(s.profile);
+    const rows: Row[] = user ? [user] : [];
+    const steers: Row[] = [];
+    let steered = 0;
+    const flushSteers = () => {
+      for (const t of turn.steers.slice(steered)) steers.push(this.addRow(s, { tpl: "steer", role: "user", content: STEER_WRAP(t), display_kind: "steer", display_content: t }));
+      steered = turn.steers.length;
+    };
     if (a.script.holdMs) await pause(a.script.holdMs);
     if (turn.aborted) return;
-    const command = COMMAND_REPLIES[a.text.trim()];
     if (command) {
       // The gateway answers these itself: no model call, nothing stored, no reset (A46).
       this.publish(s, "message.complete", { text: command, content: command, admission_id: a.admission_id, outcome: "completed", status: "complete" }, stamp);
@@ -684,9 +698,7 @@ export class Engine {
       return;
     }
     this.publish(s, "agent.step", { iteration: 1 }, stamp);
-    const context = this.count(s) + 2;
-    const prompt = this.userRow(a).content as string;
-    const replies: Partial<Row>[] = [];
+    const prompt = user!.content as string;
     let error: string | null = null;
     if (a.script.reasoning && !stop()) this.publish(s, "reasoning.delta", { text: a.script.reasoning }, stamp);
     if (a.script.tool && !stop()) {
@@ -728,11 +740,14 @@ export class Engine {
           result = JSON.stringify({ output: "[Command interrupted]", exit_code: 130 });
         }
         this.publish(s, "tool.complete", { ...start, is_error: isError, result, duration_s: 0.01, inline_diff: null }, stamp);
-        this.publish(s, "agent.step", { iteration: 2 }, stamp);
-        replies.push(
-          { tpl: "toolCall", role: "assistant", content: "", tool_calls: [{ id: callId, call_id: callId, response_item_id: `fc_${callId}`, type: "function", function: { name, arguments: JSON.stringify(toolArgs) } }], finish_reason: "tool_calls" },
-          { tpl: "tool", role: "tool", content: result, tool_call_id: callId, tool_name: name },
+        rows.push(
+          this.addRow(s, { tpl: "toolCall", role: "assistant", content: "", tool_calls: [{ id: callId, call_id: callId, response_item_id: `fc_${callId}`, type: "function", function: { name, arguments: JSON.stringify(toolArgs) } }], finish_reason: "tool_calls" }),
+          this.addRow(s, { tpl: "tool", role: "tool", content: result, tool_call_id: callId, tool_name: name }),
         );
+        // A steer joins at the next step, after the tool rows.
+        flushSteers();
+        this.changed(s.profile);
+        this.publish(s, "agent.step", { iteration: 2 }, stamp);
       }
     }
     if (a.script.clarify && !stop()) {
@@ -759,17 +774,11 @@ export class Engine {
       }
     }
     if (turn.aborted) return;
-    // Rows land at the turn's end (`_hmwa_persist_turn_transcript`); steers sit after the tool rows.
-    const target = this.tipOf(s);
-    const steerRows = turn.steers.map((t) => ({ tpl: "steer", role: "user", content: STEER_WRAP(t), display_kind: "steer", display_content: t }));
-    if (text) replies.push({ tpl: "assistant", role: "assistant", content: text, finish_reason: "stop" });
-    const user = this.addRow(target, this.userRow(a));
-    const tools = replies.filter((r) => r.tpl !== "assistant").map((r) => this.addRow(target, r));
-    const steers = steerRows.map((r) => this.addRow(target, r));
-    const final = replies.filter((r) => r.tpl === "assistant").map((r) => this.addRow(target, r));
-    const rows = [user, ...tools, ...steers, ...final];
+    flushSteers();
+    const final = text ? [this.addRow(s, { tpl: "assistant", role: "assistant", content: text, finish_reason: "stop" })] : [];
+    rows.push(...steers, ...final);
     s.revision++;
-    target.last_activity_at = now();
+    s.last_activity_at = now();
     const outcome = error ? "failed" : turn.interrupted ? "cancelled" : "completed";
     const usage = { model: s.model, input: 10, output: 5, reasoning: 0, prompt: 10, completion: 5, total: 15, calls: 1, context_used: 10, context_max: 65536, context_percent: 0 };
     this.publish(s, "session.usage", { usage }, stamp);
@@ -787,8 +796,8 @@ export class Engine {
         persisted_turn: {
           row_ids: rows.map((r) => r.id),
           complete: !turn.interrupted && !error,
-          user_row_id: user.id,
-          user_row_ids: [user.id, ...steers.map((r) => r.id)],
+          user_row_id: user!.id,
+          user_row_ids: [user!.id, ...steers.map((r) => r.id)],
           ...(final.length ? { final_assistant_row_id: final.at(-1)!.id } : {}),
           submission_id: a.submission_id,
         },
