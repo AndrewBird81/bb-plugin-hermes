@@ -7,6 +7,14 @@ import { DEFAULT_FOLDER } from "../shared/settings.js";
 import { SOURCE_TAGS, type SourceTag } from "../shared/sources.js";
 import { bindingByThread, botRecord, getKv, type Db } from "./db.js";
 
+/** kv: the folder the machine was set with; a different folder setting means no Hermes I/O (R8). */
+export const MACHINE_FOLDER_KEY = "machine_folder";
+
+export function machineFolder(db: Db): string | null {
+  const value = getKv(db, MACHINE_FOLDER_KEY);
+  return typeof value === "string" ? value : null;
+}
+
 function threadView(db: Db, threadId: string): ThreadView | null {
   const binding = bindingByThread(db, threadId);
   const bot = binding ? botRecord(db, binding.profile_home) : null;
@@ -20,7 +28,8 @@ function threadView(db: Db, threadId: string): ThreadView | null {
     lineage_root: binding.lineage_root,
     session_id: binding.session_id,
     legacy: binding.legacy,
-    tag: (SOURCE_TAGS as readonly string[]).includes(binding.tag ?? "") ? (binding.tag as SourceTag) : null,
+    // A side chat's outside turns run in Desktop ("Running in Desktop"); the bot thread keeps null.
+    tag: (SOURCE_TAGS as readonly string[]).includes(binding.tag ?? "") ? (binding.tag as SourceTag) : binding.kind === "chat" ? "Desktop" : null,
     cwd: bot.cwd,
   };
 }
@@ -28,9 +37,11 @@ function threadView(db: Db, threadId: string): ThreadView | null {
 export function deriveProviderOptions(db: Db, { settings, threadId }: Pick<PluginProviderOptionsContext, "settings" | "threadId">): ProviderOptions {
   const folder = typeof settings.folder === "string" && settings.folder !== "" ? settings.folder : DEFAULT_FOLDER;
   const machine = getKv(db, "machine");
+  const saved = machineFolder(db);
+  const matches = saved === null || saved === folder;
   return {
     folder,
-    machine: typeof machine === "string" && machine ? { id: machine, name: null } : null,
+    machine: typeof machine === "string" && machine && matches ? { id: machine, name: null } : null,
     thread: threadView(db, threadId),
   };
 }

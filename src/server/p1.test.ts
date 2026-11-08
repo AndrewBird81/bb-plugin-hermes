@@ -6,7 +6,7 @@ import type { BotRow, Diagnostics, ThreadInfo } from "../shared/rpc-contract.js"
 import { segmentInput } from "../shared/marker.js";
 import { formatTag } from "../shared/sources.js";
 import { HELD_RETRY_MS } from "./bots.js";
-import { bindingByThread, botRecord, claimRest, claimTurn, MIGRATIONS, openMappingDb, turnRow } from "./db.js";
+import { bindingByThread, botRecord, claimRest, claimTurn, getKv, setKv, MIGRATIONS, openMappingDb, turnRow } from "./db.js";
 import { BOB, MACHINE, NEO, turn, UID, world, type World } from "./fake-world.js";
 import { RESTORE_DELAY_MS } from "./notify.js";
 import { deriveProviderOptions } from "./provider-options.js";
@@ -482,6 +482,22 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     expect(w.texts(chat).at(-1)).toBe("[TUI] text s2");
   });
 
+  it("side chat: an outside turn with no recorded surface is tagged [Desktop]; the thread view says Desktop", async () => {
+    const w = await world();
+    await w.connect();
+    await on(w);
+    const { thread_id: chat } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+    await w.idle(chat);
+    expect(deriveProviderOptions(w.db, { settings: {}, threadId: chat }).thread?.tag).toBe("Desktop");
+    expect(deriveProviderOptions(w.db, { settings: {}, threadId: "thr_1" }).thread?.tag).toBeNull();
+    const sid = bindingByThread(w.db, chat)!.expected_id!;
+    w.history.set(sid, { session_id: sid, turns: [turn("s1", { submission_id: `bb:${chat}:c1` }), turn("s2", { surface: null })] });
+    w.persisted(chat, { profile_home: NEO, lineage_root: sid, session_id: sid, turns: [{ submission_id: `bb:${chat}:c1`, anchor_uids: ["s1"], reply_uids: [], at: 1 }] });
+    await w.idle(chat);
+    await w.changed(NEO);
+    expect(w.texts(chat).at(-1)).toBe("[Desktop] text s2");
+  });
+
   it("a bb turn with no persisted record yet is never woken while its thread runs", async () => {
     const w = await liveBotThread();
     await w.active("thr_1");
@@ -619,6 +635,60 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     expect(deriveProviderOptions(w.db, { settings: {}, threadId: "thr_other" }).thread).toBeNull();
     await off(w);
     expect(deriveProviderOptions(w.db, { settings: {}, threadId: "thr_1" }).thread?.enabled).toBe(false);
+  });
+});
+
+describe("folder guard (R8)", () => {
+  it("a folder that moved without setConnection: not_configured, 0 Hermes I/O, no machine for bridges, until set again", async () => {
+    // A reinstall reset the folder setting to its default; data.db kept the machine and its folder.
+    const w = await world({ seed: (db) => setKv(db, "machine_folder", "/private/tmp/bb-hermes-test/old") });
+    await w.harness.behavior.experimental_emitHostSignal(MACHINE, "watch", { state: "connected", worker_boot_id: "boot_1", instance_id: null });
+    await w.flush();
+    expect(await w.rpc("health")).toMatchObject({ state: "not_configured", detail: "folder_changed" });
+    expect(w.harness.inspection.experimental_hostRpcCalls).toEqual([]);
+    expect(deriveProviderOptions(w.db, { settings: { folder: "~/.hermes" }, threadId: "thr_x" }).machine).toBeNull();
+    expect(await w.connect()).toMatchObject({ state: "connected" });
+    expect(deriveProviderOptions(w.db, { settings: { folder: "~/.hermes" }, threadId: "thr_x" }).machine).toEqual({ id: MACHINE, name: null });
+  });
+
+  it("a P0 db (machine, no folder) counts as matching; a folder saved in bb's settings keeps the machine", async () => {
+    const w = await world();
+    expect(getKv(w.db, "machine_folder")).toBe("~/.hermes");
+    await w.connect();
+    await w.harness.behavior.setSettings({ folder: "/private/tmp/bb-hermes-test/other" });
+    await w.flush();
+    expect(getKv(w.db, "machine_folder")).toBe("/private/tmp/bb-hermes-test/other");
+    expect((await w.rpc<{ state: string }>("health")).state).toBe("connected");
+  });
+
+  it("after a folder change, pending access for another folder's profiles is dropped, and profile_outside_root is never retried", async () => {
+    const w = await world();
+    await w.connect();
+    await on(w);
+    w.state.failAccess = true;
+    await off(w);
+    w.state.failAccess = false;
+    await w.harness.behavior.setSettings({ folder: "/private/tmp/bb-hermes-test/other" });
+    await w.flush();
+    expect(await errors(w)).toContain("access_dropped_outside_root");
+    expect(getKv(w.db, "access_pending")).toEqual({});
+    const calls = w.access.length;
+    w.state.boot = "boot_2";
+    await w.connect();
+    expect(w.access).toHaveLength(calls);
+
+    // The worker itself says the profile isn't under the root: dropped at once.
+    const v = await world();
+    await v.connect();
+    await on(v);
+    v.state.failAccess = true;
+    await off(v);
+    v.state.failAccess = false;
+    v.state.outside = true;
+    v.state.boot = "boot_2";
+    await v.connect();
+    expect(getKv(v.db, "access_pending")).toEqual({});
+    expect(await errors(v)).toContain("profile_outside_root");
   });
 });
 

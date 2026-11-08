@@ -37,7 +37,8 @@ const sameHealth = (a: Health, b: Health): boolean => JSON.stringify({ ...a, wor
 
 /** The machine (mapping db `kv`) and the folder (`bb.settings`), read at each check. */
 export interface ConnectionSource {
-  get(): Promise<ConnectionSettings>;
+  /** `machine_folder`: the folder the machine was set with (null: a P0 db, taken as matching). */
+  get(): Promise<ConnectionSettings & { machine_folder: string | null }>;
 }
 
 /**
@@ -90,6 +91,10 @@ export function createConnection(bb: BbPluginApi, settings: ConnectionSource, db
     const current = await settings.get();
     // Unset machine: no Hermes I/O at all (01 §1 AC, R3 M3).
     if (!current.machine) return unanswered(healthFrom(current, { state: "not_configured" }));
+    // The folder moved without `setConnection` (e.g. a reinstall reset settings, but data.db kept the
+    // machine): never dial the default folder on the old machine (R8). No Hermes I/O until set again.
+    if (current.machine_folder !== null && current.machine_folder !== current.folder)
+      return unanswered(healthFrom(current, { state: "not_configured", detail: "folder_changed" }));
 
     let machine: Health["machine"];
     try {

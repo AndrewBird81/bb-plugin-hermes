@@ -77,14 +77,13 @@ const text = (value: string): PromptInput => ({ type: "text", mentions: [], text
 const isBbSubmission = (turn: HistoryTurn) => turn.submission_id?.startsWith("bb:") === true;
 const asTag = (value: string | null): SourceTag | null => (SOURCE_TAGS as readonly string[]).includes(value ?? "") ? (value as SourceTag) : null;
 
-/**
- * The tag an outside turn carries: the surface its user row records, else the chat's own. The Bot Chat
- * has none of its own: only dashboard clients write it, adopted or not, and UI text calls them all
- * Conduit (S8 §Today, A5, 01 §6).
- */
+/** A chat's own tag: a side chat is a `gui` session (Desktop lists it); the Bot Chat is Conduit's (S8 §Today, A5, 01 §6). */
+export const chatTag = (binding: Pick<Binding, "kind" | "tag">): SourceTag => asTag(binding.tag) ?? (binding.kind === "chat" ? "Desktop" : "Conduit");
+
+/** The tag an outside turn carries: the surface its user row records, else the chat's own. */
 export function turnTag(binding: Binding, turn: HistoryTurn): SourceTag {
   const fromSurface = turn.surface ? tagFor({ source: turn.surface, created_source: turn.surface, legacy: binding.legacy }) : null;
-  return fromSurface ?? asTag(binding.tag) ?? "Conduit";
+  return fromSurface ?? chatTag(binding);
 }
 
 /** The visible user bubble before a marker; none for a hidden user row (01 §7). bb's own turns are untagged. */

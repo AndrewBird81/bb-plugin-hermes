@@ -55,7 +55,8 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
   const history = new Map<string, { session_id: string; turns: HistoryTurn[]; truncated?: boolean; pageSize?: number }>();
   const botChats = new Map<string, BotChat>();
   const access: { profile_home: string; on: boolean; enabled_bots: string[] }[] = [];
-  const state = { failSpawn: 0, watched: [] as string[], failSend: 0, failAccess: false, refreshed: true, online: true, boot: "boot_1", supported: true, seq: 0, ids: 0 };
+  /** `root`: the folder these profiles live in. `outside`: the worker refuses every profile as outside the root. */
+  const state = { root: "~/.hermes", outside: false, failSpawn: 0, watched: [] as string[], failSend: 0, failAccess: false, refreshed: true, online: true, boot: "boot_1", supported: true, seq: 0, ids: 0 };
 
   const thread = (id: string) => {
     const t = threads.get(id);
@@ -78,15 +79,20 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
   const answer = (): EnsureWatchOutput => ({ worker_boot_id: state.boot, connected: true, instance_id: "inst_fake", version: "0.9.0", supported: state.supported, detail: state.supported ? null : "missing:1" });
 
   function hostCall(call: ExperimentalFakeHostRpcCall): unknown {
-    const input = call.input as { profile_home: string; on: boolean; enabled_bots: string[]; lineage_root: string; after_uid?: string; since?: number };
+    const input = call.input as { root: string; profile_home: string; on: boolean; enabled_bots: string[]; lineage_root: string; after_uid?: string; since?: number };
     switch (call.method) {
       case "ensureWatch":
         state.watched = input.enabled_bots;
         return answer();
       case "describe":
-        return { uid: UID, profiles };
+        // Profiles of the folder the call names: another folder has none of these.
+        return { uid: UID, profiles: input.root === state.root ? profiles : [] };
       case "setBotAccess":
         if (state.failAccess) throw Object.assign(new Error("offline"), { code: "host_offline" });
+        if (input.root !== state.root || state.outside) {
+          access.push({ profile_home: input.profile_home, on: input.on, enabled_bots: input.enabled_bots });
+          return { skill: "absent", wrapper: "absent", refreshed: false, detail: "profile_outside_root" };
+        }
         access.push({ profile_home: input.profile_home, on: input.on, enabled_bots: input.enabled_bots });
         return { skill: input.on ? "written" : "removed", wrapper: "written", refreshed: state.refreshed, detail: state.refreshed ? null : "refresh_failed:1" };
       case "findBotChat":

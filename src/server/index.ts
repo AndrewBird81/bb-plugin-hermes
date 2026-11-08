@@ -8,6 +8,7 @@ import type { SettingsHandle } from "../shared/settings.js";
 import { createBots } from "./bots.js";
 import { createChats } from "./chats.js";
 import { type ConnectionSource, createConnection, errorCode, KEEPALIVE_MS, type OnConnected } from "./connection.js";
+import { MACHINE_FOLDER_KEY, machineFolder } from "./provider-options.js";
 import { addTombstone, bindingByThread, bindingCounts, type Db, deleteBinding, getKv, openMappingDb, setKv } from "./db.js";
 import { createNotify } from "./notify.js";
 import { createQueue, createSync, invalidateThreadInfo, targetOf } from "./sync.js";
@@ -42,7 +43,11 @@ function savedMachine(db: Db): string {
 
 export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db: Db = openMappingDb(bb)): Promise<void> {
   const host = bb.hosts.experimental_client({ contract: hostContract, experimental_signals: hostSignals });
-  const source: ConnectionSource = { get: async () => ({ machine: savedMachine(db), folder: (await settings.get()).folder }) };
+  // A P0 db has a machine but no folder for it: it counts as matching, so record the folder now.
+  if (savedMachine(db) && machineFolder(db) === null) setKv(db, MACHINE_FOLDER_KEY, (await settings.get()).folder);
+  const source: ConnectionSource = {
+    get: async () => ({ machine: savedMachine(db), folder: (await settings.get()).folder, machine_folder: machineFolder(db) }),
+  };
   let onConnected: OnConnected = () => {};
   const connection = createConnection(bb, source, db, host, (event) => onConnected(event));
   await connection.init();
@@ -126,7 +131,11 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
     // The next call starts a fresh worker, which re-arms the watch.
     await connection.ensureNow();
   });
-  settings.onChange(() => void connection.ensureNow());
+  // A folder saved in bb's settings form keeps the machine (only a folder that moved without a save stops it).
+  settings.onChange(async () => {
+    setKv(db, MACHINE_FOLDER_KEY, (await settings.get()).folder);
+    void connection.ensureNow();
+  });
 
   bb.background.service("keepalive", {
     async start(signal) {
@@ -164,6 +173,7 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
     },
     async setConnection({ machine, folder }) {
       setKv(db, MACHINE_KEY, machine);
+      setKv(db, MACHINE_FOLDER_KEY, folder ?? (await settings.get()).folder);
       // A folder change also fires `onChange`; both share one check.
       if (folder !== undefined) await settings.experimental_set({ folder });
       return connection.ensureNow();
