@@ -55,6 +55,9 @@ export const PERSISTED_TURNS_KEPT = 20;
  * - `held`: "Open in Conduit: sends when it's free" (flow 3 step 4);
  * - `running_elsewhere`: "Running in <app>" (Stop on an outside turn bb can't stop).
  * `null` clears it. The offline banner comes from health, not from here (flow 10).
+ * `dead_requests`: the `interaction/request` ids (bb's `providerRequestId`) of cards whose Hermes prompt
+ * settled elsewhere or timed out, newest `DEAD_REQUESTS_KEPT`. bb 0.49.0 gives a bridge no way to close
+ * a card it raised (T1.14, A3), so the server cancels them with `threads.interactions.cancel`.
  */
 export const statusStateSchema = z
   .object({
@@ -66,9 +69,11 @@ export const statusStateSchema = z
       .nullable(),
     /** Unix ms the banner was set. */
     since: z.number().nullable(),
+    dead_requests: z.array(z.string()).optional(),
   })
   .strict();
 export type StatusState = z.infer<typeof statusStateSchema>;
+export const DEAD_REQUESTS_KEPT = 20;
 
 export const bannerText = (banner: NonNullable<StatusState["banner"]>): string =>
   banner.kind === "held" ? "Open in Conduit: sends when it's free" : `Running in ${banner.app}`;
