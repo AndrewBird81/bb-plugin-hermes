@@ -27,6 +27,10 @@ export const threadViewSchema = z
   .strict();
 export type ThreadView = z.infer<typeof threadViewSchema>;
 
+/**
+ * Not strict: bb's host daemon merges its own keys into the options before the bridge sees them
+ * (`additionalWorkspaceWriteRoots`, bb-app 0.49.0 `host-daemon/dist/daemon-bundle.mjs`); unknown keys are dropped.
+ */
 export const providerOptionsSchema = z
   .object({
     /** The folder setting as configured (`~/…`); the bridge expands `~` on the Hermes machine. */
@@ -36,7 +40,7 @@ export const providerOptionsSchema = z
     /** Null when the server has no binding (yet) for this thread, e.g. a `bb thread spawn` whose `thread.created` hasn't run. */
     thread: threadViewSchema.nullable(),
   })
-  .strict();
+  .strip();
 export type ProviderOptions = z.infer<typeof providerOptionsSchema>;
 
 /** The bridge's view of `options.providerOptions`: a missing or invalid value reads as "nothing known". */

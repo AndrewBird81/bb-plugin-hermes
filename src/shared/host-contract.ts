@@ -188,7 +188,8 @@ export const hostContract = defineRpcContract({
   },
   /**
    * A chat's turns, root to tip. `after_uid`: only turns after that anchor (unknown anchor → every turn).
-   * `since` (Unix ms): only turns from then on. `truncated`: older turns exist that this answer leaves out.
+   * `since` (Unix ms): only turns from then on. `truncated`: turns this answer leaves out, to fit host RPC:
+   * with `after_uid` (no `since`), the newest (read on from the last returned turn); otherwise the oldest.
    */
   readTurns: {
     input: z

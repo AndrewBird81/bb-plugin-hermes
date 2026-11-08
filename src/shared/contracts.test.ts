@@ -90,6 +90,12 @@ describe("provider options and extension states", () => {
   it("read leniently on the bridge side", () => {
     expect(readProviderOptions({ folder: "~/.hermes", machine: null, thread: null })).toEqual({ folder: "~/.hermes", machine: null, thread: null });
     expect(readProviderOptions({ folder: "~/.hermes" })).toBeNull();
+    // bb's host daemon merges its own keys in (bb-app 0.49.0): dropped, never a refusal.
+    expect(readProviderOptions({ folder: "~/.hermes", machine: null, thread: null, additionalWorkspaceWriteRoots: ["/tmp/x"] })).toEqual({
+      folder: "~/.hermes",
+      machine: null,
+      thread: null,
+    });
     expect(readProviderOptions(undefined)).toBeNull();
   });
 

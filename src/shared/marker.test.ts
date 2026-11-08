@@ -27,7 +27,11 @@ describe("marker codec", () => {
     expect(() => decodeMarker("<hermes-bb>{nope</hermes-bb>")).toThrow(MarkerError);
     expect(() => decodeMarker('<hermes-bb>{"op":"mirror"}</hermes-bb>')).toThrow(MarkerError);
     expect(() => decodeMarker('<hermes-bb>{"op":"wipe","anchor_uid":"x"}</hermes-bb>')).toThrow(MarkerError);
-    expect(() => decodeMarker('<hermes-bb>{"op":"replay","anchor_uid":"x","extra":1}</hermes-bb>')).toThrow(MarkerError);
+  });
+
+  it("decodes a field a newer server adds (a bridge keeps old code after an update); encoding stays strict", () => {
+    expect(decodeMarker('<hermes-bb>{"op":"replay","anchor_uid":"x","extra":1}</hermes-bb>')).toEqual({ op: "replay", anchor_uid: "x" });
+    expect(() => encodeMarker({ op: "replay", anchor_uid: "x", extra: 1 } as never)).toThrow();
   });
 
   it("refuses to encode an invalid marker", () => {
@@ -42,11 +46,17 @@ describe("segmentInput (R1 M6)", () => {
     expect(segmentInput([text("hi"), context("bb context")])).toEqual([{ kind: "prompt", parts: [text("hi"), context("bb context")] }]);
   });
 
-  it("a tagged label belongs to its marker", () => {
-    expect(segmentInput([text("[CLI] ls -la"), mirror])).toEqual([
-      { kind: "marker", marker: { op: "mirror", anchor_uid: "a1" }, label: "[CLI] ls -la" },
+  const labeledMirror = encodeMarker({ op: "mirror", anchor_uid: "a1", labeled: true });
+
+  it("a labeled marker takes the visible part right before it as its label", () => {
+    expect(segmentInput([text("[CLI] ls -la"), labeledMirror])).toEqual([
+      { kind: "marker", marker: { op: "mirror", anchor_uid: "a1", labeled: true }, label: "[CLI] ls -la" },
     ]);
-    expect(segmentInput([text("[Conduit · Oct 12] hey"), mirror])[0]).toMatchObject({ label: "[Conduit · Oct 12] hey" });
+    expect(segmentInput([text("[Conduit · Oct 12] hey"), labeledMirror])[0]).toMatchObject({ label: "[Conduit · Oct 12] hey" });
+  });
+
+  it("an unlabeled marker takes no label: the user's own text before it is a prompt, even tagged", () => {
+    expect(segmentInput([text("[CLI] typed by me"), mirror]).map((s) => s.kind)).toEqual(["prompt", "marker"]);
   });
 
   it("a hidden user row's wake has no label", () => {
@@ -58,10 +68,10 @@ describe("segmentInput (R1 M6)", () => {
   });
 
   it("a bb prompt queued before a wake is not swallowed as its label", () => {
-    const segments = segmentInput([text("mine"), text("[TUI] theirs"), mirror, text("after")]);
+    const segments = segmentInput([text("mine"), text("[TUI] theirs"), labeledMirror, text("after")]);
     expect(segments).toEqual([
       { kind: "prompt", parts: [text("mine")] },
-      { kind: "marker", marker: { op: "mirror", anchor_uid: "a1" }, label: "[TUI] theirs" },
+      { kind: "marker", marker: { op: "mirror", anchor_uid: "a1", labeled: true }, label: "[TUI] theirs" },
       { kind: "prompt", parts: [text("after")] },
     ]);
   });
@@ -80,7 +90,9 @@ describe("segmentInput (R1 M6)", () => {
     ]);
   });
 
-  it("a bad marker is its own segment and never part of a prompt", () => {
-    expect(segmentInput([text("a"), context("<hermes-bb>{}</hermes-bb>"), text("b")]).map((s) => s.kind)).toEqual(["prompt", "invalid", "prompt"]);
+  it("a bad marker is its own segment, takes the visible text before it, and is never part of a prompt", () => {
+    const segments = segmentInput([text("a"), context("<hermes-bb>{}</hermes-bb>"), text("b")]);
+    expect(segments.map((s) => s.kind)).toEqual(["invalid", "prompt"]);
+    expect(segments[0]).toMatchObject({ kind: "invalid", label: "a" });
   });
 });

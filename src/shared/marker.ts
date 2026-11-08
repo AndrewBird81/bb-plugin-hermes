@@ -2,7 +2,6 @@
 // Never rendered, never sent to Hermes. Shared by the server (encode) and the bridge (decode, segment).
 import type { PromptInput } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
-import { SOURCE_TAG_PREFIX } from "./sources.js";
 
 const nonEmpty = z.string().min(1);
 /**
@@ -33,6 +32,15 @@ export const markerSchema = z.discriminatedUnion("op", [
 ]);
 
 export type Marker = z.infer<typeof markerSchema>;
+
+/**
+ * Decoding drops unknown fields: a bridge keeps running old code after an update (S1-S3 fact 2), so a
+ * field a newer server adds must not turn a marker invalid. Encoding stays strict.
+ */
+const decodeSchema = z.discriminatedUnion(
+  "op",
+  markerSchema.options.map((o) => o.strip()) as unknown as [typeof markerSchema.options[number], ...typeof markerSchema.options],
+);
 export type MarkerOp = Marker["op"];
 
 const OPEN = "<hermes-bb>";
@@ -65,7 +73,7 @@ export function decodeMarker(text: string): Marker | null {
   } catch {
     throw new MarkerError("marker is not JSON", text);
   }
-  const parsed = markerSchema.safeParse(json);
+  const parsed = decodeSchema.safeParse(json);
   if (!parsed.success) throw new MarkerError(`invalid marker: ${parsed.error.issues[0]?.message ?? "unknown"}`, text);
   return parsed.data;
 }
@@ -73,16 +81,17 @@ export function decodeMarker(text: string): Marker | null {
 /**
  * One turn's input split in order (R1 M6: bb may merge queued sends into one turn).
  * - `marker`: a marker, with its label: the visible text part right before it when the marker says
- *   `labeled`, or when that part starts with a source tag (`[CLI] …`, `[CLI · Oct 12] …`). A wake for a
- *   hidden user row has no label.
+ *   `labeled` (the server sets it on every marker it sends after a bubble). A wake for a hidden user
+ *   row has no label; a user's own text before an unlabeled marker stays a prompt, tag or not.
  * - `prompt`: consecutive parts with no marker between them: a bb prompt for `prompt.submit`.
  *   Agent-only parts that aren't markers (bb's own context) stay in the prompt.
- * - `invalid`: a `<hermes-bb>` part that failed to decode. The bridge fails it; never submitted.
+ * - `invalid`: a `<hermes-bb>` part that failed to decode, with the visible text right before it (its
+ *   likely label). The bridge fails the turn and submits nothing of it.
  */
 export type Segment =
   | { kind: "marker"; marker: Marker; label: string | null }
   | { kind: "prompt"; parts: PromptInput[] }
-  | { kind: "invalid"; error: string };
+  | { kind: "invalid"; error: string; label: string | null };
 
 export function segmentInput(input: readonly PromptInput[]): Segment[] {
   const out: Segment[] = [];
@@ -96,25 +105,26 @@ export function segmentInput(input: readonly PromptInput[]): Segment[] {
       prompt.push(part);
       continue;
     }
+    const last = prompt.at(-1);
+    const popLabel = (): string | null => {
+      if (last?.type !== "text" || last.visibility === "agent-only") return null;
+      prompt.pop();
+      return last.text;
+    };
     let marker: Marker | null;
     try {
       marker = decodeMarker(part.text);
     } catch (error) {
+      const label = popLabel();
       flush();
-      out.push({ kind: "invalid", error: (error as Error).message });
+      out.push({ kind: "invalid", error: (error as Error).message, label });
       continue;
     }
     if (!marker) {
       prompt.push(part);
       continue;
     }
-    const last = prompt.at(-1);
-    let label: string | null = null;
-    const labels = marker.op !== "init" && marker.labeled === true;
-    if (last?.type === "text" && last.visibility !== "agent-only" && (labels || SOURCE_TAG_PREFIX.test(last.text))) {
-      label = last.text;
-      prompt.pop();
-    }
+    const label = marker.op !== "init" && marker.labeled === true ? popLabel() : null;
     flush();
     out.push({ kind: "marker", marker, label });
   }
