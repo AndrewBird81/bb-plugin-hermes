@@ -8,7 +8,8 @@ import { BRIDGES_DIR, bridgeFileSchema } from "../shared/bridge-registry.js";
 export interface BridgeRecord {
   pid: number;
   build: string;
-  thread_id: string;
+  /** null for a bridge that hosts no thread yet (bb's maintenance process). */
+  thread_id: string | null;
   started_at: number;
   alive: boolean;
 }
@@ -37,8 +38,7 @@ export async function readBridgeRecords(dataDir: string): Promise<BridgeRecord[]
       if (!m || records.has(pid)) continue;
       try {
         const rec = bridgeFileSchema.parse(JSON.parse(await readFile(path.join(dir, file), "utf8")));
-        // The host contract wants a string; a bridge with no thread yet (maintenance) reports "".
-        records.set(pid, { pid, build: rec.build, thread_id: rec.threadId ?? "", started_at: rec.startedAt, alive: isAlive(pid) });
+        records.set(pid, { pid, build: rec.build, thread_id: rec.threadId, started_at: rec.startedAt, alive: isAlive(pid) });
       } catch {
         // A half-written or foreign file: not a bridge record.
       }

@@ -80,7 +80,7 @@ export class Watcher {
     const client = this.conn?.client;
     const endpoint = this.conn?.endpoint;
     if (!watch.connected || !client || !endpoint) throw new Error(`not_connected:${watch.detail}`);
-    return describeProfiles((await client.profilesList()).profiles, endpoint);
+    return describeProfiles((await client.profilesList({ include_sessions: false })).profiles, endpoint);
   }
 
   close(): void {

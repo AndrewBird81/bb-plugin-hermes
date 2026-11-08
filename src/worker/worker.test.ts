@@ -140,7 +140,7 @@ describe("describe", () => {
       { name: "alex", home: path.join(fake.folder, "profiles", "alex"), handle: "alex", terminal_cwd: null, served: true },
       { name: "solo", home: path.join(fake.folder, "profiles", "solo"), handle: "solo", terminal_cwd: "/work", served: false },
     ]);
-    expect(fake.requests.map((r) => [r.method, r.refused])).toEqual([["profiles.list", undefined]]);
+    expect(fake.requests.map((r) => [r.method, r.params, r.refused])).toEqual([["profiles.list", { include_sessions: false }, undefined]]);
   });
 
   it("fails with a bounded code when there is no gateway", async () => {
@@ -173,7 +173,7 @@ describe("diagnostics", () => {
     expect(out).toMatchObject({ pid: process.pid, build: "dev", worker_boot_id: before.worker_boot_id, version: { supported: null } });
     expect(out.watch).toMatchObject({ root: "~/.bb-hermes-test-absent", last_error: "no_gateway", state: expect.stringMatching(/^(connecting|disconnected)$/) });
     expect(out.bridges).toEqual([
-      { pid: process.pid, build: "aaa", thread_id: "", started_at: 1, alive: true },
+      { pid: process.pid, build: "aaa", thread_id: null, started_at: 1, alive: true },
       { pid: dead, build: "bbb", thread_id: "thr_x", started_at: 2, alive: false },
     ]);
     expect(JSON.stringify(out)).not.toContain(homedir());
