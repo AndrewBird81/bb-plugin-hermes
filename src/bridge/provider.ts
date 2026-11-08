@@ -2,22 +2,18 @@
 // Hidden from bb's pickers: visible only where health says installed, and the bridge always says
 // `not_installed` (S1-S3 §S3a).
 import type { BbPluginApi, PluginProviderOptionsContext } from "@get-bb/plugin-sdk";
-import { DEFAULT_FOLDER } from "../shared/settings.js";
+import { EXTENSION_KINDS, persistedTurnStateSchema, statusStateSchema } from "../shared/extension-state.js";
+import type { ProviderOptions } from "../shared/provider-options.js";
 
 export const PROVIDER_ID = "hermes";
 
 /** The Hermes efforts bb's ladder also has, lowest to highest (r11 §1; Hermes' `minimal` has no bb rung). */
 export const REASONING_LEVELS = ["none", "low", "medium", "high", "xhigh", "max", "ultra"] as const;
 
-/** What `deriveProviderOptions` sends every bridge command (02 §Placement). The machine isn't a setting (kv). */
-export type BridgeProviderOptions = { folder: string };
+/** The server builds every command's options (`src/shared/provider-options.ts`); it must be fast and synchronous. */
+export type DeriveProviderOptions = (context: PluginProviderOptionsContext) => ProviderOptions;
 
-export function deriveProviderOptions({ settings }: Pick<PluginProviderOptionsContext, "settings">): BridgeProviderOptions {
-  const { folder } = settings;
-  return { folder: typeof folder === "string" && folder !== "" ? folder : DEFAULT_FOLDER };
-}
-
-export function registerProvider(bb: BbPluginApi): void {
+export function registerProvider(bb: BbPluginApi, deriveProviderOptions: DeriveProviderOptions): void {
   bb.providers.register({
     id: PROVIDER_ID,
     displayName: "Hermes",
@@ -36,6 +32,10 @@ export function registerProvider(bb: BbPluginApi): void {
     },
     composerActions: [],
     models: { scope: "workspace" },
+    extensionKinds: {
+      [EXTENSION_KINDS.persistedTurn]: { state: persistedTurnStateSchema },
+      [EXTENSION_KINDS.status]: { state: statusStateSchema },
+    },
     deriveProviderOptions,
   });
 }

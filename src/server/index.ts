@@ -31,8 +31,7 @@ function savedMachine(db: Db): string {
   return typeof value === "string" ? value : "";
 }
 
-export async function startServer(bb: BbPluginApi, settings: SettingsHandle): Promise<void> {
-  const db = openMappingDb(bb);
+export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db: Db = openMappingDb(bb)): Promise<void> {
   const host = bb.hosts.experimental_client({ contract: hostContract, experimental_signals: hostSignals });
   const source: ConnectionSource = { get: async () => ({ machine: savedMachine(db), folder: (await settings.get()).folder }) };
   const connection = createConnection(bb, source, db, host);
@@ -90,5 +89,15 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle): Pr
       if (folder !== undefined) await settings.experimental_set({ folder });
       return connection.ensureNow();
     },
+    // P1 seam stubs (lead): the server seam replaces them (T1.9, T1.10, T1.12).
+    bots: () => notYet("T1.9"),
+    setBot: () => notYet("T1.9"),
+    newChat: () => notYet("T1.10"),
+    stopHosted: () => notYet("T1.10"),
+    threadInfo: ({ keys }) => Object.fromEntries(keys.map((key) => [key, null])),
   });
+}
+
+function notYet(task: string): never {
+  throw new Error(`not_implemented:${task}`);
 }

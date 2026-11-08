@@ -39,9 +39,19 @@ export function createHostEntry(opts: WatcherOptions = {}) {
         version: watcher.version,
         bridges: await readBridgeRecords(context.experimental_paths.dataDir),
       }),
+      // P1 seam stubs (lead): the worker seam replaces them (T1.7, T1.8).
+      models: () => notYet("T1.7"),
+      listSessions: () => notYet("T1.7"),
+      readTurns: () => notYet("T1.7"),
+      findBotChat: () => notYet("T1.7"),
+      setBotAccess: () => notYet("T1.8"),
     },
     dispose: () => watcher.close(),
   });
+}
+
+function notYet(task: string): never {
+  throw new Error(`not_implemented:${task}`);
 }
 
 export default createHostEntry();

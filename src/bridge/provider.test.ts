@@ -1,12 +1,15 @@
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_FOLDER } from "../shared/settings.js";
+import { EXTENSION_KINDS } from "../shared/extension-state.js";
+import type { ProviderOptions } from "../shared/provider-options.js";
 import { PROVIDER_ID, REASONING_LEVELS, registerProvider } from "./provider.js";
+
+const OPTIONS: ProviderOptions = { folder: "/srv/hermes", machine: null, thread: null };
 
 // The fake host validates the declaration with the production validator.
 function register() {
   const { bb, harness } = createFakePluginHost();
-  registerProvider(bb);
+  registerProvider(bb, () => OPTIONS);
   expect(harness.registrations.providerRegistrations).toHaveLength(1);
   return harness.registrations.providerRegistrations[0]!;
 }
@@ -34,10 +37,10 @@ describe("registerProvider", () => {
     });
   });
 
-  it("passes the folder setting to the bridge", () => {
-    const derive = register().deriveProviderOptions!;
-    const context = { threadId: "t", projectId: "p", model: "m", permissionMode: "auto" } as const;
-    expect(derive({ ...context, settings: { folder: "/srv/hermes" } })).toEqual({ folder: "/srv/hermes" });
-    expect(derive({ ...context, settings: {} })).toEqual({ folder: DEFAULT_FOLDER });
+  it("hands every command the server's options and declares the bridge's extension states", () => {
+    const registration = register();
+    const context = { threadId: "t", projectId: "p", model: "m", permissionMode: "auto", settings: {} } as const;
+    expect(registration.deriveProviderOptions!(context)).toEqual(OPTIONS);
+    expect(Object.keys(registration.extensionKinds ?? {}).sort()).toEqual([EXTENSION_KINDS.persistedTurn, EXTENSION_KINDS.status].sort());
   });
 });

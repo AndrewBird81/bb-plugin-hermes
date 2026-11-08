@@ -4,7 +4,7 @@
 
 | Component | Runs on | Entry | Owns |
 |---|---|---|---|
-| Server part | bb server | `server.ts` | Provider registration (hidden, `models.scope:"workspace"`); mapping db; switches; import queue; wakes; RPC (`diagnostics`, `stopHosted`, `newChat`, `setBot`); `message.dispatch` hook (D15) |
+| Server part | bb server | `server.ts` | Provider registration (hidden, `models.scope:"workspace"`); mapping db; switches; import queue; wakes; RPC (`diagnostics`, `bots`, `setBot`, `newChat`, `stopHosted`, `threadInfo`); `message.dispatch` hook (D15) |
 | Host worker | Hermes machine, bb host daemon | `host.ts` default export (`experimental_defineHostEntry`) | One host-scoped canonical connection; change watch; history reads; Bot Chat lookup; models; skill and wrapper files; version check |
 | Bridge | Hermes machine, one process per hosted thread (S1-S3 fact 2) | `host.ts` export `experimental_providerBridge` | Its own canonical connection; turns, deltas, interactions; replay and mirror rendering; S8's send rules |
 | Canonical client | library (worker, bridge) | `src/hermes/client.ts` | Discovery, ticket, dial, RPC, replay cursors; ported from `spike/hermes` `src/hermes/` |
@@ -20,7 +20,7 @@ How Hermes' other apps reach the same chats:
 ## Placement
 
 - The bb server can't reach Hermes files or `gateway.sock`. All Hermes I/O goes through the worker (host RPC, 30 s timeout, r01 §1) or a bridge.
-- Settings: **Hermes folder** (default `~/.hermes`) is a `bb.settings` field (`bb plugin config hermes set folder …`). **Hermes machine** (a bb host id) lives in the mapping db's `kv`, set by RPC `setConnection` from the app's picker, so bb's settings form never shows a host id. Bridges that need the machine (P1) get it through `deriveProviderOptions` from the server's copy. The folder reaches the worker in `ensureWatch{root}` and bridges via `deriveProviderOptions`. Logic never names a machine. Unset machine → no Hermes I/O (R3 M3).
+- Settings: **Hermes folder** (default `~/.hermes`) is a `bb.settings` field (`bb plugin config hermes set folder …`). **Hermes machine** (a bb host id) lives in the mapping db's `kv`, set by RPC `setConnection` from the app's picker, so bb's settings form never shows a host id. Bridges get the machine, and the server's view of their thread's binding, through `deriveProviderOptions` (§Provider options). The folder reaches the worker in `ensureWatch{root}` and bridges via `deriveProviderOptions`. Logic never names a machine. Unset machine → no Hermes I/O (R3 M3).
 - Canonical connection: `identify` → `session-ticket{scope:"host"}` → `/api/ws` with subprotocols `["hermes-gateway-v1","hermes-gateway-ticket.<t>"]` (S0-S4 cheat-sheet 1). Rediscover on every connect; `gateway.sock.path` fallback. One host ticket drives every served profile (S8 §Per-profile reach).
 - **Never start a gateway** (r09 M5): no `connect_gateway()` without an endpoint, no `hermes gateway …`, no `ensure` verbs.
 
@@ -84,24 +84,32 @@ Input parsing (R1 M6): bb may merge queued sends into one turn. The bridge split
 
 ### Server ↔ host worker (`src/shared/host-contract.ts`)
 
+Every call carries `root` (the folder); profiles are named by `profile_home`, which the worker maps to the name Hermes routes by.
+
 | Call | Input → output |
 |---|---|
-| `ensureWatch` | `{root, enabled_bots}` → `{worker_boot_id, connected, instance_id, version, supported, detail}` (`detail`: a bounded reason code for health). Every 60 s: an idle worker dies at 300 s with no exit event (S7 §6). New boot id → full reconcile |
+| `ensureWatch` | `{root, enabled_bots}` (profile homes) → `{worker_boot_id, connected, instance_id, version, supported, detail}` (`detail`: a bounded reason code for health). Every 60 s: an idle worker dies at 300 s with no exit event (S7 §6). New boot id → full reconcile. Also writes `worker.json` for bridges |
 | `describe` | `{root}` → `{uid, profiles[{name, home, handle, terminal_cwd, served}]}` |
-| `models` | `{profile}` → `model.options` rows; enabled bots prewarmed |
-| `listSessions` | `{profile_home, since?}` → `[{session_id, lineage_root, title, source, created_source, hidden, archived, cwd, message_count, last_activity_at, legacy}]` |
-| `readTurns` | `{profile_home, lineage_root, after_uid?, since?}` → `[{anchor_uid, user_text, user_hidden, source, submission_id, reply_uids, ts, complete}]`, root to tip |
-| `findBotChat` | `{profile_home}` → `{found, lineage_root, session_id}` · `{none}` · `{held}` |
-| `setBotAccess` | `{profile_home, on}` → writes or deletes skill and wrapper, then `refresh-prompts` (flow 1) |
+| `models` | `{root, profile_home}` → the normalized catalog (`src/shared/models.ts`); enabled bots prewarmed into `models/` |
+| `listSessions` | `{root, profile_home, since?}` → `{sessions[{session_id, lineage_root, title, source, created_source, hidden, archived, cwd, message_count, last_activity_at, legacy}]}` |
+| `readTurns` | `{root, profile_home, lineage_root, after_uid?, since?}` → `{session_id (tip), turns[{anchor_uid, user_text, user_hidden, surface, submission_id, reply_uids, ts, complete}], truncated}`, root to tip |
+| `findBotChat` | `{root, profile_home}` → `{state:"found", lineage_root, session_id, legacy}` · `{state:"none"}` · `{state:"held"}` |
+| `setBotAccess` | `{root, profile_home, on, enabled_bots}` → `{skill, wrapper, refreshed, detail}`: writes or deletes skill and wrapper (the wrapper goes when `enabled_bots` is empty), then `refresh-prompts` (flow 1) |
 | `diagnostics` | → pid, uptime, boot id, watch state, version check, bridge build registry |
 
 Signals (worker → server): `changed{profile_homes[]}`, debounced; `watch{state}`. `sessions.changed` is only a hint (r11 §8), so the worker also stats each enabled profile's `state.db-wal` every 2 s.
 
 ### Bridge state (`<bridge dataDir>/`)
 
-- `threads.json`: `{threadId: {profile, bot}}`, needed before a Hermes session exists.
+- `threads.json`: `{threadId: {profile, bot}}`, for `model/list`, which runs with no provider options (cwd → threadId → profile, S7 1c).
+- `worker.json` (written by the worker, `src/shared/bridge-files.ts`): `{root, worker_boot_id, written_at, enabled[{profile, profile_home, bot_label, cwd}]}`. Present = this machine runs the worker; absent → turns fail "Hermes runs on <machine>". `enabled` feeds `model/list`'s `profile` session option (A18).
 - `bridges/<pid>.json`: `{build, threadId, startedAt}` for `diagnostics`. bb gives bridges `…/plugins/hermes/bridge-data` and the worker `…/host-data` (A22 false), so the worker reads the sibling `bridge-data/bridges/`. `build` is `<plugin version>+<host artifact digest>`, the same for the worker and bridges of one deploy; the bundled version makes every release a new artifact, even with unchanged host code (A26).
-- `models/<profile>.json`: last-known model list.
+- `models/<sha256(profile_home)[:16]>.json`: last-known catalog, written by the worker's prewarm and by bridges.
+
+### Provider options and extension states
+
+- `deriveProviderOptions` (synchronous, every command; `src/shared/provider-options.ts`): `{folder, machine{id, name}, thread}`. `thread` is the server's binding view `{kind, profile, profile_home, bot_label, enabled, lineage_root, session_id, legacy, tag, cwd}`, null when unbound (S1-S3 fact 1 pattern (a)).
+- Extension states the bridge publishes (`src/shared/extension-state.ts`): `persisted-turn` (bb's own turns as stored, cumulative, last 20; A37) and `status` (the thread banner: `held`, `running_elsewhere{app}`; A47).
 
 ## Protocol mapping
 
