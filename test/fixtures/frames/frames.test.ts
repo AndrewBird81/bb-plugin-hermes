@@ -21,7 +21,10 @@ const lastUser = (r: Recording) => r.model_calls.map((c) => c.user_texts.at(-1) 
 describe("recorded frames (T1.0)", () => {
   it("cover every T1.0 row of 03 §Recorded fixtures", () => {
     expect(names.sort()).toEqual(
-      ["adoption", "attachments", "chat-continue", "conduit-coordination", "conduit-forward", "conduit-turn", "detach", "restart-unknown", "slash-new", "viewer"].sort(),
+      [
+        "adoption", "approvals", "attachments", "chat-continue", "conduit-coordination", "conduit-forward", "conduit-turn", "detach", "lease-wait",
+        "reasoning", "rest-midturn", "restart-unknown", "rotating-viewer", "slash-new", "viewer",
+      ].sort(),
     );
     for (const n of names) expect(load(n).$comment, n).toBeTruthy();
   });
@@ -45,14 +48,87 @@ describe("recorded frames (T1.0)", () => {
     expect(notes.conduit_before_resolve.message).toContain("outcome-unknown work in the gateway's durable queue");
     expect(sent(r, "bb", "prompt.resolve_unknown")).toEqual([{ profile: "alex", session_id: notes.session, admission_id: notes.admission.admission_id, execution_generation: notes.snapshot_execution_generation }]);
     expect(notes.resolve_unknown).toMatchObject({ status: "terminal", outcome: "interrupted" });
-    expect(notes.conduit_after_resolve).toMatchObject({ status: "streaming" });
+    // Accepted: run by the dashboard, or forwarded behind bb's second submit (next test).
+    expect(["streaming", "queued"]).toContain(notes.conduit_after_resolve.status);
     expect(notes.conduit_after_resolve_completed).toBe(true);
     // The lost turn keeps its user row, with an assistant note; the model saw it in the next turn's context.
     const rows = pages(r).at(-1)!.messages;
     const lost = rows.findIndex((m) => m.display_metadata?.submission_id === "bb:thr_rec_bot:3");
     expect(rows[lost + 1]).toMatchObject({ role: "assistant" });
     expect(String(rows[lost + 1]!.content)).toMatch(/^This turn did not complete/);
-    expect(r.model_calls.at(-1)!.user_texts).toContain("very slow turn before the restart");
+    expect(r.model_calls.some((c) => c.user_texts.includes("very slow turn before the restart") && c.user_texts.at(-1) !== "very slow turn before the restart")).toBe(true);
+  });
+
+  it("after a restart, a second canonical submit on the unknown session is queued; it runs only after resolve_unknown, and Conduit's send meanwhile is forwarded", () => {
+    const { notes } = load("restart-unknown");
+    expect(notes.second_submit).toMatchObject({ status: "queued" });
+    expect(notes.second_ran_before_resolve).toBe(false);
+    expect(notes.second_ran_after_resolve).toBe(true);
+    // With work queued behind the unknown admission, the dashboard forwards instead of refusing.
+    expect(notes.conduit_behind_second).toMatchObject({ status: "queued", forwarded: true });
+  });
+
+  it("E3a: while Conduit's dashboard turn holds the turn lease, bb's socket gets agent.print + status.update lifecycle texts, then the turn", () => {
+    const { notes } = load("lease-wait");
+    expect(notes.dashboard_submit).toMatchObject({ status: "streaming" });
+    const texts = notes.bb_status_events.filter((e: any) => e.type === "status.update").map((e: any) => e.payload);
+    expect(texts).toEqual([
+      { kind: "lifecycle", text: "⏳ Another Hermes process is using this session; waiting for it to finish before starting your turn..." },
+      { kind: "lifecycle", text: "Session is free; loading the latest transcript..." },
+    ]);
+    expect(notes.bb_status_events.filter((e: any) => e.type === "agent.print").map((e: any) => e.payload.text)).toEqual(texts.map((t: any) => t.text));
+    expect(notes.bb_event_types).toEqual(expect.arrayContaining(["message.start", "message.delta", "message.complete"]));
+  });
+
+  it("a rotating compress: a subscriber of the root keeps every event under the root id and epoch; stored_session_id stays the root", () => {
+    const { notes } = load("rotating-viewer");
+    expect(notes.tip).not.toBe(notes.root);
+    expect(notes.compress).toMatchObject({ operation: "compress", target_session_id: notes.tip, previous_target_session_id: notes.root });
+    for (const e of [...notes.viewer_during_compress, ...notes.viewer_during_next_turn]) {
+      if (e.session !== null) expect(e, e.type).toMatchObject({ session: "root", epoch: "same" });
+      expect(e.stored, e.type).not.toBe("tip");
+    }
+    expect(notes.viewer_during_compress.map((e: any) => e.type)).toContain("session.updated");
+    expect(notes.viewer_during_next_turn.map((e: any) => e.type)).toEqual(expect.arrayContaining(["message.start", "message.delta", "message.complete"]));
+    expect(notes.resume_root_after).toMatchObject({ session: "root", stored: "root", epoch: "same" });
+  });
+
+  it("approvals: answered by another client or timed out → approval.settled on every subscriber, no cancelled event; a late answer is stale_generation", () => {
+    const { notes } = load("approvals");
+    for (const k of ["answered_elsewhere", "timed_out"]) {
+      for (const who of ["bb_saw", "other_saw"]) {
+        const seen = notes[k][who] as { type: string; payload: any }[];
+        expect(seen.map((e) => e.type), `${k} ${who}`).toEqual(["approval.request", "approval.settled"]);
+        expect(seen[1]!.payload).toEqual({ prompt_id: seen[0]!.payload.prompt_id, execution_generation: seen[0]!.payload.execution_generation });
+      }
+      expect(notes[k].bb_respond_after).toEqual({ refused: "stale_generation" });
+    }
+    expect(notes.answered_elsewhere.request_choices).toEqual(["once", "deny", "session", "always"]);
+    expect(notes.answered_elsewhere.other_respond).toMatchObject({ status: "resolved" });
+    expect(notes.timed_out.bb_saw[0].payload.timeout_s).toBe(8);
+    expect(notes.scratch_still_there).toBe(true); // denied and timed out: the command never ran
+  });
+
+  it("reasoning: reasoning.delta streams only on a tui/gui session; every source gets it in message.complete", () => {
+    const { notes } = load("reasoning");
+    expect(notes.gui.reasoning_deltas).toEqual(["Thinking about it. ", "Still thinking. ", "Done thinking."]);
+    expect(notes.cli.reasoning_deltas).toEqual([]);
+    expect(notes.cli.event_types).not.toContain("reasoning.delta");
+    for (const s of ["cli", "gui"]) expect(notes[s].complete_reasoning, s).toBe("Thinking about it. Still thinking. Done thinking.");
+    // thinking.delta is Hermes' spinner text, never the model's reasoning.
+    expect(notes.gui.event_types).toContain("thinking.delta");
+  });
+
+  it("REST mid-turn (real CLI): the user row is stored at the start; a tool step's rows after the step; the reply at the end", () => {
+    const { notes } = load("rest-midturn");
+    const plain = notes.polls["slow cli turn"] as { t: number; rows: string[] }[];
+    expect(plain.find((p) => p.rows.length === 1)!.rows).toEqual(["user"]);
+    expect(plain.at(-1)!.rows).toEqual(["user", "assistant"]);
+    const tool = notes.polls["use a tool slow"] as { t: number; rows: string[] }[];
+    const step = tool.find((p) => p.rows.length === 5)!;
+    expect(step.rows.slice(2)).toEqual(["user", "assistant+tool_calls", "tool"]);
+    expect(tool.at(-1)!.rows.slice(2)).toEqual(["user", "assistant+tool_calls", "tool", "assistant"]);
+    expect(tool.at(-1)!.t - step.t).toBeGreaterThan(5000); // the slow reply streamed after the step was readable
   });
 
   it("A50: attachments are images staged directly in the profile's cache/images; anything else is invalid_params", () => {

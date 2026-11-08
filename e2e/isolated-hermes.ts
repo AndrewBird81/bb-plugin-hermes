@@ -26,10 +26,16 @@ export const until = async (what: string, fn: () => boolean, ms = 90_000) => {
 export const livePid = () => readFileSync(path.join(HERMES, "gateway.pid"), "utf8");
 export type Tap = (client: string, dir: "in" | "out", raw: string) => void;
 
-// ---- stub model: echoes the last user message. "slow" → ~10 s stream; "very slow" → ~20 s.
+// ---- stub model: echoes the last user message. "slow" → ~10 s stream; "very slow" → ~20 s; "think" → reasoning
+// chunks first; "use a tool" → one read_file call; "run a command" → one terminal `rm -rf` of a scratch dir under
+// the home (Hermes asks for approval; the recordings deny it or let it time out).
 export interface ModelCall {
   messages: number;
   user_texts: string[];
+  /** The assistant texts in the context, oldest first (absent in the T1.0 recordings). */
+  assistant_texts?: string[];
+  /** The system prompt's skill list names the plugin's bb skill (S8 E14, A43). */
+  bb_skill_listed?: boolean;
   parts: string[][];
 }
 type Msg = { role: string; content?: unknown };
@@ -37,7 +43,7 @@ type Part = { type?: string; text?: string };
 const text = (c: unknown) => (typeof c === "string" ? c : Array.isArray(c) ? (c as Part[]).map((p) => p.text ?? "").join("") : "");
 // Long user texts (Hermes appends skill and interface notes) keep their head and tail.
 const clip = (s: string) => (s.length > 400 ? `${s.slice(0, 200)} … ${s.slice(-200)}` : s);
-function stubModel(onCall: (c: ModelCall) => void) {
+function stubModel(home: string, onCall: (c: ModelCall) => void) {
   return http.createServer(async (req, res) => {
     let body = "";
     for await (const chunk of req) body += chunk;
@@ -45,14 +51,21 @@ function stubModel(onCall: (c: ModelCall) => void) {
     const msgs = j.messages ?? [];
     const users = msgs.filter((m) => m.role === "user");
     const lastUser = text(users.at(-1)?.content);
+    const last = msgs.at(-1);
     let reply = `echo(${msgs.length}): ${lastUser.slice(-120)}`;
     let delay = 0;
+    let tool: { name: string; arguments: object } | null = null;
     // Calls without tools are Hermes' auxiliary ones (titles, summaries, image descriptions).
     if (!j.tools) reply = /summariz/i.test(JSON.stringify(msgs)) ? "Summary of the earlier turns." : "Stub chat";
     else {
+      if (last?.role === "tool") reply = `tool result: ${text(last.content).slice(0, 120)}`;
+      else if (/\brun a command\b/.test(lastUser)) tool = { name: "terminal", arguments: { command: `rm -rf "${home}/work/scratch"` } };
+      else if (/\buse a tool\b/.test(lastUser)) tool = { name: "read_file", arguments: { path: `${home}/work/note.txt` } };
       onCall({
         messages: msgs.length,
         user_texts: users.map((m) => clip(text(m.content))),
+        bb_skill_listed: /<available_skills>[\s\S]*bb-plugin-hermes[\s\S]*<\/available_skills>/.test(text(msgs.find((m) => m.role === "system")?.content)),
+        assistant_texts: msgs.filter((m) => m.role === "assistant" && text(m.content)).map((m) => clip(text(m.content))),
         parts: users.map((m) => (Array.isArray(m.content) ? (m.content as Part[]).map((p) => p.type ?? "?") : ["string"])),
       });
       if (/\bvery slow\b/.test(lastUser)) delay = 1000;
@@ -63,14 +76,28 @@ function stubModel(onCall: (c: ModelCall) => void) {
     const created = Math.floor(Date.now() / 1000);
     const usage = { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 };
     const chunk = (delta: object, finish: string | null) => ({ id, object: "chat.completion.chunk", created, model: "stub", choices: [{ index: 0, delta, finish_reason: finish }] });
+    const call = tool && { index: 0, id: `call_${Date.now()}`, type: "function", function: { name: tool.name, arguments: JSON.stringify(tool.arguments) } };
     try {
       if (!j.stream) {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ id, object: "chat.completion", created, model: "stub", choices: [{ index: 0, message: { role: "assistant", content: reply }, finish_reason: "stop" }], usage }));
+        const message = call ? { role: "assistant", content: null, tool_calls: [call] } : { role: "assistant", content: reply };
+        res.end(JSON.stringify({ id, object: "chat.completion", created, model: "stub", choices: [{ index: 0, message, finish_reason: call ? "tool_calls" : "stop" }], usage }));
         return;
       }
       res.writeHead(200, { "content-type": "text/event-stream" });
       const send = (o: object) => res.write(`data: ${JSON.stringify(o)}\n\n`);
+      if (call) {
+        send(chunk({ role: "assistant", tool_calls: [call] }, null));
+        send({ ...chunk({}, "tool_calls"), usage });
+        res.end("data: [DONE]\n\n");
+        return;
+      }
+      if (j.tools && /\bthink\b/.test(lastUser) && last?.role !== "tool") {
+        for (const r of ["Thinking about it. ", "Still thinking. ", "Done thinking."]) {
+          send(chunk({ role: "assistant", reasoning_content: r }, null));
+          await sleep(200);
+        }
+      }
       for (const [i, w] of reply.split(/(?<= )/).entries()) {
         if (res.destroyed) return;
         send(chunk(i === 0 ? { role: "assistant", content: w } : { content: w }, null));
@@ -82,7 +109,7 @@ function stubModel(onCall: (c: ModelCall) => void) {
   });
 }
 
-function config(port: number, home: string, extra = ""): string {
+function config(port: number, home: string, approvalTimeoutS: number, extra = ""): string {
   return `model:
   default: stub
   provider: stub
@@ -102,6 +129,7 @@ providers:
 fallback_providers: []
 approvals:
   mode: manual
+  timeout: ${approvalTimeoutS}
 toolsets:
   - hermes-cli
 terminal:
@@ -152,6 +180,11 @@ async function dashboardClient(port: number, token: string, name: string, tap?: 
   const completes = (sid: string, from = 0) => events.slice(from).filter((e) => e.type === "message.complete" && e.session_id === sid).length;
   /** Open a stored chat by id; the answer's `session_id` is the dashboard's live id for it. */
   const open = async (profile: string, stored: string) => String((await rpc("session.resume", { session_id: stored, profile })).session_id);
+  /** Conduit's Bot Chat lookup: exact title, resolved to the live tip (`tui_gateway/methods_session.py:509-534`). */
+  const findByTitle = async (profile: string, title: string) => {
+    const [row] = ((await rpc("session.list", { profile, title })).sessions ?? []) as { session_id: string; resolved_id?: string }[];
+    return row ? (row.resolved_id ?? row.session_id) : null;
+  };
   /** Send and wait for the dashboard's `message.complete` (also when the send was forwarded). */
   const send = async (profile: string, live: string, text: string) => {
     const from = events.length;
@@ -159,7 +192,7 @@ async function dashboardClient(port: number, token: string, name: string, tap?: 
     if (!answer.error) await until(`${name} turn`, () => completes(live, from) > 0);
     return answer;
   };
-  return { call, rpc, open, send, events, completes, close: () => ws.close() };
+  return { call, rpc, open, findByTitle, send, events, completes, close: () => ws.close() };
 }
 
 // ---- a canonical client (src/hermes, as bb's bridge and worker use it)
@@ -189,6 +222,8 @@ export interface IsolatedOptions {
   /** Every frame of every client this instance opens. */
   tap?: Tap;
   onModelCall?: (c: ModelCall) => void;
+  /** `approvals.timeout`, seconds (Hermes' default 300). */
+  approvalTimeoutS?: number;
 }
 
 export async function startIsolatedHermes(opts: IsolatedOptions) {
@@ -197,13 +232,15 @@ export async function startIsolatedHermes(opts: IsolatedOptions) {
   const before = livePid();
   const procs: Proc[] = [];
   const calls: ModelCall[] = [];
-  const stub = stubModel((c) => {
+  const stub = stubModel(H, (c) => {
     calls.push(c);
     opts.onModelCall?.(c);
   });
   const profileHome = (p: string) => (p === "default" ? H : `${H}/profiles/${p}`);
+  /** Every Hermes process here runs with this environment: nothing of the caller's. */
+  const baseEnv = { HOME: `${H}/home`, PATH: "/usr/bin:/bin:/usr/sbin:/sbin", TMPDIR: `${H}/tmp`, LANG: "en_US.UTF-8", HERMES_HOME: H, HERMES_GATEWAY_LOCK_DIR: `${H}/locks` };
   const spawnHermes = (args: string[], log: string, o: { env?: Record<string, string>; cwd?: string } = {}): Proc => {
-    const env = { HOME: `${H}/home`, PATH: "/usr/bin:/bin:/usr/sbin:/sbin", TMPDIR: `${H}/tmp`, LANG: "en_US.UTF-8", HERMES_HOME: H, HERMES_GATEWAY_LOCK_DIR: `${H}/locks`, ...o.env };
+    const env = { ...baseEnv, ...o.env };
     const p = spawn(path.join(HERMES, "hermes-agent/venv/bin/python"), ["-m", "hermes_cli.main", ...args], { cwd: o.cwd ?? H, env, stdio: ["ignore", "pipe", "pipe"] }) as Proc;
     p.lines = [];
     p.stdout!.on("data", (d) => p.lines.push(String(d)));
@@ -215,9 +252,10 @@ export async function startIsolatedHermes(opts: IsolatedOptions) {
 
   rmSync(H, { recursive: true, force: true });
   for (const d of ["", "/locks", "/home", "/tmp", "/work", "/elsewhere", ...opts.profiles.map((p) => `/profiles/${p}`)]) mkdirSync(H + d, { recursive: true, mode: 0o700 });
+  writeFileSync(`${H}/work/note.txt`, "a note for read_file\n");
   await new Promise<void>((r) => stub.listen(0, "127.0.0.1", () => r()));
   const stubPort = (stub.address() as { port: number }).port;
-  for (const p of ["default", ...opts.profiles]) writeFileSync(`${profileHome(p)}/config.yaml`, config(stubPort, H, opts.extraConfig?.[p]), { mode: 0o600 });
+  for (const p of ["default", ...opts.profiles]) writeFileSync(`${profileHome(p)}/config.yaml`, config(stubPort, H, opts.approvalTimeoutS ?? 300, opts.extraConfig?.[p]), { mode: 0o600 });
 
   let gateway: Proc;
   const startGateway = async (notInstance?: string): Promise<GatewayEndpoint> => {
@@ -239,12 +277,20 @@ export async function startIsolatedHermes(opts: IsolatedOptions) {
       if (rec.hermes_home === H) process.kill(rec.pid, signal);
     } catch {}
   };
-  let endpoint = await startGateway();
-
   const dashboardToken = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, "0")).join("");
   const dashboardPort = await freePort();
-  const dash = spawnHermes(["dashboard", "--host", "127.0.0.1", "--port", String(dashboardPort), "--isolated", "--skip-build", "--no-open"], "dashboard", { env: { HERMES_DASHBOARD_SESSION_TOKEN: dashboardToken } });
-  await until("dashboard", () => dash.lines.join("").includes("HERMES_DASHBOARD_READY"), 120_000);
+  let endpoint: GatewayEndpoint;
+  try {
+    endpoint = await startGateway();
+    const dash = spawnHermes(["dashboard", "--host", "127.0.0.1", "--port", String(dashboardPort), "--isolated", "--skip-build", "--no-open"], "dashboard", { env: { HERMES_DASHBOARD_SESSION_TOKEN: dashboardToken } });
+    await until("dashboard", () => dash.lines.join("").includes("HERMES_DASHBOARD_READY"), 120_000);
+  } catch (error) {
+    // Leave nothing running; keep the home for its logs.
+    signalGateway("SIGKILL");
+    for (const p of procs) p.kill("SIGKILL");
+    stub.close();
+    throw error;
+  }
 
   let stopping: Promise<void> | null = null;
   const stop = async (keep: boolean) => {
@@ -258,6 +304,7 @@ export async function startIsolatedHermes(opts: IsolatedOptions) {
   };
   return {
     home: H,
+    env: baseEnv,
     profileHome,
     calls,
     dashboardPort,

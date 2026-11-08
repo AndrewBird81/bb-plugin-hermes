@@ -5,7 +5,7 @@
 // its own lock dir, HOME and TMPDIR, an ephemeral gateway port, a dashboard on a free port with a session token
 // (the legacy client Conduit uses) and a stub model on 127.0.0.1. Never touches the live gateway: its pid is
 // checked before and after. The home is removed afterwards unless --keep.
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { HermesRpcError } from "../src/hermes/client.js";
@@ -85,7 +85,14 @@ async function cli(args: string[], log: string, cwd = `${H}/work`) {
 
 async function main() {
   mkdirSync(OUT, { recursive: true });
-  h = await startIsolatedHermes({ home: H, profiles: ["alex", "bob", "carol"], tap, onModelCall: (c) => calls.push(c) });
+  h = await startIsolatedHermes({
+    home: H,
+    profiles: ["alex", "bob", "carol", "dave"],
+    extraConfig: { dave: "compression:\n  in_place: false\n" },
+    approvalTimeoutS: 8,
+    tap,
+    onModelCall: (c) => calls.push(c),
+  });
   begin();
 
   // ---- A19: a turn by another canonical client (the real CLI, then a second canonical client), seen live by a viewer that resumed the session.
@@ -298,6 +305,27 @@ async function main() {
     });
   }
 
+  // ---- E3a/E9a: Conduit's own turn holds the turn lease; bb submits meanwhile: what bb's socket gets while it waits.
+  {
+    const from = bb.events.length;
+    const cFrom = conduit.events.length;
+    const conduitTurn = conduit.call("prompt.submit", { session_id: live, profile: "alex", text: "slow conduit turn holding the lease" });
+    await until("conduit's user row", () => conduit.events.slice(cFrom).some((e) => e.type === "message.start"));
+    const adm = await bb.c.submit({ profile: "alex", session_id: bot, text: "bb during the conduit turn", submission_id: "bb:thr_rec_bot:lease", turn_author: { id: "bb:thr_rec", name: "bb" } });
+    const sent = await conduitTurn;
+    await until("bb's turn after conduit's", () => bb.completes(bot, from) > 0, 90_000);
+    await sleep(1000);
+    await readMessages(H, "alex", bot, PAGE);
+    const mine = bb.events.slice(from).filter((e) => e.session_id === bot);
+    save("lease-wait", "E3a/E9a: Conduit runs its own (dashboard) turn on the Bot Chat; bb submits during it and waits for the turn lease (alex).", {
+      session: bot,
+      dashboard_submit: sent.error ?? sent.result,
+      bb_admission: adm,
+      bb_event_types: [...new Set(mine.map((e) => e.type))],
+      bb_status_events: mine.filter((e) => !/^message\.(delta|start|complete)$|^thinking\.delta$|^session\.usage$/.test(e.type)).map((e) => ({ type: e.type, payload: e.payload })),
+    });
+  }
+
   // ---- E11b: the gateway killed mid bb turn, started again: bb's admission is unknown; Conduit is refused until prompt.resolve_unknown.
   {
     const from = bb.events.length;
@@ -309,13 +337,25 @@ async function main() {
     const snap: Snapshot = await after.c.resume({ profile: "alex", session_id: bot, omit_messages: true });
     const unknown = snap.pending.find((p) => p.admission_id === adm.admission_id);
     const refused = await conduit.call("prompt.submit", { session_id: live, profile: "alex", text: "conduit after the restart" });
+    // A second canonical submit while bb's admission is unknown: queued behind it, or refused? Then Conduit again.
+    const sFrom = after.events.length;
+    const second = await after.c.submit({ profile: "alex", session_id: bot, text: "second submit while unknown", submission_id: "bb:thr_rec_bot:4" }).catch((e) => ({ refused: reason(e) }));
+    await sleep(4000);
+    const secondRanBeforeResolve = after.completes(bot, sFrom) > 0;
+    const conduitBehindSecond = await conduit.call("prompt.submit", { session_id: live, profile: "alex", text: "conduit behind the second submit" });
     const resolved = await after.c.resolveUnknown({ profile: "alex", session_id: bot, admission_id: adm.admission_id, execution_generation: unknown?.execution_generation ?? snap.execution_generation }).catch((e) => ({ refused: reason(e) }));
+    if (!("refused" in second)) await until("the second submit runs", () => after.completes(bot, sFrom) > 0, 60_000).catch(() => {});
+    const secondRanAfterResolve = after.completes(bot, sFrom) > 0;
     const cFrom = conduit.events.length;
     const accepted = await conduit.call("prompt.submit", { session_id: live, profile: "alex", text: "conduit after resolve_unknown" });
     await until("conduit turn", () => conduit.completes(live, cFrom) > 0).catch(() => {});
     await sleep(1000);
     await readMessages(H, "alex", bot, PAGE);
-    save("restart-unknown", "E11b: bb's turn running on the Bot Chat; the gateway SIGKILLed and started again; bb resumes; Conduit sends; bb resolves the unknown admission; Conduit sends again (alex).", {
+    save("restart-unknown", "E11b: bb's turn running on the Bot Chat; the gateway SIGKILLed and started again; bb resumes and submits a second prompt; Conduit sends; bb resolves the unknown admission; Conduit sends again (alex).", {
+      second_submit: second,
+      second_ran_before_resolve: secondRanBeforeResolve,
+      second_ran_after_resolve: secondRanAfterResolve,
+      conduit_behind_second: conduitBehindSecond.error ?? conduitBehindSecond.result,
       session: bot,
       instance_changed: endpoint.instanceId !== oldInstance,
       admission: adm,
@@ -437,8 +477,127 @@ async function main() {
     k2.c.close();
     d2.close();
   }
+
+  // ---- A rotating compress (dave, compression.in_place false): what a canonical subscriber of the old id sees.
+  {
+    const bb = await canonical("bb");
+    const viewer = await canonical("viewer");
+    const root = await bb.create("dave", "bb:thr_rec_rotview");
+    for (let i = 1; i <= 6; i++) await bb.turn("dave", root, `rotating turn ${i} ` + "lorem ipsum ".repeat(30), `bb:thr_rec_rotview:${i}`);
+    const before = await viewer.c.resume({ profile: "dave", session_id: root, omit_messages: true });
+    const from = viewer.events.length;
+    const s1 = await bb.c.resume({ profile: "dave", session_id: root, omit_messages: true });
+    const compress = (await bb.c.mutate({ profile: "dave", session_id: root, request_id: "bb:compress:rotview", expected_revision: s1.revision, expected_generation: s1.execution_generation, operation: "compress", payload: {} })) as unknown as Record<string, unknown>;
+    const tip = String(compress.target_session_id ?? compress.session_id);
+    await sleep(2000);
+    const atCompress = viewer.events.length;
+    await bb.turn("dave", root, "after rotation by the root id", "bb:thr_rec_rotview:7");
+    await sleep(1000);
+    const name = (id: unknown) => (id === root ? "root" : id === tip ? "tip" : id ? "other" : null);
+    const seen = (list: typeof viewer.events) =>
+      list.map((e) => ({ type: e.type, session: name(e.session_id), seq: e.seq ?? null, epoch: e.replay_epoch ? (e.replay_epoch === before.replay_epoch ? "same" : "new") : null, stored: name(e.payload?.stored_session_id) }));
+    const after = await viewer.c.resume({ profile: "dave", session_id: root, omit_messages: true });
+    await listSessions(H, "dave", ALL);
+    save("rotating-viewer", "A rotating compress (dave, in_place false): a viewer subscribed to the root id; bb compresses, then submits by the root id; the viewer resumes the root again.", {
+      root,
+      tip,
+      compress,
+      viewer_during_compress: seen(viewer.events.slice(from, atCompress)),
+      viewer_during_next_turn: [...new Map(seen(viewer.events.slice(atCompress)).map((e) => [`${e.type}/${e.session}/${e.epoch}/${e.stored}`, e])).values()],
+      bb_turn_after_rotation_session: name(bb.events.filter((e) => e.type === "message.complete").at(-1)?.session_id),
+      resume_root_after: { session: name(after.session_id), stored: name(after.stored_session_id), epoch: after.replay_epoch === before.replay_epoch ? "same" : "new", last_sequence: after.last_sequence },
+    });
+    bb.c.close();
+    viewer.c.close();
+  }
+
+  // ---- reasoning: the stub streams reasoning_content before its reply; a cli session, then a gui one (bb's source, A20).
+  {
+    const bb = await canonical("bb");
+    const out: Record<string, unknown> = {};
+    for (const source of ["cli", "gui"] as const) {
+      const sid = await bb.create("alex", `bb:thr_rec_think_${source}`, source);
+      const from = bb.events.length;
+      await bb.turn("alex", sid, "please think first", `bb:thr_rec_think_${source}:1`);
+      await readMessages(H, "alex", sid, PAGE);
+      const mine = bb.events.slice(from).filter((e) => e.session_id === sid);
+      out[source] = {
+        session: sid,
+        event_types: [...new Set(mine.map((e) => e.type))],
+        reasoning_deltas: mine.filter((e) => e.type === "reasoning.delta").map((e) => e.payload?.text ?? null),
+        complete_reasoning: mine.find((e) => e.type === "message.complete")?.payload?.reasoning ?? null,
+      };
+    }
+    save("reasoning", "A turn whose model streams reasoning_content chunks, then the reply: in a source cli session, then a source gui one (alex).", out);
+    bb.c.close();
+  }
+
+  // ---- approvals: one answered by another canonical client (deny), one left to time out (approvals.timeout 8 s).
+  {
+    const bb = await canonical("bb");
+    const other = await canonical("other");
+    const sid = await bb.create("alex", "bb:thr_rec_approve");
+    mkdirSync(`${H}/work/scratch`, { recursive: true });
+    await other.c.resume({ profile: "alex", session_id: sid, omit_messages: true });
+    const kinds = (list: typeof bb.events) => list.filter((e) => e.session_id === sid && /approval|prompt|settled|cancel/.test(e.type)).map((e) => ({ type: e.type, payload: e.payload }));
+    let from = bb.events.length;
+    let oFrom = other.events.length;
+    await bb.c.submit({ profile: "alex", session_id: sid, text: "please run a command", submission_id: "bb:thr_rec_approve:1" });
+    await until("approval request", () => bb.events.slice(from).some((e) => e.session_id === sid && e.type === "approval.request"), 60_000);
+    const req = bb.events.slice(from).find((e) => e.type === "approval.request")!;
+    const promptId = String(req.payload?.prompt_id);
+    const gen = Number(req.execution_generation ?? req.payload?.execution_generation);
+    const denied = await other.c.approvalRespond({ profile: "alex", session_id: sid, execution_generation: gen, prompt_id: promptId, choice: "deny" }).catch((e) => ({ refused: reason(e) }));
+    await until("turn after deny", () => bb.completes(sid, from) > 0, 60_000);
+    const late = await bb.c.approvalRespond({ profile: "alex", session_id: sid, execution_generation: gen, prompt_id: promptId, choice: "deny" }).catch((e) => ({ refused: reason(e) }));
+    const answered = { request_choices: req.payload?.choices, other_respond: denied, bb_respond_after: late, bb_saw: kinds(bb.events.slice(from)), other_saw: kinds(other.events.slice(oFrom)) };
+    from = bb.events.length;
+    oFrom = other.events.length;
+    await bb.c.submit({ profile: "alex", session_id: sid, text: "please run a command again", submission_id: "bb:thr_rec_approve:2" });
+    await until("approval request 2", () => bb.events.slice(from).some((e) => e.session_id === sid && e.type === "approval.request"), 60_000);
+    const req2 = bb.events.slice(from).find((e) => e.type === "approval.request")!;
+    await until("turn after the timeout", () => bb.completes(sid, from) > 0, 60_000);
+    const afterTimeout = await bb.c.approvalRespond({ profile: "alex", session_id: sid, execution_generation: Number(req2.execution_generation ?? req2.payload?.execution_generation), prompt_id: String(req2.payload?.prompt_id), choice: "deny" }).catch((e) => ({ refused: reason(e) }));
+    await readMessages(H, "alex", sid, PAGE);
+    save("approvals", "Two approvals (a terminal rm -rf of a scratch dir under the isolated home): the first denied by another canonical client, the second left to time out (approvals.timeout 8 s) (alex).", {
+      session: sid,
+      answered_elsewhere: answered,
+      timed_out: { bb_saw: kinds(bb.events.slice(from)), other_saw: kinds(other.events.slice(oFrom)), bb_respond_after: afterTimeout },
+      scratch_still_there: existsSync(`${H}/work/scratch`),
+    });
+    bb.c.close();
+    other.c.close();
+  }
+
+  // ---- REST read mid-turn: real CLI turns (a slow reply; a tool step, then a slow reply), REST polled every 500 ms.
+  {
+    const bb = await canonical("bb");
+    const sid = await bb.create("alex", "bb:thr_rec_midturn");
+    await bb.turn("alex", sid, "warm up", "bb:thr_rec_midturn:1");
+    bb.c.close();
+    const polls: Record<string, { t: number; rows: string[] }[]> = {};
+    for (const ask of ["slow cli turn", "use a tool slow"]) {
+      const run = h.cli(["-p", "alex", "chat", "--resume", sid, "-q", ask], `cli-midturn-${ask.length}`);
+      let done = false;
+      void run.then(() => (done = true));
+      const t1 = Date.now();
+      const list: { t: number; rows: string[] }[] = [];
+      while (!done) {
+        const rows = (await readMessages(H, "alex", sid, PAGE)).messages.slice(2).map((m) => `${m.role}${m.tool_calls ? "+tool_calls" : ""}`);
+        if (JSON.stringify(rows) !== JSON.stringify(list.at(-1)?.rows)) list.push({ t: Date.now() - t1, rows });
+        await sleep(500);
+      }
+      list.push({ t: Date.now() - t1, rows: (await readMessages(H, "alex", sid, PAGE)).messages.slice(2).map((m) => `${m.role}${m.tool_calls ? "+tool_calls" : ""}`) });
+      polls[ask] = list;
+      // Keep only this turn's rows next time.
+      await sleep(500);
+    }
+    save("rest-midturn", "REST messages polled every 500 ms while the real CLI runs a turn on a session (alex): a slow reply, then a tool step and a slow reply. Each poll lists the rows after the warm-up turn when they change.", { session: sid, polls });
+  }
 }
 
+// Interrupted: stop the isolated Hermes first (a killed recorder would leave its gateway and dashboard running).
+for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => void (h ? h.stop(keep) : Promise.resolve()).finally(() => process.exit(1)));
 try {
   await main();
 } finally {
