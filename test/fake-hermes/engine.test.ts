@@ -479,6 +479,7 @@ describe("engine: fences", () => {
     for (let i = 1; i <= 3; i++) await k.turn("bob", root, `turn ${i}`);
     const before = groupTurns((await readChain(f.folder, "bob", root)).messages).map((t) => t.anchor_uid);
     const snap = await k.c.resume({ profile: "bob", session_id: root, omit_messages: true });
+    const lookupBefore = await k.c.sessionList({ profile: "bob", title: "Bot Chat", include_hidden: true });
     const result = (await k.c.mutate({ profile: "bob", session_id: root, request_id: "bb:cx:r", expected_revision: snap.revision, expected_generation: snap.execution_generation, operation: "compress", payload: {} })) as unknown as { target_session_id: string };
     const tip = result.target_session_id;
     expect(tip).not.toBe(root);
@@ -490,8 +491,12 @@ describe("engine: fences", () => {
     const resumed = await k.c.resume({ profile: "bob", session_id: root, omit_messages: true });
     expect(resumed).toMatchObject({ session_id: root, stored_session_id: root, replay_epoch: snap.replay_epoch, message_count: 4 });
     expect((await k.c.resume({ profile: "bob", session_id: tip, omit_messages: true })).session_id).toBe(root);
-    // session.list{title} names the session holding the title: the tip.
-    expect((await k.c.sessionList({ profile: "bob", title: "Bot Chat", include_hidden: true })).sessions[0]).toMatchObject({ session_id: tip, id: tip, resolved_id: tip, title: "Bot Chat" });
+    // session.list{title} answers the root's own row, before and after the compress (rotated-bot-chat.json).
+    const lookup = await k.c.sessionList({ profile: "bob", title: "Bot Chat", include_hidden: true });
+    expect(lookup.sessions).toEqual([expect.objectContaining({ session_id: root, id: root, resolved_id: root, title: "Bot Chat", root_title: "Bot Chat", message_count: 6, running: true })]);
+    expect(lookup).toEqual(lookupBefore);
+    expect(f.session("bob", tip)).toMatchObject({ title: "Bot Chat" });
+    expect(f.engine.tipOf(f.session("bob", root)!)).toMatchObject({ id: tip, title: null });
     expect(f.session("bob", tip)).toMatchObject({ id: root, chat_id: root });
     const before6 = k.events.length;
     await k.turn("bob", root, "after rotation");
@@ -500,6 +505,7 @@ describe("engine: fences", () => {
     expect(k.of("session.info", root).every((e) => e.payload!.stored_session_id === undefined || e.payload!.stored_session_id === root)).toBe(true);
     // The model is sent the tip's rows: 4 after compression, plus the new user row and the system prompt.
     expect(k.completes(root).at(-1)!.payload!.text).toBe("echo(6): after rotation");
+    expect(await k.c.sessionList({ profile: "bob", title: "Bot Chat", include_hidden: true })).toEqual(lookupBefore);
     const byRoot = await readChain(f.folder, "bob", root);
     const byTip = await readChain(f.folder, "bob", tip);
     expect(byRoot).toEqual(byTip);

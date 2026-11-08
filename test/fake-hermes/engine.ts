@@ -252,10 +252,10 @@ export class Engine {
   private legacy(s: Session) {
     return s.chat_id === null;
   }
-  /** The chat holding this title (on its tip), a hidden one included, the newest first (`resolve_titled_session`). */
+  /** The chat holding this title, a hidden one included, the newest first (`resolve_titled_session`). */
   private titled(p: FakeProfile, title: string): Session | undefined {
-    const tip = this.all(p).filter((s) => !s.tip && s.title === title).sort((a, b) => b.started_at - a.started_at)[0];
-    return tip && this.rootOf(tip);
+    const held = this.all(p).filter((s) => !s.parent && s.title === title).sort((a, b) => b.started_at - a.started_at)[0];
+    return held;
   }
   private chainRows(s: Session): Row[] {
     const segs: Session[] = [];
@@ -462,11 +462,9 @@ export class Engine {
           const s = this.titled(profile, params.title);
           if (!s) return { sessions: [], scope: "stored" };
           if (this.legacy(s) && (s.held || s.lease)) throw new Refusal("runtime_coordination_required");
-          // The session holding the title: after a rotation, the tip (`session_local_title.py:21-23`); `running` asks
-          // whether that id is live, and the live session stays the root (`session_controls.py:575-589`).
-          const t = this.tipOf(s);
+          // The root's own row, also after a rotation: its title, its pre-compress message count (rotated-bot-chat.json).
           return {
-            sessions: [{ session_id: t.id, id: t.id, resolved_id: t.id, title: t.title ?? "", root_title: t.title ?? "", source: t.source, started_at: t.started_at, message_count: this.count(s), running: t.mounted }],
+            sessions: [{ session_id: s.id, id: s.id, resolved_id: s.id, title: s.title ?? "", root_title: s.title ?? "", source: s.source, started_at: s.started_at, message_count: s.rows.filter((r) => r.active).length, running: s.mounted }],
             scope: "stored",
           };
         }
@@ -981,8 +979,9 @@ export class Engine {
   /**
    * In place (Hermes' default): the id stays; the summarized rows go inactive (`compacted`) and active copies with
    * the same uids follow, with a carrier for the middle replies. Rotating (`compression.in_place: false`): a new tip
-   * segment with the same `chat_id` takes the rows and the title; the live session stays the root: its subscribers
-   * keep every event under the root id and epoch, resuming any id gives the root (T1.0 rotating-viewer.json).
+   * segment with the same `chat_id` takes the rows, untitled (Hermes auto-titles it later; not simulated); the root
+   * keeps its title and stays the live session: its subscribers keep every event under the root id and epoch,
+   * resuming any id gives the root (T1.0 rotating-viewer.json, rotated-bot-chat.json).
    */
   private compress(s: Session): Json {
     const tip = this.tipOf(s);
@@ -994,7 +993,7 @@ export class Engine {
     const copy = (r: Row) => this.addRow(s, this.strip(r));
     if (this.hooks.rotating.has(s.profile.name)) {
       const next = this.newSession(s.profile, hex(), {
-        title: tip.title,
+        title: null,
         hidden: tip.hidden,
         archived: tip.archived,
         source: tip.source,
@@ -1007,7 +1006,6 @@ export class Engine {
         parent: tip,
       });
       tip.tip = next;
-      tip.title = null;
       if (users[0]) copy(users[0]);
       this.addRow(s, { tpl: "hiddenCarrier", role: "assistant", content: "[CONTEXT COMPACTION — REFERENCE ONLY] Summary of the earlier turns.", display_kind: "hidden", _compressed_summary: true });
       for (const u of users.slice(-2)) copy(u);
