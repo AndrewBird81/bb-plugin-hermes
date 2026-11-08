@@ -15,6 +15,7 @@ import { BOT_CHAT_TITLE } from "../shared/sources.js";
 import { botIdentity, chatIdentity, isPending, resolveContext, type ThreadContext, UserFacingError } from "./context.js";
 import { readThreads, updateThread } from "./files.js";
 import { findTurn, type History, type HermesLink } from "./hermes.js";
+import { chooseModel, composerStates, fetchCatalog, type ModelChoice, prepareAttachments } from "./composer.js";
 import { ANSWERED_ELSEWHERE_TEXT, answerFor, type PromptCard, promptCard, TIMED_OUT_TEXT } from "./interactions.js";
 import { renderRows, StreamRenderer, textItem } from "./render.js";
 
@@ -196,7 +197,7 @@ export class HostedThread {
           await this.runMarker(turn, segment.marker, params);
         } else {
           const ctx = this.resolve(params);
-          const unitOutcome = await this.submitPrompt(turn, ctx, segment.parts);
+          const unitOutcome = await this.submitPrompt(turn, ctx, segment.parts, params);
           if (unitOutcome.status === "failed") outcome = unitOutcome;
         }
       }
@@ -268,7 +269,7 @@ export class HostedThread {
 
   // ---- bb's own sends ----------------------------------------------------------------------------------
 
-  private async submitPrompt(turn: BbTurn, ctx: ThreadContext, parts: PromptInput[]): Promise<Outcome> {
+  private async submitPrompt(turn: BbTurn, ctx: ThreadContext, parts: PromptInput[], params: TurnParams): Promise<Outcome> {
     const text = parts
       .filter((p): p is Extract<PromptInput, { type: "text" }> => p.type === "text")
       .map((p) => p.text)
@@ -278,12 +279,18 @@ export class HostedThread {
       await this.compress(turn, ctx);
       return { status: "completed" };
     }
-    if (!text) return { status: "completed" };
+    const { attachments, warnings } = prepareAttachments(parts, ctx.profileHome);
+    if (!text && !attachments.length) {
+      if (warnings.length) this.emit(warnings.map((summary) => ({ kind: "provider.warning", summary })));
+      return { status: "completed" };
+    }
+    const choice = chooseModel(await this.catalog(ctx), params.options.model, params.options.reasoningLevel);
+    for (const summary of [...warnings, ...(choice.warning ? [choice.warning] : [])]) this.emit([{ kind: "provider.warning", summary }]);
     const unit = this.newUnit(true, null);
     unit.submissionId = turn.nextSubmissionId(this.threadId);
     turn.units.push(unit);
     try {
-      await this.submit(turn, ctx, unit, text);
+      await this.submit(turn, ctx, unit, text, choice, attachments);
     } catch (error) {
       unit.done = true;
       if (error instanceof Stopped) throw error;
@@ -294,9 +301,18 @@ export class HostedThread {
     return unit.settled.promise;
   }
 
-  private async submit(turn: BbTurn, ctx: ThreadContext, unit: Unit, text: string, retried = false): Promise<void> {
-    const session = await this.ensureSession(turn, ctx);
+  private async submit(
+    turn: BbTurn,
+    ctx: ThreadContext,
+    unit: Unit,
+    text: string,
+    choice: ModelChoice | null = null,
+    attachments: { path: string; mime: string }[] = [],
+    retried = false,
+  ): Promise<void> {
+    const session = await this.ensureSession(turn, ctx, choice);
     if (turn.stopped) throw new Stopped();
+    if (choice) await this.applyChoice(session, choice);
     let status: AdmissionStatus;
     try {
       status = await this.retrying(session, (client) =>
@@ -304,6 +320,7 @@ export class HostedThread {
           profile: session.profile,
           session_id: session.id,
           text,
+          ...(attachments.length ? { attachments } : {}),
           submission_id: unit.submissionId!,
           turn_author: { id: `bb:${this.threadId}`, name: "bb" },
         }),
@@ -311,7 +328,7 @@ export class HostedThread {
     } catch (error) {
       if (reasonOf(error) === "not_found" && !retried) {
         this.dropSession();
-        if (ctx.kind === "bot") return this.submit(turn, ctx, unit, text, true); // resolve by title again (S8 step 9)
+        if (ctx.kind === "bot") return this.submit(turn, ctx, unit, text, choice, attachments, true); // resolve by title again (S8 step 9)
         throw new UserFacingError(DELETED_TEXT);
       }
       throw error;
@@ -342,6 +359,69 @@ export class HostedThread {
     }
   }
 
+  // ---- composer (T1.3) ---------------------------------------------------------------------------------
+
+  private catalog(ctx: ThreadContext) {
+    return fetchCatalog(this.host.link(ctx.root), this.host.dataDir, { profile: ctx.profile, profile_home: ctx.profileHome });
+  }
+
+  /** The chip and the bot's models for this thread (`thread/start`, `init`; S7 1a, 1c). */
+  async publishComposer(ctx: ThreadContext): Promise<void> {
+    this.emit(composerStates({ profile: ctx.profile, bot_label: ctx.botLabel }, await this.catalog(ctx)));
+  }
+
+  private remember(choice: ModelChoice | null): void {
+    if (choice) updateThread(this.host.dataDir, this.threadId, { asked: { model: choice.model ? `${choice.provider}/${choice.model}` : null, reasoning: choice.reasoning } });
+  }
+
+  /**
+   * A model or reasoning pick that changed since bb's last send → `session.mutate` while idle, fenced; the first
+   * bb send into an existing chat only records it (the chat keeps its model). `null` reasoning = the bot's level.
+   */
+  private async applyChoice(session: SessionState, choice: ModelChoice): Promise<void> {
+    const before = readThreads(this.host.dataDir)[this.threadId]?.asked ?? null;
+    const model = choice.model ? `${choice.provider}/${choice.model}` : null;
+    this.remember(choice);
+    if (!before) return;
+    const changes: { operation: "model" | "reasoning"; payload: Record<string, unknown> }[] = [];
+    if (model && model !== before.model) changes.push({ operation: "model", payload: { model: choice.model, provider: choice.provider } });
+    if (choice.reasoning !== before.reasoning && (choice.reasoning !== null || before.reasoning !== null)) changes.push({ operation: "reasoning", payload: { effort: choice.reasoning } });
+    for (const change of changes) {
+      try {
+        await this.mutate(session, change.operation, change.payload);
+      } catch (error) {
+        this.emit([{ kind: "provider.warning", summary: `Hermes kept the chat's ${change.operation} (${errorText(error)})` }]);
+      }
+    }
+  }
+
+  /** `session.mutate` with the fences; one retry at fresh fences (a value pick is harmless to re-apply). */
+  private async mutate(session: SessionState, operation: string, payload: Record<string, unknown>): Promise<void> {
+    for (let attempt = 0; ; attempt++) {
+      if (!session.client.cursors.has(session.id)) await session.client.resume({ profile: session.profile, session_id: session.id, omit_messages: true });
+      const cursor = session.client.cursors.get(session.id)!;
+      try {
+        const result = await session.client.mutate({
+          profile: session.profile,
+          session_id: session.id,
+          request_id: randomUUID(),
+          expected_revision: cursor.revision,
+          expected_generation: cursor.executionGeneration,
+          operation,
+          payload,
+        });
+        if (typeof result.revision === "number") cursor.revision = result.revision;
+        const generation = (result as { execution_generation?: unknown }).execution_generation;
+        if (typeof generation === "number") cursor.executionGeneration = generation;
+        return;
+      } catch (error) {
+        const reason = reasonOf(error);
+        if (attempt > 0 || (reason !== "revision_conflict" && reason !== "stale_generation")) throw error;
+        await session.client.resume({ profile: session.profile, session_id: session.id, omit_messages: true });
+      }
+    }
+  }
+
   // ---- sessions ----------------------------------------------------------------------------------------
 
   private dropSession(): void {
@@ -349,7 +429,7 @@ export class HostedThread {
     this.session = null;
   }
 
-  private async ensureSession(turn: BbTurn, ctx: ThreadContext): Promise<SessionState> {
+  private async ensureSession(turn: BbTurn, ctx: ThreadContext, choice: ModelChoice | null = null): Promise<SessionState> {
     // A bot thread resolves its Bot Chat by title on every send (S8 step 1); other threads keep theirs.
     if (ctx.kind === "bot") return this.withHold(turn, () => this.openBotChat(ctx));
     if (this.session && !this.session.client.closed) return this.session;
@@ -367,7 +447,11 @@ export class HostedThread {
       // `gui`, as Desktop's side chats: `hermes chat -c` picks up `cli` chats (A20 failed, T1.0).
       source: "gui",
       cwd: ctx.cwd ?? homedir(),
+      ...(choice?.model ? { model: choice.model } : {}),
+      ...(choice?.provider ? { provider: choice.provider } : {}),
+      ...(choice?.reasoning ? { reasoning: choice.reasoning } : {}),
     });
+    this.remember(choice);
     return this.adopt(ctx, client, snap, snap.session_id);
   }
 
@@ -460,34 +544,13 @@ export class HostedThread {
   private async compress(turn: BbTurn, ctx: ThreadContext): Promise<void> {
     if (!ctx.sessionId && !ctx.lineageRoot && ctx.kind !== "bot") return; // nothing in Hermes yet
     const session = await this.ensureSession(turn, ctx);
-    for (let attempt = 0; ; attempt++) {
-      if (!session.client.cursors.has(session.id)) await session.client.resume({ profile: session.profile, session_id: session.id, omit_messages: true });
-      const cursor = session.client.cursors.get(session.id)!;
-      try {
-        const result = await session.client.mutate({
-          profile: session.profile,
-          session_id: session.id,
-          request_id: randomUUID(),
-          expected_revision: cursor.revision,
-          expected_generation: cursor.executionGeneration,
-          operation: "compress",
-          payload: {},
-        });
-        if (typeof result.revision === "number") cursor.revision = result.revision;
-        const generation = (result as { execution_generation?: unknown }).execution_generation;
-        if (typeof generation === "number") cursor.executionGeneration = generation;
-        this.emit([{ kind: "context.compacted" }]);
-        return;
-      } catch (error) {
-        const reason = reasonOf(error);
-        if (attempt === 0 && (reason === "revision_conflict" || reason === "stale_generation")) {
-          await session.client.resume({ profile: session.profile, session_id: session.id, omit_messages: true });
-          continue;
-        }
-        if (reason === "session_busy") throw new UserFacingError("Hermes is busy with this chat; send /new again when it's done.");
-        throw error;
-      }
+    try {
+      await this.mutate(session, "compress", {});
+    } catch (error) {
+      if (reasonOf(error) === "session_busy") throw new UserFacingError("Hermes is busy with this chat; send /new again when it's done.");
+      throw error;
     }
+    this.emit([{ kind: "context.compacted" }]);
   }
 
   // ---- events --------------------------------------------------------------------------------------------
@@ -734,6 +797,11 @@ export class HostedThread {
       case "init":
         if (!isPending(this.providerThreadId)) throw new UserFacingError(INIT_REFUSED_TEXT);
         updateThread(this.host.dataDir, this.threadId, { profile: marker.profile, bot: marker.bot === true });
+        try {
+          await this.publishComposer(this.resolve(params));
+        } catch {
+          // Not a switched-on bot (yet): the chip comes with the first send.
+        }
         return;
       case "bind": {
         const ctx = this.resolve(params);

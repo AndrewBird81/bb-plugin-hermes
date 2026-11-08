@@ -62,6 +62,8 @@ const threadEntrySchema = z.object({
   turns: z.array(persistedTurnRecordSchema).default([]),
   /** Outside turns this thread rendered, with the reply rows shown. */
   mirrored: z.array(mirroredTurnRecordSchema).default([]),
+  /** The model and reasoning bb last asked for: a different pick is a mid-chat change (`session.mutate`). */
+  asked: z.object({ model: z.string().nullable(), reasoning: z.string().nullable() }).nullable().default(null),
 });
 export type ThreadEntry = z.infer<typeof threadEntrySchema>;
 
@@ -80,7 +82,7 @@ export function readThreads(dataDir: string): Record<string, ThreadEntry> {
 /** Merge `patch` into the thread's entry (a new entry needs `profile`). */
 export function updateThread(dataDir: string, threadId: string, patch: Partial<ThreadEntry>): ThreadEntry {
   const all = readThreads(dataDir);
-  const next: ThreadEntry = { profile: "", bot: false, profile_home: null, turns: [], mirrored: [], ...all[threadId], ...patch };
+  const next: ThreadEntry = { profile: "", bot: false, profile_home: null, turns: [], mirrored: [], asked: null, ...all[threadId], ...patch };
   all[threadId] = next;
   writeJson(path.join(dataDir, THREADS_FILE), all);
   return next;

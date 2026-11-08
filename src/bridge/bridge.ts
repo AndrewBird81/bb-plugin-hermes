@@ -26,6 +26,9 @@ import {
 import { z } from "zod";
 import type { ConnectionOptions } from "../hermes/client.js";
 import { canonicalHome } from "../hermes/control.js";
+import { availableModels, botOption, fetchCatalog } from "./composer.js";
+import { resolveContext } from "./context.js";
+import { expandHome, readThreads, readWorkerFile, threadForCwd } from "./files.js";
 import { HermesLink, type History, restHistory } from "./hermes.js";
 import { type BuildRegistry, openRegistry } from "./registry.js";
 import { HOLD_RETRY_MS, HostedThread, type ThreadHost, type TurnParams } from "./thread.js";
@@ -133,6 +136,31 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
     },
   };
 
+  /** The chip and catalog for a thread whose bot is known; a refusal (other machine, switched off) waits for the turn to say it. */
+  const publishComposer = (thread: HostedThread, options: unknown) => {
+    const o = (options ?? {}) as { providerOptions?: unknown; sessionOptions?: Record<string, string | boolean> };
+    let ctx;
+    try {
+      ctx = resolveContext({ providerOptions: o.providerOptions, sessionOptions: o.sessionOptions, saved: readThreads(host.dataDir)[thread.threadId], dataDir: host.dataDir });
+    } catch {
+      return;
+    }
+    void thread.publishComposer(ctx).catch(() => undefined);
+  };
+
+  /** `model/list`: the bot of the thread at `cwd` (else the default bot), every switched-on bot as the chip's values (A18). */
+  const modelList = async (cwd: string | undefined) => {
+    const worker = dataDir ? readWorkerFile(dataDir) : null;
+    if (!worker || !worker.enabled.length) return { models: [], selectedOnlyModels: [] };
+    const known = threadForCwd(host.dataDir, cwd)?.entry;
+    const bot =
+      worker.enabled.find((b) => b.profile_home === known?.profile_home || b.profile === known?.profile) ??
+      worker.enabled.find((b) => b.profile === "default") ??
+      worker.enabled[0]!;
+    const catalog = await fetchCatalog(host.link(expandHome(worker.root)), host.dataDir, bot);
+    return { models: availableModels(catalog, [botOption(bot, worker.enabled)]), selectedOnlyModels: [] };
+  };
+
   const hostThread = (threadId: string, providerThreadId: string): HostedThread => {
     let thread = threads.get(threadId);
     if (!thread) threads.set(threadId, (thread = new HostedThread(threadId, providerThreadId, host)));
@@ -157,19 +185,21 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
       }),
     ),
     [BRIDGE_REQUEST_METHODS.providerHealth]: method(providerMaintenanceParamsSchema, (_, reply) => reply(HEALTH)),
-    // T1.3 fills this from `model.options`.
-    [BRIDGE_REQUEST_METHODS.modelList]: method(modelListParamsSchema, (_, reply) => reply({ models: [], selectedOnlyModels: [] })),
-    [BRIDGE_REQUEST_METHODS.threadStart]: method(threadStartParamsSchema, ({ threadId }, reply) => {
+    // A maintenance process: no provider options, so the thread's bot comes from `threads.json` by cwd (S7 1c).
+    [BRIDGE_REQUEST_METHODS.modelList]: method(modelListParamsSchema, async ({ cwd }, reply) => reply(await modelList(cwd))),
+    [BRIDGE_REQUEST_METHODS.threadStart]: method(threadStartParamsSchema, ({ threadId, options }, reply) => {
       const providerThreadId = pendingIdentity(threadId);
       threads.delete(threadId);
-      hostThread(threadId, providerThreadId);
+      const thread = hostThread(threadId, providerThreadId);
       notify(BRIDGE_NOTIFICATION_METHODS.threadIdentity, { threadId, providerThreadId });
       reply({ providerThreadId, sessionRestorable: true });
+      publishComposer(thread, options);
     }),
-    // Records the identity only; never touches Hermes (R4 M4).
-    [BRIDGE_REQUEST_METHODS.threadResume]: method(threadResumeParamsSchema, ({ threadId, providerThreadId }, reply) => {
+    // Records the identity only; never touches a session (R4 M4). Republishes the chip and the bot's models.
+    [BRIDGE_REQUEST_METHODS.threadResume]: method(threadResumeParamsSchema, ({ threadId, providerThreadId, options }, reply) => {
       const thread = hostThread(threadId, providerThreadId);
       reply({ providerThreadId: thread.providerThreadId, sessionRestorable: true });
+      publishComposer(thread, options);
     }),
     [BRIDGE_REQUEST_METHODS.threadStop]: method(threadStopParamsSchema, async ({ threadId, intent }, reply) => {
       const thread = threads.get(threadId);
