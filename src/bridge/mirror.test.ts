@@ -96,8 +96,8 @@ describe("mirror modes (flow 6)", () => {
     rig.fake.nextTurn("alex", { holdMs: 150 });
     await rig.call("turn/start", { threadId: "thr_fw", providerThreadId: "x", input: [text("bb first")], clientRequestId: creq(), options: { ...AUTO, ...opts("alex", v) } });
     await rig.waitFor(() => rig.fake.session("alex", chat.session_id)!.running);
-    const { forwarded } = await rig.fake.conduitTurn("alex", chat.session_id, "conduit during bb", { reply: "unused" });
-    expect(forwarded).toMatch(/^desktop-forward-/);
+    const sent = await rig.fake.conduitTurn("alex", chat.session_id, "conduit during bb", { reply: "unused" });
+    expect(sent).toMatchObject({ status: "queued", forwarded: true });
     await rig.waitFor(() => statuses(rig, "thr_fw").length === 1);
     await rig.waitFor(() => !rig.fake.session("alex", chat.session_id)!.running && rig.fake.session("alex", chat.session_id)!.rows.length === 4);
     expect(agentTexts(rig, "thr_fw")).toEqual([expect.stringContaining("bb first")]); // nothing of Conduit's yet
@@ -148,5 +148,47 @@ describe("compaction and rotation (flow 7, A8)", () => {
     const anchor = rig.fake.session("bob", tip)!.rows.find((r) => r.role === "user")!.message_uid;
     await turn(rig, "thr_rot", wake({ op: "mirror", anchor_uid: anchor }, null), opts("bob", { kind: "chat" }));
     expect(agentTexts(rig, "thr_rot").filter((t) => t === "echo(2): one")).toHaveLength(2); // the mirror render, nothing more
+  });
+});
+
+describe("Stop on outside turns (01 §5, D27 narrowed)", () => {
+  const stop = (threadId: string) => rig.call("thread/stop", { threadId, providerThreadId: "x", intent: "interrupt", activeTurnId: null });
+  const banners = (threadId: string) =>
+    deltas(rig, threadId)
+      .filter((d) => d.extensionKind === "hermes/status")
+      .map((d) => (d.payload as { banner: unknown }).banner);
+
+  it("a CLI turn: bb stops watching, the banner says Running in CLI, Hermes keeps running it", async () => {
+    const chat = await cliChat("alex", ["warm up"]);
+    await startThread(rig, "thr_sc", opts("alex", view(chat.id)));
+    rig.fake.outsideTurn("alex", chat.id, "slow outside", { script: { chunkMs: 50, reply: "one two three four five six seven" } });
+    await rig.waitFor(() => rig.fake.session("alex", chat.id)!.running);
+    await rig.call("turn/start", { threadId: "thr_sc", providerThreadId: "x", input: wake({ op: "mirror", anchor_uid: "pending" }), clientRequestId: creq(), options: { ...AUTO, ...opts("alex", view(chat.id)) } });
+    await rig.waitFor(() => events(rig, "thr_sc").some((e) => e.type === "item/agentMessage/delta"));
+    await stop("thr_sc");
+    expect(statuses(rig, "thr_sc")).toEqual(["interrupted"]);
+    expect(rig.requests("session.interrupt")).toHaveLength(0);
+    expect(banners("thr_sc")).toEqual([{ kind: "running_elsewhere", app: "CLI" }]);
+    expect(rig.fake.session("alex", chat.id)!.running).toBeTruthy();
+  });
+
+  it("a forwarded Conduit turn: Stop interrupts it, fenced by its generation (S8 step 8)", async () => {
+    const cli = await rig.cli();
+    const chat = await cli.create({ profile: "alex", title: BOT_CHAT_TITLE, hidden: true, request_id: "desk3" });
+    const v = { kind: "bot", lineage_root: chat.session_id, session_id: chat.session_id, tag: "Conduit" };
+    await startThread(rig, "thr_sf", opts("alex", v));
+    rig.fake.nextTurn("alex", { holdMs: 100 });
+    await rig.call("turn/start", { threadId: "thr_sf", providerThreadId: "x", input: [text("bb first")], clientRequestId: creq(), options: { ...AUTO, ...opts("alex", v) } });
+    await rig.waitFor(() => rig.fake.session("alex", chat.session_id)!.running);
+    rig.fake.nextTurn("alex", { holdMs: 5000 });
+    await rig.fake.conduitTurn("alex", chat.session_id, "conduit during bb");
+    await rig.waitFor(() => statuses(rig, "thr_sf").length === 1);
+    await rig.waitFor(() => rig.fake.session("alex", chat.session_id)!.running?.admission.submission_id?.startsWith("desktop-forward-"));
+    await rig.call("turn/start", { threadId: "thr_sf", providerThreadId: "x", input: wake({ op: "mirror", anchor_uid: "pending" }, "[Conduit] conduit during bb"), clientRequestId: creq(), options: { ...AUTO, ...opts("alex", v) } });
+    await rig.waitFor(() => events(rig, "thr_sf").filter((e) => e.type === "turn/started").length === 2);
+    await new Promise((r) => setTimeout(r, 30));
+    await stop("thr_sf");
+    expect(rig.requests("session.interrupt")).toHaveLength(1);
+    expect(statuses(rig, "thr_sf")).toEqual(["completed", "interrupted"]);
   });
 });

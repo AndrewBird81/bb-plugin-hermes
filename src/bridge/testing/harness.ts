@@ -33,6 +33,8 @@ export interface Rig {
   notifications(method: string): unknown[];
   /** Wait for an assembled event matching `pred`. */
   waitFor<T>(pred: () => T | undefined | null | false, timeoutMs?: number): Promise<T>;
+  /** A new bridge process on the same Hermes and dataDir (bb or the daemon restarted). */
+  restartBridge(): void;
   /** Another canonical client (CLI, TUI, Desktop) on the same gateway. */
   cli(): Promise<HermesClient>;
   close(): Promise<void>;
@@ -60,14 +62,28 @@ export async function startRig(opts: { profiles?: string[]; enabled?: string[]; 
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(path.join(dataDir, WORKER_FILE), JSON.stringify(worker));
   }
-  const bridge = createBridge("test-build", { holdRetryMs: opts.holdRetryMs ?? [20, 20, 40], connection: { backoffMs: [20, 50] }, secondMs: opts.secondMs });
-  bridge.start(dataDir, "hermes");
-  const rpc = createHarness(bridge.handleLine);
+  const make = () => {
+    const b = createBridge("test-build", { holdRetryMs: opts.holdRetryMs ?? [20, 20, 40], connection: { backoffMs: [20, 50] }, secondMs: opts.secondMs });
+    b.start(dataDir, "hermes");
+    return b;
+  };
+  let bridge = make();
+  let rpc = createHarness((line) => bridge.handleLine(line));
   const rig: Rig = {
     fake,
-    bridge,
-    rpc,
+    get bridge() {
+      return bridge;
+    },
+    get rpc() {
+      return rpc;
+    },
     dataDir,
+    restartBridge() {
+      rpc.restore();
+      bridge.close();
+      bridge = make();
+      rpc = createHarness((line) => bridge.handleLine(line));
+    },
     options(profile, view = {}) {
       const p = fake.profiles.find((x) => x.name === profile)!;
       const thread: ThreadView | null =

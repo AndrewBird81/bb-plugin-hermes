@@ -17,7 +17,7 @@ import { readThreads, updateThread } from "./files.js";
 import { findTurn, type History, type HermesLink } from "./hermes.js";
 import { chooseModel, composerStates, fetchCatalog, type ModelChoice, prepareAttachments } from "./composer.js";
 import { ANSWERED_ELSEWHERE_TEXT, answerFor, type PromptCard, promptCard, TIMED_OUT_TEXT } from "./interactions.js";
-import { renderRows, StreamRenderer, textItem } from "./render.js";
+import { renderRows, rowText, StreamRenderer, textItem } from "./render.js";
 
 export const DELETED_TEXT = "Deleted in Hermes.";
 export const RESTARTED_TEXT = "Hermes restarted: resend?";
@@ -29,7 +29,7 @@ export const HOLD_RETRY_MS = [2000, 5000, 10_000, 30_000, 60_000];
 const STOP_SETTLE_MS = 5000;
 const LOGGED_ADMISSIONS = 32;
 const LOGGED_EVENTS = 5000;
-/** A Conduit (dashboard) send that Hermes passed into the gateway queue (S8 E3b): Stop may interrupt it. */
+/** A Conduit (dashboard) send Hermes passed into the gateway queue: its submission id (S8 E3b, T1.0). Stop may interrupt it. */
 const FORWARDED = /^desktop-forward-/;
 
 export interface ThreadHost {
@@ -76,6 +76,8 @@ interface Unit {
   done: boolean;
   /** Outside unit only: the tag for "Running in <app>". */
   tag: SourceTag | null;
+  /** Seqs already rendered: a re-attach never renders an event twice. */
+  fed: Set<number>;
 }
 
 class BbTurn {
@@ -334,6 +336,13 @@ export class HostedThread {
       throw error;
     }
     if (unit.admissionId !== status.admission_id) this.attach(unit, status.admission_id);
+    // A retried send (same `submission_id`, A4) may answer an admission that ran before this process saw it.
+    if (!unit.done && status.status !== "queued") {
+      const log = this.log(status.admission_id);
+      await this.replayGap(session, log);
+      this.attach(unit, status.admission_id);
+      if (!unit.done && (status.status === "terminal" || log.done)) await this.finishFromHistory(unit);
+    }
     if (turn.stopped) await this.stopUnit(unit);
   }
 
@@ -475,8 +484,11 @@ export class HostedThread {
       lineageRoot,
       subscriptionId: snap.subscription_id,
       client,
-      unsubscribe: link.subscribe(snap.session_id, (ev) => this.onEvent(ev)),
+      unsubscribe: () => undefined,
     };
+    const offEvents = link.subscribe(snap.session_id, (ev) => this.onEvent(ev));
+    const offReconnect = link.onReconnect((fresh) => void this.reattach(session, fresh).catch(() => undefined));
+    session.unsubscribe = () => (offEvents(), offReconnect());
     this.session = session;
     ctx.lineageRoot = lineageRoot;
     ctx.sessionId = snap.stored_session_id;
@@ -625,11 +637,16 @@ export class HostedThread {
       settled: new Deferred(),
       done: false,
       tag,
+      fed: new Set(),
     };
   }
 
   private feedUnit(unit: Unit, ev: GatewayEvent): void {
     if (unit.done) return;
+    if (typeof ev.seq === "number") {
+      if (unit.fed.has(ev.seq)) return;
+      unit.fed.add(ev.seq);
+    }
     if (ev.type !== "message.complete") return this.emit(unit.renderer.feed(ev));
     const p = ev.payload ?? {};
     const deltas: ThreadDelta[] = [];
@@ -650,6 +667,65 @@ export class HostedThread {
     unit.done = true;
     unit.settled.resolve({ ...outcome, persisted });
     return unit.renderer.finish(outcome.status === "completed");
+  }
+
+  // ---- reconnect and restart (T1.5, flows 8–9) -----------------------------------------------------------
+
+  /**
+   * After a drop: `events.since` from the cursor, then resume (the client's `reattach`: no duplicate, no gap).
+   * A gap lost (`snapshot_required`, a new epoch, `truncated`) leaves the snapshot. bb's own `unknown`
+   * admissions (the gateway restarted mid-turn) → `prompt.resolve_unknown` at once and the turn fails
+   * "Hermes restarted: resend?" (S8 E11b); until then Conduit is refused. Open prompts are raised again.
+   */
+  private async reattach(session: SessionState, client: HermesClient): Promise<void> {
+    if (this.session !== session) return;
+    const cursor = session.client.cursors.get(session.id);
+    session.client = client;
+    let snap: Snapshot;
+    try {
+      snap = cursor ? (await client.reattach(session.profile, session.id, cursor)).snapshot : await client.resume({ profile: session.profile, session_id: session.id, omit_messages: true });
+    } catch (error) {
+      if (reasonOf(error) === "not_found") this.dropSession();
+      return;
+    }
+    session.subscriptionId = snap.subscription_id;
+    this.notePending(snap.pending);
+    const open = new Set((snap.prompts ?? []).map((p) => p.prompt_id));
+    for (const [id, entry] of this.prompts) {
+      if (open.has(id)) continue;
+      this.prompts.delete(id); // gone with the old owner
+      if (entry.requestId) this.host.cancel(entry.requestId);
+    }
+    for (const prompt of snap.prompts ?? []) this.addPrompt(prompt as PendingPrompt & Record<string, unknown>, null);
+    const mine = `bb:${this.threadId}:`;
+    for (const p of snap.pending ?? []) {
+      if (p.status !== "unknown" || !(p.input_id ?? "").startsWith(mine) || typeof p.execution_generation !== "number") continue;
+      await client
+        .resolveUnknown({ profile: session.profile, session_id: session.id, admission_id: p.admission_id, execution_generation: p.execution_generation })
+        .catch(() => undefined);
+      const unit = this.turn?.units.find((u) => u.admissionId === p.admission_id && !u.done);
+      if (unit) this.emit(this.closeUnit(unit, { status: "failed", error: RESTARTED_TEXT }));
+    }
+    // bb's own admissions that ended while we were away, their completion not replayed: from history.
+    for (const unit of this.turn?.units ?? []) {
+      if (unit.done || !unit.own || !unit.admissionId) continue;
+      if ((snap.pending ?? []).some((p) => p.admission_id === unit.admissionId)) continue;
+      await this.finishFromHistory(unit);
+    }
+  }
+
+  /** Render a finished admission of bb's from its stored rows and close it. */
+  private async finishFromHistory(unit: Unit): Promise<void> {
+    const ctx = this.ctx;
+    if (!ctx || unit.done) return;
+    const rows = await this.chainRows(ctx).catch(() => [] as RestMessage[]);
+    const at = rows.findIndex((r) => r.display_metadata?.submission_id === unit.submissionId);
+    if (at < 0) return;
+    const turnFound = findTurn(rows, rows[at]!.message_uid);
+    const shown = new Set<string>();
+    if (unit.renderer.text) for (const r of turnFound?.turn.replies ?? []) if (r.role === "assistant" && rowText(r) && unit.renderer.text.startsWith(rowText(r))) shown.add(r.message_uid);
+    if (turnFound) this.renderReplies(ctx, rows[at]!.message_uid, turnFound.turn.replies, shown);
+    this.emit(this.closeUnit(unit, { status: "completed" }));
   }
 
   // ---- approvals and clarify (T1.2) ----------------------------------------------------------------------
@@ -736,7 +812,7 @@ export class HostedThread {
         // Queued behind another turn: retire it; it never runs (R1 M4). Never `session.interrupt`.
         await session.client.cancel({ profile: session.profile, session_id: session.id, admission_id: unit.admissionId });
         this.emit(this.closeUnit(unit, { status: "interrupted" }));
-      } else if ((unit.own || FORWARDED.test(unit.admissionId)) && log.generation !== null) {
+      } else if ((unit.own || FORWARDED.test(log.inputId ?? "")) && log.generation !== null) {
         await session.client.interrupt({ profile: session.profile, session_id: session.id, execution_generation: log.generation });
       } else {
         // Another app's turn: bb stops watching; the reply still shows when it ends (01 §5).
