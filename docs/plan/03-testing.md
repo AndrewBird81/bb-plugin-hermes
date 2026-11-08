@@ -71,7 +71,7 @@ Conformance scenarios: `handshake/initialize`, `session/start-identity`, `sessio
 1. Fresh shell: `unset` every `BB_*`; `PATH` without `hermes` (S1-S3 Safety).
 2. `BB_SKIP_ONBOARDING=1 npx bb-app@<live version> --data-dir ~/.bb-hermes-e2e --server-port 48886 --host-daemon-port 48887 --no-in-app-updates` (R3 S9).
 3. Disable `provider-acp`, `keep-awake`, `connect`. Use `sbb` (`BB_*` unset, `BB_SERVER_URL=http://127.0.0.1:48886`).
-4. `sbb plugin install <repo> --yes`; `sbb plugin dev <repo>`. Scripts pin the `bb` bundled in `bb-app@0.48.1` (S1-S3 gotchas).
+4. `sbb plugin install <repo> --yes`; `sbb plugin dev <repo>`. Scripts pin the `bb` bundled in `bb-app@0.49.0` (S1-S3 gotchas; `scripts/bb.mjs` drops `BB_*`, since `BB_CLI` re-execs to the machine's `bb`).
 5. Set the machine to the local daemon and the folder to the fake (or isolated Hermes).
 6. **Before any check:** `diagnostics.instance_id` must equal the fake's; else abort (R3 M3).
 7. Assert with `sbb thread log|history|options`, `sbb plugin rpc call hermes …`, `sbb push-notifications thread`; check the UI with agent-browser screenshots against the DOM.

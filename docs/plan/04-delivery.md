@@ -3,8 +3,8 @@
 ## Repo layout (this repo, public; D50)
 
 ```
-package.json          bb manifest (server, app, host); engines bb >=0.48.1; bbPluginSdk 0.6.104;
-                      scripts pin the bb bundled in bb-app@0.48.1 for builds
+package.json          bb manifest (server, app, host); engines bb >=0.49.0; bbPluginSdk 0.6.132 (live bb, 2026-11-08);
+                      scripts pin the bb bundled in bb-app@0.49.0 for builds (scripts/bb.mjs)
 server.ts host.ts app.tsx   entries only
 assets/hermes.svg     provider, rail and row icon
 assets/skill/         the bb skill template (SKILL.md) written into enabled profiles
@@ -19,7 +19,7 @@ test/fixtures/        recorded frames and REST responses, redacted              
 e2e/                  isolated-bb scripts, sbb, two-client harness, eligibility               (e2e)
 contract/             used-surface.json, contract:check                                       (client)
 docs/                 plan, diagrams, guide.md, operations.md (existing docs stay)            (lead)
-scripts/              check-private.mjs (existing)
+scripts/              check-private.mjs (existing), bb.mjs (pinned bb CLI)
 ```
 
 ## Phases

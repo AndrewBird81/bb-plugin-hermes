@@ -1,6 +1,6 @@
 # bb-plugin-hermes
 
-A bb plugin that makes Hermes Agent chats first-class bb threads. It is at the design stage, with no plugin code yet.
+A bb plugin that makes Hermes Agent chats first-class bb threads. It is being built: phase P0 (connection and health) first.
 
 [![What runs where (proposed v1)](docs/diagrams/architecture.svg)](https://andrewbird81.github.io/bb-plugin-hermes/)
 

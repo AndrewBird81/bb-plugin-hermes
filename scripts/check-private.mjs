@@ -54,7 +54,9 @@ for (const file of files) {
   if (!existsSync(file)) continue;
   const buf = readFileSync(file);
   if (buf.subarray(0, 8000).includes(0)) continue;
-  const text = buf.toString('utf8');
+  let text = buf.toString('utf8');
+  // npm bin maps in the lockfile name public packages' binaries (bb-app ships its server binary); blank them, keeping line numbers.
+  if (file === 'package-lock.json') text = text.replace(/^\s*"[\w.-]+": "dist\/[\w.-]+\.js",?$/gm, '');
   scan(text, file, hits);
   for (const inner of embedded(text)) scan(inner, `${file} (embedded copy)`, hits);
 }
