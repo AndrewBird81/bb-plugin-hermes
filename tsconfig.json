@@ -9,6 +9,7 @@
     "types": ["node"],
     "noEmit": true,
     "noUncheckedIndexedAccess": true,
+    "resolveJsonModule": true,
     "skipLibCheck": true
   },
   "include": ["server.ts", "host.ts", "app.tsx", "src", "test", "e2e", "vitest.config.ts"]
