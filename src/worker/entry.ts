@@ -1,12 +1,18 @@
-// Host worker (02 §Components, T0.8): one per bb host daemon process. P0 keeps it alive only through the
+// Host worker (02 §Components, T0.8, T1.8): one per bb host daemon process. Kept alive only by the
 // server's 60 s `ensureWatch` keep-alive, no lease: the daemon stops a worker after 5 idle minutes.
 import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
 import { buildFromModuleUrl } from "../shared/bridge-registry.js";
 import { hostContract, hostSignals } from "../shared/host-contract.js";
+import { bbTarget, setBotAccess, writeWrapper, type AccessInput } from "./access.js";
 import { readBridgeRecords } from "./bridges.js";
-import { Watcher, type WatcherOptions } from "./watch.js";
+import { expandRoot, Watcher, type WatcherOptions } from "./watch.js";
 
-export function createHostEntry(opts: WatcherOptions = {}) {
+export interface HostEntryOptions extends WatcherOptions {
+  /** Tests stub the `refresh-prompts` run and the executable probe. */
+  access?: Pick<AccessInput, "refresh" | "exists">;
+}
+
+export function createHostEntry(opts: HostEntryOptions = {}) {
   const watcher = new Watcher(opts);
   const startedAt = Date.now();
   let lifecycleBound = false;
@@ -20,10 +26,13 @@ export function createHostEntry(opts: WatcherOptions = {}) {
     contract: hostContract,
     experimental_signals: hostSignals,
     handlers: {
-      ensureWatch: ({ root }, context) => {
-        // `enabled_bots` drives the change watch and wakes: P1.
+      ensureWatch: async ({ root, enabled_bots }, context) => {
         bindLifecycle(context.lifecycle.signal);
+        // The daemon's environment for this call only (A44): read before any await.
+        const target = bbTarget(process.env, opts.access?.exists);
         watcher.emit = (payload) => context.experimental_emitSignal("watch", payload);
+        // The wrapper follows bb when it moves (an update, a new server URL) while any bot is on.
+        if (enabled_bots.length && target) await writeWrapper(context.experimental_paths.dataDir, target).catch(() => {});
         return watcher.ensure(root, context.signal);
       },
       describe: async ({ root }, context) => {
@@ -44,7 +53,10 @@ export function createHostEntry(opts: WatcherOptions = {}) {
       listSessions: () => notYet("T1.7"),
       readTurns: () => notYet("T1.7"),
       findBotChat: () => notYet("T1.7"),
-      setBotAccess: () => notYet("T1.8"),
+      setBotAccess: async ({ root, profile_home, on, enabled_bots }, context) => {
+        const env = { ...process.env };
+        return setBotAccess({ rootHome: expandRoot(root), profileHome: profile_home, on, enabledBots: enabled_bots, dataDir: context.experimental_paths.dataDir, env, ...opts.access });
+      },
     },
     dispose: () => watcher.close(),
   });

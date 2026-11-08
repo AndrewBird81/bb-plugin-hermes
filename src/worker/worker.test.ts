@@ -220,10 +220,12 @@ describe("helpers", () => {
     expect(boundedCode(null)).toBeNull();
   });
 
-  it("src/worker spawns no process and never reads .env", () => {
+  it("src/worker never reads .env; only access.ts runs a process (refresh-prompts)", () => {
     const dir = import.meta.dirname;
     for (const f of readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))) {
-      expect(readFileSync(path.join(dir, f), "utf8"), f).not.toMatch(/child_process|["'][^"'\n]*\.env["']/);
+      const src = readFileSync(path.join(dir, f), "utf8");
+      expect(src, f).not.toMatch(/["'][^"'\n]*\.env["']/);
+      if (f !== "access.ts") expect(src, f).not.toMatch(/child_process/);
     }
   });
 });
