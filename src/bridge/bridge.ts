@@ -23,6 +23,7 @@ import {
   turnStartParamsSchema,
   turnSteerParamsSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { ConnectionOptions } from "../hermes/client.js";
 import { canonicalHome } from "../hermes/control.js";
@@ -91,6 +92,7 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
   /** Our requests to the runtime, by id, awaiting its response line. */
   const outbound = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   let nextRequest = 0;
+  const processTag = randomUUID().slice(0, 8);
   const links = new Map<string, HermesLink>();
   const histories = new Map<string, History>();
   let registry: BuildRegistry | null = null;
@@ -110,7 +112,9 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
     emit: (threadId: string, deltas: ThreadDelta[]) => notify(THREAD_DELTA_NOTIFICATION_METHOD, { threadId, deltas }),
     announce: (threadId: string, providerThreadId: string) => notify(BRIDGE_NOTIFICATION_METHODS.threadIdentity, { threadId, providerThreadId }),
     request(method: string, params: unknown) {
-      const id = `hermes-${++nextRequest}`;
+      // Unique across bridge processes: bb's `providerRequestId` is `<daemon's per-process scope>:<this id>`
+      // (`daemon-bundle.mjs` `vje`), so the server matches a dead card by this id's suffix (T1.14).
+      const id = `hermes-${processTag}-${++nextRequest}`;
       const result = new Promise<unknown>((resolve, reject) => outbound.set(id, { resolve, reject }));
       io.send({ jsonrpc: "2.0", id, method, params } as never);
       return { id, result };

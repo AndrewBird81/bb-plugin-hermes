@@ -222,18 +222,48 @@ describe("T1.14 on the isolated bb", () => {
     expect(statusStates("thr_cut").at(-1)).toBeNull();
   });
 
-  it("a timed-out approval: the card's request is withdrawn (bb 0.49 ignores it) and the text says the card is dead; Hermes gets no answer", async () => {
+  it("a card outlives its bb turn: answered after Stop on the outside turn, the answer reaches Hermes", async () => {
+    const cli = await rig.cli();
+    const snap = await cli.create({ profile: "alex", request_id: "cli-ap", source: "cli" });
+    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id, tag: "CLI" };
+    await startThread(rig, "thr_live_card", opts("alex", view));
+    rig.fake.outsideTurn("alex", snap.session_id, "ask me", { script: { tool: true, approval: { kind: "command", timeout_s: 600 } } });
+    const anchor = await userRow("alex", snap.session_id, "ask me");
+    await rig.call("turn/start", { threadId: "thr_live_card", providerThreadId: "x", input: [text("[CLI] ask me"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })], clientRequestId: creq(), options: { ...AUTO, ...opts("alex", view) } });
+    const req = await rig.waitFor(() => rig.rpc.messages.find((m) => m.method === "interaction/request"));
+    await stop("thr_live_card");
+    expect(rig.rpc.messages.filter((m) => m.method === "notifications/cancelled")).toEqual([]);
+    rig.bridge.handleLine(JSON.stringify({ jsonrpc: "2.0", id: req.id, result: { decision: "allow_once", grantedPermissions: null } }));
+    await rig.waitFor(() => rig.requests("approval.respond").length === 1);
+    expect(rig.requests("approval.respond")[0]!.params.choice).toBe("once");
+  });
+
+  it("a timed-out approval: its request id is published in status.dead_requests; bb's cancel closes it silently; Hermes gets no answer", async () => {
     await rig.close();
     rig = await startRig({ secondMs: 10 });
     await startThread(rig, "thr_dead", opts("alex"));
     rig.fake.nextTurn("alex", { tool: true, approval: { kind: "command", timeout_s: 5 } });
     await turn(rig, "thr_dead", [text("run it")], opts("alex"));
     const req = rig.rpc.messages.find((m) => m.method === "interaction/request")!;
-    expect(rig.rpc.messages.filter((m) => m.method === "notifications/cancelled").map((m) => (m.params as { requestId: string }).requestId)).toEqual([req.id]);
-    expect(deltas(rig, "thr_dead").filter((d) => d.kind === "provider.warning").map((d) => d.summary)).toEqual([expect.stringMatching(/^Timed out in Hermes\. .*dismiss it/)]);
-    // bb answers the dead card later (the user dismisses it): nothing reaches Hermes.
+    expect(String(req.id)).toMatch(/^hermes-[0-9a-f]{8}-\d+$/); // unique across bridge processes
+    const dead = deltas(rig, "thr_dead")
+      .filter((d) => d.extensionKind === "hermes/status")
+      .map((d) => (d.payload as { dead_requests?: string[] }).dead_requests);
+    expect(dead.at(-1)).toEqual([req.id]);
+    expect(deltas(rig, "thr_dead").filter((d) => d.kind === "provider.warning").map((d) => d.summary)).toEqual(["Timed out in Hermes. Its card here closes by itself."]);
+    expect(readThread(rig.dataDir, "thr_dead")!.dead_requests).toEqual([req.id]); // a new bridge process keeps the list
+    // The server cancels the card: the daemon answers the bridge's request with an error (`interactive_request_ended`).
+    const before = rig.rpc.messages.length;
+    rig.bridge.handleLine(JSON.stringify({ jsonrpc: "2.0", id: req.id, error: { code: -32000, message: "The question was closed" } }));
+    await turn(rig, "thr_dead", [text("next")], opts("alex"));
+    expect(rig.requests("approval.respond")).toHaveLength(0);
+    expect(statuses(rig, "thr_dead")).toEqual(["completed", "completed"]);
+    const after = rig.rpc.messages.slice(before).filter((m) => m.method === "thread/delta").flatMap((m) => (m.params as { deltas: { kind: string }[] }).deltas);
+    expect(after.filter((d) => d.kind === "provider.warning" || d.kind === "provider.error")).toEqual([]);
+    // A late bb answer to it is dropped too.
     rig.bridge.handleLine(JSON.stringify({ jsonrpc: "2.0", id: req.id, result: { decision: "deny" } }));
     await new Promise((r) => setTimeout(r, 50));
     expect(rig.requests("approval.respond")).toHaveLength(0);
   });
+
 });

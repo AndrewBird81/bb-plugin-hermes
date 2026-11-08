@@ -68,6 +68,8 @@ const threadEntrySchema = z.object({
   mirrored: z.array(mirroredTurnRecordSchema).default([]),
   /** The model and reasoning bb last asked for: a different pick is a mid-chat change (`session.mutate`). */
   asked: z.object({ model: z.string().nullable(), reasoning: z.string().nullable() }).nullable().default(null),
+  /** `interaction/request` ids of dead cards, for the `status` state (newest `DEAD_REQUESTS_KEPT`). */
+  dead_requests: z.array(z.string()).default([]),
 });
 export type ThreadEntry = z.infer<typeof threadEntrySchema>;
 
@@ -79,7 +81,7 @@ export function readThread(dataDir: string, threadId: string): ThreadEntry | und
 
 /** Merge `patch` into the thread's entry (a new entry needs `profile`). Only this thread's file is written. */
 export function updateThread(dataDir: string, threadId: string, patch: Partial<ThreadEntry>): ThreadEntry {
-  const next: ThreadEntry = { profile: "", bot: false, profile_home: null, turns: [], mirrored: [], asked: null, ...readThread(dataDir, threadId), ...patch };
+  const next: ThreadEntry = { profile: "", bot: false, profile_home: null, turns: [], mirrored: [], asked: null, dead_requests: [], ...readThread(dataDir, threadId), ...patch };
   writeJson(threadFile(dataDir, threadId), next);
   return next;
 }

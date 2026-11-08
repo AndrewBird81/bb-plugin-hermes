@@ -8,7 +8,7 @@ import type { PromptInput, ThreadDelta } from "@get-bb/plugin-sdk/provider-bridg
 import { HermesDisconnectedError, HermesRpcError, type HermesClient } from "../hermes/client.js";
 import type { RestMessage } from "../hermes/history.js";
 import type { AdmissionStatus, GatewayEvent, PendingPrompt, Snapshot } from "../hermes/types.js";
-import { EXTENSION_KINDS, PERSISTED_TURNS_KEPT, type PersistedTurnState, type StatusState } from "../shared/extension-state.js";
+import { DEAD_REQUESTS_KEPT, EXTENSION_KINDS, PERSISTED_TURNS_KEPT, type PersistedTurnState, type StatusState } from "../shared/extension-state.js";
 import { type Marker, type Segment, segmentInput } from "../shared/marker.js";
 import type { SourceTag } from "../shared/sources.js";
 import { BOT_CHAT_TITLE } from "../shared/sources.js";
@@ -177,6 +177,7 @@ export class HostedThread {
   ) {
     const saved = readThread(host.dataDir, threadId);
     this.persisted = saved?.turns ?? [];
+    this.deadRequests = saved?.dead_requests ?? [];
     this.mirrored = saved?.mirrored ?? [];
   }
 
@@ -194,7 +195,24 @@ export class HostedThread {
   private setBanner(banner: StatusState["banner"]): void {
     if (JSON.stringify(banner) === JSON.stringify(this.banner)) return;
     this.banner = banner;
-    this.emit([this.state(EXTENSION_KINDS.status, { banner, since: banner ? Date.now() : null } satisfies StatusState)]);
+    this.bannerSince = banner ? Date.now() : null;
+    this.emit([this.statusState()]);
+  }
+
+  private bannerSince: number | null = null;
+  /** Cards bb still shows for prompts Hermes settled elsewhere or timed out: the server cancels them (A3). */
+  private deadRequests: string[];
+
+  private statusState(): ThreadDelta {
+    const state: StatusState = { banner: this.banner, since: this.banner ? this.bannerSince : null, ...(this.deadRequests.length ? { dead_requests: this.deadRequests } : {}) };
+    return this.state(EXTENSION_KINDS.status, state);
+  }
+
+  /** bb 0.49.0 can't close a card from the bridge (T1.14): publish its id, cumulative, for the server to cancel. */
+  private markDead(requestId: string): void {
+    this.deadRequests = [...this.deadRequests.filter((id) => id !== requestId), requestId].slice(-DEAD_REQUESTS_KEPT);
+    updateThread(this.host.dataDir, this.threadId, { dead_requests: this.deadRequests });
+    this.emit([this.statusState()]);
   }
 
   // ---- turns -----------------------------------------------------------------------------------------
@@ -208,7 +226,7 @@ export class HostedThread {
     // process doesn't know the banner an earlier one set, so the clear goes out whenever none is held.
     if (this.banner?.kind !== "held") {
       this.banner = null;
-      this.emit([this.state(EXTENSION_KINDS.status, { banner: null, since: null } satisfies StatusState)]);
+      this.emit([this.statusState()]);
     }
     for (const entry of this.prompts.values()) this.raise(entry);
     let outcome: Outcome = { status: "completed" };
@@ -262,13 +280,9 @@ export class HostedThread {
         : { kind: "turn.boundary", status: outcome.status },
     );
     if (persisted) closing.push(this.state(EXTENSION_KINDS.persistedTurn, persisted));
-    if (clearHeld) closing.push(this.state(EXTENSION_KINDS.status, { banner: null, since: null } satisfies StatusState));
+    if (clearHeld) closing.push(this.statusState());
     if (this.turn === turn) this.turn = null;
-    // bb drops a turn's open requests when it settles: withdraw ours, and raise them again next turn.
-    for (const entry of this.prompts.values()) {
-      if (entry.requestId && !entry.answered) this.host.cancel(entry.requestId);
-      entry.requestId = null;
-    }
+    // A card outlives its bb turn (bb keeps it pending until answered or cancelled): it stays live.
     this.emit(closing);
     // Identity changes only right after a boundary, never mid-turn (S1-S3 fact 1).
     const identity = this.wantedIdentity();
@@ -775,7 +789,10 @@ export class HostedThread {
     for (const [id, entry] of this.prompts) {
       if (open.has(id)) continue;
       this.prompts.delete(id); // gone with the old owner
-      if (entry.requestId) this.host.cancel(entry.requestId);
+      if (entry.requestId && !entry.answered) {
+        this.host.cancel(entry.requestId);
+        this.markDead(entry.requestId);
+      }
     }
     for (const prompt of snap.prompts ?? []) this.addPrompt(prompt as PendingPrompt & Record<string, unknown>, null);
     const mine = `bb:${this.threadId}:`;
@@ -840,8 +857,9 @@ export class HostedThread {
   private async answer(entry: PromptEntry, id: string, resolution: unknown): Promise<void> {
     if (entry.requestId !== id || !this.prompts.has(entry.card.promptId)) return;
     const answer = answerFor(entry.card, resolution);
-    const session = this.session;
-    if (answer === null || !session) {
+    // Stop may have dropped the session while the card stayed live: answer on the bound session.
+    const session = answer === null ? null : (this.session ?? (this.ctx ? await this.watch(this.ctx) : null));
+    if (answer === null || !session || !this.prompts.has(entry.card.promptId)) {
       entry.requestId = null;
       return;
     }
@@ -863,7 +881,11 @@ export class HostedThread {
     if (!entry) return;
     this.prompts.delete(promptId);
     if (entry.answered) return;
-    if (entry.requestId) this.host.cancel(entry.requestId);
+    if (entry.requestId) {
+      // Withdraw it (a later bb honours `notifications/cancelled`; 0.49.0 doesn't) and have the server close it.
+      this.host.cancel(entry.requestId);
+      this.markDead(entry.requestId);
+    }
     if (dropped || !this.turn) return;
     const timedOut = entry.card.deadline !== null && Date.now() >= entry.card.deadline - 1000;
     this.emit([{ kind: "provider.warning", summary: timedOut ? TIMED_OUT_TEXT : ANSWERED_ELSEWHERE_TEXT }]);
