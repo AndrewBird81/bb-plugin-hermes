@@ -46,7 +46,8 @@ Choice (README confirm item 4): Hermes' REST projection, as Hermes Desktop reads
 | `lineage_root`, `session_id` | logical id (`chat_id` owner) and current tip. Null until the first send creates the session |
 | `expected_id` | bb-created session id, computed before the first send (identity rules) |
 | `kind` | `bot` · `chat` · `mirror` |
-| `source`, `tag` | raw `source`/`created_source`, and the tag shown (`CLI`, `TUI`, `Desktop`, `Conduit`) |
+| `source`, `tag` | raw `source`/`created_source`, and the tag shown (`CLI`, `TUI`, `Desktop`, `Conduit`). A bot thread's outside turns: the turn's surface when Hermes records one (none at c314285f07), else `Conduit` |
+| `cursor_uid` | the last anchor wakes have read past (migration 2) |
 | `state` | `pending` (no session yet) · `replaying` · `live` |
 | `legacy` | not gateway-owned yet (D16) |
 | `archived_by_switch` | set by switch-off, cleared by switch-on (D48) |
@@ -59,7 +60,7 @@ Choice (README confirm item 4): Hermes' REST projection, as Hermes Desktop reads
 - bb's own turns: recorded as `bb` from the bridge's `hermes/persisted-turn` extension state (A37), beside the `submission_id` check.
 
 Also:
-- `bots(profile_home PK, name, enabled, enabled_at)`.
+- `bots(profile_home PK, name, handle, cwd, enabled, enabled_at)`: `handle` and `cwd` (migration 2) let provider options answer before the worker does. `turns.prev_state` (migration 2): a failed `rest` wake returns to its old state instead of being deleted.
 - `tombstones(profile_home, lineage_root, at)`: never import (Q1).
 - `kv`: `machine` (the Hermes machine), `worker_boot_id`, worker identity `{uid, instance_id}`.
 - No transcript text on the server. Migrations: additive, one transaction at load. `VACUUM INTO` a copy before any plugin remove.
@@ -93,22 +94,22 @@ Every call carries `root` (the folder); profiles are named by `profile_home`, wh
 | `models` | `{root, profile_home}` → the normalized catalog (`src/shared/models.ts`); enabled bots prewarmed into `models/` |
 | `listSessions` | `{root, profile_home, since?}` → `{sessions[{session_id, lineage_root, title, source, created_source, hidden, archived, cwd, message_count, last_activity_at, legacy}]}` |
 | `readTurns` | `{root, profile_home, lineage_root, after_uid?, since?}` → `{session_id (tip), turns[{anchor_uid, user_text, user_hidden, surface, submission_id, reply_uids, ts, complete}], truncated}`, root to tip |
-| `findBotChat` | `{root, profile_home}` → `{state:"found", lineage_root, session_id, legacy}` · `{state:"none"}` · `{state:"held"}` |
+| `findBotChat` | `{root, profile_home}` → `{state:"found", lineage_root, session_id, legacy}` · `{state:"none"}` · `{state:"held"}`. Read-only: `profiles.list` `canonical_session`, which lists only a Bot Chat Hermes has adopted |
 | `setBotAccess` | `{root, profile_home, on, enabled_bots}` → `{skill, wrapper, refreshed, detail}`: writes or deletes skill and wrapper (the wrapper goes when `enabled_bots` is empty), then `refresh-prompts` (flow 1) |
 | `diagnostics` | → pid, uptime, boot id, watch state, version check, bridge build registry |
 
-Signals (worker → server): `changed{profile_homes[]}`, debounced; `watch{state}`. `sessions.changed` is only a hint (r11 §8), so the worker also stats each enabled profile's `state.db-wal` every 2 s.
+Signals (worker → server): `changed{profile_homes[]}`, debounced; `watch{state}`. `sessions.changed` is only a hint (r11 §8), and on the canonical socket it arrives only for the root profile, never for a Conduit dashboard turn (T1.0), so the worker also stats each enabled profile's `state.db-wal` every 2 s: the only signal for secondary profiles and for Conduit's own turns.
 
 ### Bridge state (`<bridge dataDir>/`)
 
-- `threads.json`: `{threadId: {profile, bot}}`, for `model/list`, which runs with no provider options (cwd → threadId → profile, S7 1c).
+- `threads/<threadId>.json`: `{profile, bot, …}`, one file per thread so bridge processes never overwrite each other, for `model/list`, which runs with no provider options (cwd → threadId → profile, S7 1c).
 - `worker.json` (written by the worker, `src/shared/bridge-files.ts`): `{root, worker_boot_id, written_at, enabled[{profile, profile_home, bot_label, cwd}]}`. Present = this machine runs the worker; absent → turns fail "Hermes runs on <machine>". `enabled` feeds `model/list`'s `profile` session option (A18).
 - `bridges/<pid>.json`: `{build, threadId, startedAt}` for `diagnostics`. bb gives bridges `…/plugins/hermes/bridge-data` and the worker `…/host-data` (A22 false), so the worker reads the sibling `bridge-data/bridges/`. `build` is `<plugin version>+<host artifact digest>`, the same for the worker and bridges of one deploy; the bundled version makes every release a new artifact, even with unchanged host code (A26).
 - `models/<sha256(profile_home)[:16]>.json`: last-known catalog, written by the worker's prewarm and by bridges.
 
 ### Provider options and extension states
 
-- `deriveProviderOptions` (synchronous, every command; `src/shared/provider-options.ts`): `{folder, machine{id, name}, thread}`. `thread` is the server's binding view `{kind, profile, profile_home, bot_label, enabled, lineage_root, session_id, legacy, tag, cwd}`, null when unbound (S1-S3 fact 1 pattern (a)).
+- `deriveProviderOptions` (synchronous, every command; `src/shared/provider-options.ts`): `{folder, machine{id, name}, thread}`, read leniently: bb's daemon merges its own keys in (`additionalWorkspaceWriteRoots`, T1.14). `thread` is the server's binding view `{kind, profile, profile_home, bot_label, enabled, lineage_root, session_id, legacy, tag, cwd}`, null when unbound (S1-S3 fact 1 pattern (a)).
 - Extension states the bridge publishes (`src/shared/extension-state.ts`): `persisted-turn` (bb's own turns as stored, cumulative, last 20; A37) and `status` (the thread banner: `held`, `running_elsewhere{app}`; A47).
 
 ## Protocol mapping
@@ -124,13 +125,13 @@ bb → bridge → Hermes:
 | `model/list` | legacy `model.options{profile}`, 2 s | Last-known list on timeout. Never creates a session (r09 M6) |
 | `thread/start` | — | Identity `pending:<threadId>`; publish `bb/session-options` (the chat's bot only) and `bb/provider-model-catalog` (reasoning from `capabilities`, r11 §1) |
 | `thread/resume` | — | Records identity only (R4 M4) |
-| `turn/start`, side chat, `pending` | `session.create{profile, request_id:"bb:<threadId>", source:"cli", cwd, model, provider, reasoning?}` | `cwd` = `terminal.cwd`, else `~`. A20 |
+| `turn/start`, side chat, `pending` | `session.create{profile, request_id:"bb:<threadId>", source:"gui", cwd, model, provider, reasoning?}` | `cwd` = `terminal.cwd`, else `~`. `gui`, not `cli`: `hermes chat -c` continues a `cli` chat (A20 failed) |
 | `turn/start`, bot thread | flow 3 | S8 steps 1–4 |
 | `turn/start`, legacy binding | `session.resume{omit_messages:true}` adopts once (D16) | `runtime_coordination_required` → flow 3 step 4 |
 | `turn/start`, any | then `prompt.submit{session_id, text, attachments?, submission_id:"bb:<threadId>:<clientRequestId>", turn_author:{id:"bb:<threadId>", name:"bb"}}` | One `submission_id` per message; never auto-resend (S8 step 4) |
-| attachments | `prompt.submit.attachments` `{path, mime}` (A50) | Non-image model → `provider.warning`; text still sent |
+| attachments | each image copied into `<profile home>/cache/images/` (a direct child, unique name), then `prompt.submit.attachments` `{path, mime}`; only `image/png\|jpeg\|gif\|webp` (A50, `gateway/session_ingress_media.py:140-182`) | Other files → `provider.warning`; text still sent. `model.options` has no vision flag, so a non-image model isn't detected |
 | text `/new` or `/reset` | `session.mutate{operation:"compress", request_id, expected_revision, expected_generation}` while idle | `invalid_params` without `expected_generation` (S8 E7). Never a new session (A46) |
-| reasoning / model pick mid-chat | `session.mutate{operation:"reasoning"\|"model"}` while idle, same fences | `default` → omitted |
+| reasoning / model pick mid-chat | `session.mutate{operation:"reasoning"\|"model"}` while idle, same fences | `default` → omitted. `model.options` gives no per-model effort list (Hermes clamps per route, `hermes_cli/inventory.py:542-546`), so every reasoning model offers the whole ladder; bb's `ultracode` → `xhigh` |
 | unoffered model | — | bot default + `provider.warning` |
 | marker segment | none, or `session.resume` to watch a running canonical turn (never on a legacy row) | Never `prompt.submit` |
 | `turn/steer` | bb's own running → `session.steer{execution_generation, text}`; else a queued `prompt.submit` | Never another client's turn (R1 M4) |
@@ -142,7 +143,7 @@ bb → bridge → Hermes:
 
 Hermes events → bb deltas:
 - **Text and tool events:** from bb's own admission, the mirrored one, or a foreign admission on bb's subscription (e.g. `desktop-forward-…`), rendered live as an outside turn. This replaces the old "only our admission" filter (S8 step 5).
-- **Approval and `clarify` requests:** session-scoped, raised whichever admission they belong to (R1 S1); every attach re-raises the snapshot's `prompts[]`.
+- **Approval and `clarify` requests:** session-scoped, raised whichever admission they belong to (R1 S1); every attach re-raises the snapshot's `prompts[]`. bb routes `interaction/request` only into an open turn and drops a turn's requests when it completes (T1.2), so an outside turn's approval shows in its wake's mirror turn, and the bridge re-raises open prompts at every turn open.
 
 | Hermes event | bb delta |
 |---|---|
@@ -164,23 +165,24 @@ Hermes events → bb deltas:
    - Before on: the row shows `listSessions{since: now − 30 d}` after the source filter, minus bound and tombstoned (README confirm item 2).
    - On:
      1. `bots.enabled = 1`, `enabled_at = now`.
-     2. Worker `setBotAccess{on}`: write `<plugin data>/bin/bb-hermes` if missing; render the bundled skill with the wrapper path into `<profile home>/skills/bb-plugin-hermes/` with `.bb-plugin-hermes.json` `{plugin, version, profile_home}`; run `hermes -p <profile> sessions refresh-prompts` (A43, A45).
-     3. Bot thread: unarchive the existing `bot` binding, else `threads.spawn{providerId:"hermes", environment:{type:"host", hostId, workspace:{type:"personal"}}, sessionOptions:{profile}, title:<bot name>, pinned:true, input:[init{profile, bot:true}]}`, muted, then `markRead`.
-     4. Bot thread not bound yet → `findBotChat`: found → bind and import its turns since `enabled_at − 30 d` (flow 5); `held` → retry in the background (flow 3 step 4); `none` → stays `pending`.
+     2. Worker `setBotAccess{on}`: write `<plugin data>/bin/bb-hermes` if missing; render the bundled skill with the wrapper path into `<profile home>/skills/bb-plugin-hermes/` with `.bb-plugin-hermes.json` `{plugin, version, profile_home}`; run `hermes -p <profile> sessions refresh-prompts` (A43, A45) with the folder's own CLI only (`<root>/hermes-agent/{.hermes/bin,venv/bin}/hermes`, never `PATH`: a CLI of another install makes Hermes install a ~1.1 GB runtime into the folder, T1.8), on every on and off call so a retry still reaches the sessions; a refresh past its deadline is left to finish.
+     3. Bot thread (after an `ensureWatch` with the new enabled list, so `worker.json` and the catalog list the bot before bb resolves the spawn's model; every keep-alive spawns a missing one): unarchive the existing `bot` binding, else `threads.spawn{providerId:"hermes", environment:{type:"host", hostId, workspace:{type:"personal"}}, sessionOptions:{profile}, title:<bot name>, pinned:true, input:[init{profile, bot:true}]}`, muted, then `markRead`.
+     4. Bot thread not bound yet → `findBotChat` (read-only, here and at every reconcile while `pending`): found → bind and import its turns since `enabled_at − 30 d` (flow 5); `none` → stays `pending`. A legacy Bot Chat Hermes hasn't adopted yet binds at bb's first send in the bot thread, which adopts it (flow 3); its older turns import after that turn.
      5. Unarchive bindings with `archived_by_switch`, clear it, then reconcile: missing turns wake as finished turns (flow 6).
      6. [P2] Import unbound chats active since `enabled_at − 30 d` (flow 5).
+   - On needs a connected Hermes; off works offline, and the skill removal is retried at the next reconnect.
    - Off: `bots.enabled = 0`; `threads.stop` each hosted thread of the bot; archive its unarchived threads with `archived_by_switch = 1`; worker deletes the skill dir (only with our marker) and the wrapper if no bot is on, then `refresh-prompts`; watch and wakes skip the profile.
 2. **Side chat**
    1. Rail → RPC `newChat{profile}` → `threads.spawn{…, title:"New <bot> chat", pluginMetadata:{hermes:{origin:"newChat"}}, input:[init{profile}]}`; binding `chat`/`pending` with `expected_id`; notification level `muted` during init, then `markRead` and restore.
    2. First visible turn: model check → `session.create` → `prompt.submit` → stream → boundary → identity. The server sets the title to the first message cut to 60 characters (S7 finding 4).
    - `bb thread spawn --provider hermes` → `thread.created` → bind the same way (A18).
 3. **Bot thread send** (S8 §Recommended protocol; also legacy Conduit chats from step 3 on)
-   1. Resolve each send and each re-list: `session.list{profile, title:"Bot Chat", include_hidden:true}`. `profiles.list.canonical_session: null` doesn't mean none (S8 E6). Cache `chat_id` for dedupe and reads only.
+   1. Resolve each send: `session.list{profile, title:"Bot Chat", include_hidden:true}`. It adopts an unheld legacy Bot Chat (`resolve_titled_session` → `adopt_legacy_session`, T1.7 isolated), so only a bb send uses it; re-lists use the read-only `findBotChat`. `profiles.list.canonical_session: null` doesn't mean none (S8 E6). Cache `chat_id` for dedupe and reads only.
    2. None: re-check, then `session.create{profile, title:"Bot Chat", hidden:true, follow_profile_config:true, request_id:"bb:botchat:<profile_home>"}`. It returns any Bot Chat created meanwhile (E1). Lazy, never at setup: keeps the double-mint window (E12) to the user's first send.
    3. `session.resume{omit_messages:true}` (adopts a legacy row once) → `prompt.submit`. Always submit; the gateway orders it.
    4. `runtime_coordination_required` from lookup, create or resume: keep the bb turn open, banner "Open in Conduit: sends when it's free" (A47), retry at 2, 5, 10, 30 s, then every 60 s. Never create, never take over. Stop drops the wait.
    5. Conduit busy: bb's turn queues and shows Hermes' waiting status; no retry (E3a). bb busy, Conduit sends: a foreign admission on bb's subscription, rendered live tagged `[Conduit]` (E3b).
-   6. Title moved (deleted, renamed or re-minted in Hermes, r12 §1): the binding follows the new `lineage_root`; bb keeps the old turns.
+   6. Title moved (deleted, renamed or re-minted in Hermes, r12 §1): the binding follows the new `lineage_root`, which the bridge reports in `persisted-turn`; bb keeps the old turns.
 4. **Turn controls:** track bb's own `admission_id`s from `AdmissionStatus`. Approvals, `clarify`, Stop and steer follow the tables; cards show the request's deadline.
 5. **Import and replay** (server, one serial queue)
    1. Per chat, oldest first: `readTurns{since}` → binding `replaying` → `turns` rows `replay`.
@@ -194,7 +196,7 @@ Hermes events → bb deltas:
    3. Server sets the thread's level to `input-only` for the mirror turn (approvals and `clarify` still push; S1-S3 §S3c), then restores it.
    4. Bridge, by turn state: complete → render rows. Running as canonical work (CLI, TUI, Desktop, forwarded Conduit) → `session.resume` + `events.since` from the turn's first seq, close on its `message.complete` (A19; R1 S2). No canonical admission (Conduit's own) → render the user row, close `partial`; reply rows arrive by re-list as `mirror{rest:true}` (S8 step 6). No store polling.
    5. On idle: `turns` → `done`. The finished turn marks the thread unread (bb).
-7. **Compaction and rotation:** in place keeps the id (A-S8d). Rotating: new segment, same `chat_id`; the `Bot Chat` title moves to the tip; resuming the root reaches the tip (S8 E8). The bridge follows `session.info.stored_session_id`; cloned rows keep their uids, so nothing renders twice (A8).
+7. **Compaction and rotation:** in place keeps the id (A-S8d). Rotating: new segment, same `chat_id`; the `Bot Chat` title moves to the tip; rows land on the tip (S8 E8). A subscriber of the root stays on the root: events, replay epoch and `session.info.stored_session_id` keep the root id, and the compress shows as `session.updated` (T1.0 `rotating-viewer`). REST answers for any chain id with the tip's `session_id`; the bridge keeps the lineage root from the chain, and `session.list{title}` names the tip. Cloned rows keep their uids, so nothing renders twice (A8).
 8. **Gateway restart:** rediscover and new ticket, backoff 1/2/5/10 s. Bridge: `events.since`; on `snapshot_required`, an epoch change or `truncated` → re-resume. bb's own `unknown` admissions → `prompt.resolve_unknown` at once, turn failed "Hermes restarted: resend?" (S8 E11b). Re-raise open prompts. Worker: full reconcile.
 9. **bb or daemon restart:** bridges die; the next turn → `thread/resume{providerThreadId}` (S1-S3 §S1c); retries reuse their `submission_id` (A4). New `worker_boot_id` → full reconcile (~1.9 s, S7 §6); interrupted imports redone; orphaned `queued` turns re-sent or deleted.
 10. **Hermes machine offline:** `watch` disconnected → thread banner "<machine> is offline: sends wait until it reconnects" (A9). On reconnect: reconcile; missed outside turns mirror as finished turns.
@@ -210,13 +212,13 @@ Hermes events → bb deltas:
 - **Events:** drop `replay_epoch == cursor.epoch && seq <= cursor.last` (S0-S4 §S4e). Steer and Stop act only on bb's own admission or a forwarded Conduit one.
 - **Turns:** one wake per anchor; bb's rows never mirror; approvals and `clarify` never filtered by admission.
 - **Approvals:** never auto-approve; never widen Hermes' choices.
-- **Hermes-side writes:** only those a bb user action causes (creates, sends, adoptions, Stop, steer, answers, `/new` compactions, model and reasoning picks, `prompt.resolve_unknown` for bb's own turns), plus the marked skill dir and `refresh-prompts` epochs.
-- **Off bot:** no Hermes I/O for that profile except removing its skill.
+- **Hermes-side writes:** only those a bb user action causes (creates, sends, adoptions, Stop, steer, answers, `/new` compactions, model and reasoning picks, image copies into `<profile home>/cache/images/`, `prompt.resolve_unknown` for bb's own turns), plus the marked skill dir and `refresh-prompts` epochs.
+- **Off bot:** no call names that profile except removing its skill. Accepted: Hermes' own read of every served profile's store behind the host-scoped `profiles.list{include_sessions:true}` (cached, read-only; nothing from those rows leaves the worker).
 
 ## bb access and security
 
 - **What an enabled bot gets** (D43; S8 §Secondary option 1):
-  - `<plugin data>/bin/bb-hermes`: sets `BB_SERVER_URL` only when the bb server is remote, then runs `bb` (A44).
+  - `<plugin data>/bin/bb-hermes`: sets `BB_SERVER_URL` whenever bb's default (`127.0.0.1:38886`) would miss the server, and `BB_HOST_DAEMON_PORT` when it isn't 38887, from the daemon's per-call environment; then runs `bb` (A44).
   - `<profile home>/skills/bb-plugin-hermes/SKILL.md`: a general bb skill calling the wrapper; bundled in `assets/skill/`, rendered with the wrapper path.
   - No `config.yaml` or `.env` edit, no restart; survives `hermes update` and `hermes profile update --force` (S8 §Secondary).
   - Reach: the bb CLI as the Hermes machine's user, on every thread and machine. Hermes' danger detector flags no `bb` command, so nothing prompts (r12 §4). Restrictions Later.

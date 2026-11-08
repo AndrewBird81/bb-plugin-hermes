@@ -78,42 +78,42 @@ Critical path: T0.1 → T0.3 → T0.4 → T1.1 → T1.4 → T1.6 → T1.13 → T
 | ID | Assumption (ASSUMED unless marked) | Verify in |
 |---|---|---|
 | A1 | VERIFIED (T0.5, isolated + live list keys): REST list and messages carry `title`, `source`, `created_source`, `hidden`, `archived`, `cwd`, `chat_id`, `message_uid`, `display_metadata`, active rows, and mean what we read. The list omits hidden rows | T0.5 |
-| A2 | With `approvalEnforcedBy:"provider"`, mode `auto` never answers a Hermes approval. If it does, try `accept-edits`, then `full`; if all answer, stop and ask | T1.2 |
-| A3 | The bridge can close a pending interaction | T1.2 |
-| A4 | PARTLY (T0.5): bb's `bb:` `submission_id` persists on submits, queued and hidden prompts and shows in REST `display_metadata.submission_id`; a repeated one runs once. Not on steers or `/retry` rows | T0.5, T1.1 |
+| A2 | VERIFIED by code read (T1.2, bb-app 0.49.0 `host-daemon/dist/daemon-bundle.mjs`): bb auto-answers only when `approvalEnforcedBy` is `runtime` with escalation `deny`, or when no handler exists; with `provider`, mode `auto` never answers. On a real bb: T1.14 | T1.2, T1.14 |
+| A3 | VERIFIED bridge side (T1.2): `notifications/cancelled{requestId}` withdraws a card; the card closing in bb's UI: T1.14 | T1.2, T1.14 |
+| A4 | PARTLY (T0.5): bb's `bb:` `submission_id` persists on submits, queued and hidden prompts and shows in REST `display_metadata.submission_id`; a repeated one runs once. Not on steers or `/retry` rows. T1.1: the bridge takes its turn's anchors from `message.complete.persisted_turn.row_ids` → REST `id`, else the `bb:` row | T0.5, T1.1 |
 | A5 | VERIFIED no (R5): Conduit isn't distinguishable from other dashboard clients; tags come from real source values | — |
 | A8 | VERIFIED for compaction (T0.5) with the 02 §History reader rules (`include_compacted`, uid dedupe, steer and hidden rows skipped). `/retry` adds a turn, shown as such (owner default) | T0.5, T1.6 |
-| A9 | Sends while the Hermes machine is offline wait or fail (sets the banner text) | T1.14 |
-| A13 | Outside start → visible in bb ≤ 3 s | T1.14 |
-| A15 | Conformance accepts a placeholder identity | T1.1 |
-| A16 | Host RPC limits fit `readTurns` pages; prewarmed `model.options` ≤ 2 s | T1.7 |
-| A18 | `bb thread spawn --provider hermes` works on the Hermes machine and fails clearly elsewhere | T1.14 |
-| A19 | A canonical viewer gets live events of another client's turn (CLI, TUI, Desktop) | T1.0 |
-| A20 | `source:"cli"` bb sessions aren't picked by `hermes chat -c`; else use `gui` | T1.0 |
+| A9 | VERIFIED (T1.14, isolated bb, daemon paused): bb queues the send ("waiting for … to reconnect") and runs it after; health showed offline after ~1 min and recovered ~30 s after reconnect. The banner text on a real outage: dogfood | T1.14 |
+| A13 | VERIFIED (T1.14, isolated bb): a Conduit-style turn's bubble in 1.4 s (fake) and 3.1 s (isolated Hermes); a real `hermes chat --resume` turn showed in 2.7 s and streamed. Live latency: dogfood | T1.14 |
+| A15 | VERIFIED (T1.1): conformance passes every scenario with `pending:<threadId>` at start | T1.1 |
+| A16 | PARTLY (T1.7): the host RPC output limit is 8 MiB, so `readTurns` keeps the newest turns under 4 MiB and sets `truncated`; prewarmed `models` answers in ~1 ms, isolated `model.options` 0.6–0.7 s cold, 32–36 ms warm (stub model). Live: a remote server and the ~15 s cold `model.options` are dogfood-only | T1.7, T1.14 |
+| A18 | VERIFIED on the Hermes machine (T1.14): `bb thread spawn --project proj_personal --provider hermes --option profile=<bot>` replies; no profile → "Pick a bot: …". From another machine: dogfood | T1.14 |
+| A19 | VERIFIED (T1.0, isolated): a second canonical viewer that resumed the session gets a `hermes chat --resume` turn live; streamed == final text | T1.0 |
+| A20 | FAILED (T1.0, isolated): `hermes chat -c` continues bb's `source:"cli"` chat, from the same and from another cwd; a newer `gui` chat is never picked. bb creates with `source:"gui"` | T1.0 |
 | A22 | FAILED (isolated bb 0.49.0): bridges get `bridge-data`, the worker `host-data`; the worker reads the sibling dir (02 §Bridge state) | T0.8 |
-| A23 | Resuming a gateway-owned row doesn't migrate it; a `session.mutate` on a legacy row claims it (code read, `gateway/session_mutations.py:174-183`), so none before adoption | T1.0 |
-| A24 | `session.detach{end_reason:null}` doesn't end the row | T1.0 |
-| A25 | How bb groups queued sends (what segmentation must handle) | T1.14 |
-| A26 | `bb plugin update` swaps the worker like `reload` | T0.11 |
-| A28 | A row-metadata item renders the Hermes SVG + text | T1.12 |
-| A30 | Plugin slots render on bb mobile | T1.14 |
+| A23 | VERIFIED (T1.0, isolated): resuming a gateway-owned row changes nothing; a `session.mutate` on a legacy row, with no resume, succeeds and writes a history claim (`state_meta gateway.history_control.v1.<id>`; `chat_id` stays null), so none before adoption | T1.0 |
+| A24 | VERIFIED (T1.0, isolated): `end_reason:null` leaves the row open for later turns; `"user_closed"` ends it | T1.0 |
+| A25 | VERIFIED (T1.14, isolated bb 0.49.0): queued sends run as one turn each, in order | T1.14 |
+| A26 | VERIFIED (T0.11, live): `bb plugin update` swapped the worker (`0.1.0+…` → `0.1.1+…`, new pid) and the maintenance bridge to the new build; the machine setting was kept, no errors | T0.11 |
+| A28 | VERIFIED (T1.14, isolated bb, DOM + screenshot): with the `threadRowMetadata` experiment and Rows → Metadata on, the pinned row shows the Hermes SVG and "Hermes · Alex · Bot Chat" | T1.12 |
+| A30 | Plugin slots render on bb mobile. Dogfood only | T1.14 |
 | A36 | VERIFIED (T0.5, isolated; live: 5 of 5 served profiles answered one read-only list) | T0.5 |
-| A37 | A custom `extension.state` (`hermes/persisted-turn`) reaches the server via `experimental_thread.events` | T1.1 |
+| A37 | VERIFIED (T1.14, isolated bb): `hermes/persisted-turn` reaches the server; it binds side chats from bb's stored turns | T1.1 |
 | A38 | Deleting a hidden import thread frees its `providerThreadId` (no 409, R4 S8) | T2.5 |
 | A-S8a | Conduit finds Bot Chats by exact title (S) | T1.14, real app |
 | A-S8b | Conduit refreshes the open chat on `sessions.changed` (S) | T1.14, real app |
 | A-S8c | Conduit looks up before minting a Bot Chat (S) | T1.14, real app |
 | A-S8d | VERIFIED: compaction is in place by default (`config_defaults.py:668-672`) | — |
-| A43 | A skill in `<profile>/skills/` is listed in new sessions with no restart (VERIFIED, S8 E14), and in continuing sessions after `refresh-prompts` | T1.8, T1.14 |
-| A44 | The worker can locate `bb` and the bb server URL as seen from the Hermes machine; `bb` with only `BB_SERVER_URL` works there (true for the owner's Neo, r12 §4) | T1.8 |
-| A45 | `hermes -p <profile> sessions refresh-prompts` is runnable from the worker and neither needs nor starts a gateway | T1.8 |
-| A46 | `prompt.submit` text `/new` or `/reset` would reset the chat (the gateway parses commands, `gateway/session_ingress.py`), so the bridge must intercept them; other `/` text runs as Hermes handles it | T1.0 |
-| A47 | A thread banner (`ComposerCustomization{scopes:["thread"], banners}`) can show "Open in Conduit…" and "Running in <app>" | T1.12 |
+| A43 | VERIFIED (T1.8, isolated): a skill in `<profile>/skills/` is listed in new sessions with no restart (S8 E14), and in a continuing session only after `refresh-prompts` (`[before, written, refreshed, off]` → `[no, no, yes, no]`). Live Bot Chat: dogfood | T1.8, T1.14 |
+| A44 | VERIFIED (T1.8 + T1.14, isolated): the wrapper takes `BB_CLI`, `BB_SERVER_URL` and `BB_HOST_DAEMON_PORT` from the daemon's per-call environment and puts the worker's node on `PATH`; on isolated Hermes the bot ran `bb-hermes thread list` through its terminal tool against the isolated bb. Remote server: dogfood | T1.8, T1.14 |
+| A45 | VERIFIED (T1.8, isolated): `refresh-prompts` exits 0 with no gateway, writes `prompt_refresh.epoch`, starts no process; a running gateway's pid is unchanged | T1.8 |
+| A46 | FAILED as worded (T1.0, isolated): `/new` and `/reset` as `prompt.submit` text reset nothing; the gateway answers a non-stored "⚠️ Confirm /new … /approve" text with no model call. The bridge still intercepts them (→ compress, 01 §4); other `/` text runs as Hermes handles it | T1.0 |
+| A47 | VERIFIED (T1.14, isolated bb, DOM + screenshot): the thread banner shows "Open in Conduit: sends when it's free" and clears once the send goes through | T1.12 |
 | A48 | VERIFIED (T0.5, isolated): the held row reads and stays `source: desktop`, `chat_id: null` | T0.5 |
 | A49 | What bb does with a wake into an archived thread (stays archived or unarchives); document it in `guide.md` | T2.5 |
-| A50 | Attachments go as `prompt.submit.attachments` `{path, mime}` with a file the gateway can read (`ui-tui/CANONICAL_GATEWAY.md:53-58`) | T1.0 |
+| A50 | PARTLY (T1.0, isolated): `prompt.submit.attachments` `{path, mime}` takes only `image/png\|jpeg\|gif\|webp`, and the file must be a direct child of `<profile home>/cache/images/` (else `invalid_params`). The bridge copies images there; other files only warn | T1.0 |
 | A51 | VERIFIED for the installer's default layout (`scripts/install.sh:97` clones into `$HERMES_HOME/hermes-agent`; the file is tracked). Other layouts → "version unknown" (tested) | T0.8 |
-| A52 | The composer can show the Hermes SVG while the provider is hidden (`not_installed` hides the provider glyph, S7 §4): via the chip value or `experimental_providerIcon`. Else the chip text alone | T1.12 |
+| A52 | VERIFIED (T1.14, isolated bb): with `experimental_providerIcon` registered, the composer shows the Hermes icon next to the bot chip while the provider is hidden | T1.12 |
 
 ## Dev loop
 
@@ -138,7 +138,7 @@ Critical path: T0.1 → T0.3 → T0.4 → T1.1 → T1.4 → T1.6 → T1.13 → T
 Each approval is logged in `docs/operations.md` §Approvals (date, item, answer); gated steps check it first.
 
 - Approvals needed: pushes, tags and releases; the live install; each live bot switch-on (it writes a skill into a live profile and runs `refresh-prompts`).
-- P0: install on live bb; machine = `$HERMES_HOST`; folder default. ACP Hermes stays as it is (retirement Later).
+- P0: install on live bb; machine = `$HERMES_HOST`; folder default. ACP Hermes stays as it is (retirement Later). While bb's provider-acp is enabled, installing or updating the plugin can make it probe `acp-hermes-agent` and create one empty `acp` session in live Hermes (seen at the P0 install, 1 s after the maintenance bridge started; not our code, the owner accepted it).
 - P1: one bot on first (e.g. Neo), then the others one at a time. Left as is: that bot's own bb skills (`~/src/hermes-config`), `compression.in_place: false` in `default` (D50), hermes-webui (D45).
 - P2: on the upgrade, each bot already on imports its chats from the 30 days before the upgrade, once (02 flow 1 step 6). No re-switching.
 - No gateway restart on live. Restart behaviour is tested on isolated Hermes only.
@@ -148,5 +148,5 @@ Each approval is logged in `docs/operations.md` §Approvals (date, item, answer)
 - **Kill switch:** switch every bot off first (removes skills, archives threads), then `bb plugin disable hermes`. Disabling alone leaves the skills in place.
 - **Manual skill removal** (worker gone): delete `<profile home>/skills/bb-plugin-hermes/` (only with `.bb-plugin-hermes.json`) and `<plugin data>/bin/bb-hermes`, then `hermes -p <profile> sessions refresh-prompts`.
 - **No downgrade in place:** revert, tag a new patch, `bb plugin update` (R3 M2).
-- **Never `remove`** without a `VACUUM INTO` copy of `data.db`: removal deletes the bindings, and re-importing orphans threads (S1-S3 fact 4).
+- **Never `remove`** without a `VACUUM INTO` copy of `data.db`. On bb 0.49.0 `remove` keeps `data.db` (bindings, the machine in `kv`) but deletes the settings, so a reinstall's folder is the default again; the server then refuses Hermes I/O until the connection is saved again (T1.14). Re-importing orphans threads (S1-S3 fact 4).
 - Hermes keeps everything bb sent; adopted Conduit chats stay adopted (benign; Conduit keeps working, S8 E10).

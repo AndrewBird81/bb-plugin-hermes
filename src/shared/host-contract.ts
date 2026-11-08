@@ -157,7 +157,7 @@ export const hostContract = defineRpcContract({
   /**
    * Idempotent; also the 60 s keep-alive (an idle worker dies at 300 s with no exit event, S7 §6).
    * `enabled_bots`: profile homes of the enabled bots. The worker watches them (hint + WAL stat), prewarms
-   * their models and writes `bridge-data/enabled.json` for bridges (`bridge-files.ts`).
+   * their models and writes `bridge-data/worker.json` for bridges (`bridge-files.ts`).
    */
   ensureWatch: {
     input: z.object({ root: folderSchema, enabled_bots: z.array(profileHome) }).strict(),
@@ -198,7 +198,11 @@ export const hostContract = defineRpcContract({
     output: z.object({ session_id: z.string(), turns: z.array(historyTurnSchema), truncated: z.boolean() }).strict(),
     experimental_retryable: true,
   },
-  /** `session.list{title:"Bot Chat", include_hidden:true}` (S8 step 1). Read-only. */
+  /**
+   * Read-only: `profiles.list{profile, include_sessions:true}` → `canonical_session`, which lists only a Bot Chat
+   * Hermes has adopted. Never `session.list{title}`: on an unheld legacy Bot Chat that lookup adopts it (T1.7,
+   * isolated), so only the bridge's send path uses it (the first bb send, D16).
+   */
   findBotChat: {
     input: z.object({ root: folderSchema, profile_home: profileHome }).strict(),
     output: botChatSchema,

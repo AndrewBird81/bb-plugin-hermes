@@ -19,10 +19,10 @@ AC:
 
 ![What the per-bot switch does](../diagrams/bot-switch.svg)
 
-- One row per bot the host's gateway serves (S8 §Per-profile reach). A profile with its own gateway shows "Not served by this machine's gateway", switch disabled.
+- One row per bot the host's gateway serves (S8 §Per-profile reach). A profile with its own gateway shows "Not served by this machine's gateway", switch disabled while off (a bot that is on can always be switched off).
 - **Every bot starts off** (D43). Off = absent from bb: no chat, no mirroring, no bb access.
 - Row text, before turning on:
-  - "On: chat with Neo in bb, see Neo's Hermes chats in bb, and let Neo operate bb: read, start, message, stop and archive any bb thread on any machine. Hermes doesn't ask before running bb commands (r12 §4). Restrictions come later."
+  - "On: chat with Neo in bb, see Neo's Hermes chats in bb, and let Neo operate bb: read, start, message, stop and archive any bb thread on any machine. Hermes doesn't ask before running bb commands. Restrictions come later." (r12 §4)
   - "Imports 12 chats from the last 30 days." (count from the history reader)
 - **On:**
   1. The worker writes the bot's bb skill and the shared wrapper, then refreshes that profile's prompts (02 flow 1).
@@ -69,7 +69,7 @@ AC:
 - **Composer:** bb's own: text, attachments, voice dictation, bb's model chip, reasoning.
   - **Model:** the bot's `model.options`; default = the bot's current model. Validated against the last-known list; never blocks a turn. An unoffered model → the bot's default plus a warning (S7 finding 6).
   - **Reasoning** (D17): Hermes levels per model; `default` = the bot's level (r11 §1). Mid-chat changes apply from the next turn.
-  - **Attachments:** images and files to Hermes (A50). A model without image input → warning; the text still goes.
+  - **Attachments:** images (PNG, JPEG, GIF, WebP) go to Hermes (A50); other files don't: a warning names them, the text still goes.
 - **Replies** stream live: text, reasoning, tools.
 - **Approvals and `clarify`** (D11): a bb card with Hermes' choices only and the request's deadline (`timeout_s`: `approvals.timeout`, 60 s on the owner's setup, R6; 600 s for `clarify`). A push goes out. Timed out → "Timed out in Hermes"; answered in another app → "Answered elsewhere". bb never answers for you (A2).
 - **Steer:** into bb's own running turn; otherwise queued as the next message.
@@ -80,7 +80,7 @@ AC:
 AC:
 - Each enabled bot's first reply comes from that profile (`session.info.profile_name`).
 - "High" reasoning reaches Hermes (`session.info`).
-- An image is described, or the turn warns.
+- An image is described; a non-image file warns and the text still goes.
 - An abandoned empty chat: 0 Hermes sessions, 0 unread, 0 pushes.
 - `deny` leaves the target untouched; `once` runs once; a timeout closes the card; the `clarify` answer is used.
 - `/new` in the bot thread: same lineage root, `context.compacted` shown.
@@ -96,7 +96,7 @@ AC:
 | bb's own, queued or waiting for Conduit | drops it; it never reaches Hermes |
 | Conduit's, forwarded into the gateway | interrupts it (S8 step 8) |
 | Conduit's own (dashboard) | nothing: banner "Running in Conduit" |
-| CLI, TUI or Desktop | bb stops watching; banner "Running in CLI". The reply still shows when the turn ends (D27 narrowed) |
+| CLI, TUI or Desktop | bb stops watching; banner "Running in CLI" (in a bot thread "Running in Conduit": Hermes records no per-turn surface at c314285f07, so the bot thread names every outside turn Conduit). The reply still shows when the turn ends (D27 narrowed) |
 
 AC: Stop on a CLI turn leaves it running in Hermes; its reply appears in bb when done.
 
@@ -163,7 +163,7 @@ AC: a CLI turn → dot, 0 pushes; an outside approval → 1 push; first import �
 ## 9. bb tooling [P1]
 
 - `bb thread tell|read|wait|stop|archive` work on Hermes threads.
-- `bb thread spawn --provider hermes --option profile=<bot>` makes a side chat (A18). No `profile` → `default` if it is on, else the turn fails listing the enabled bots. On another machine → "Hermes runs on <machine>: add `--machine <machine>`".
+- `bb thread spawn --project proj_personal --provider hermes --option profile=<bot>` makes a side chat (A18; the CLI needs the project). No `profile` → `default` if it is on, else the turn fails listing the enabled bots. On another machine → "Hermes runs on <machine>: add `--machine <machine>`".
 - An enabled bot runs these same commands through its skill (§2; 02 §bb access).
 
 AC: `bb thread tell <hermes-thread> "ping"` gets a reply; from an enabled bot's chat, "list my bb threads" runs `bb-hermes thread list`.

@@ -56,7 +56,7 @@ Conformance scenarios: `handshake/initialize`, `session/start-identity`, `sessio
 - Grows from `spike/hermes` `src/hermes/test/fake-gateway.ts` and `spike/bb` `src/fake-hermes.ts`.
 - Validates every request against a vendored `gateway-contract.openrpc.json`: `x-canonical-methods` plus the legacy `methods` we call (`model.options`), with `additionalProperties:false` as live (R3 S5, R5 C6).
 - Serves: `gateway.sock` + `/api/ws` for several profiles; the recorded REST responses with `native-http` tickets; scripted turns, approvals and `clarify` with deadlines; `sessions.changed` and WAL touches; fences (`stale_generation`, `revision_conflict`, `already_resolved`), `not_found`, `runtime_coordination_required`; restart (new port and epoch); legacy turns with no events.
-- REST data is always recorded, never hand-built (R5 C6).
+- REST shapes are always recorded, never hand-built (R5 C6): recorded answers are served as recorded; rows for sessions the fake's engine makes are built from a recorded row of the same kind, with its exact key set (asserted).
 - Selected only through the machine and folder settings; no fallback to `~/.hermes`.
 
 ## Two-client harness (S8 §Plan changes)
