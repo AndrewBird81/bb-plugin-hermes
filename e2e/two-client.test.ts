@@ -96,7 +96,9 @@ const options = (profile: string, view: Partial<ThreadView>): { providerOptions:
 });
 const bot = (profile: string) => options(profile, { kind: "bot" });
 const text = (t: string): PromptInput => ({ type: "text", mentions: [], text: t });
-const wake = (marker: Marker, label: string | null): PromptInput[] => [...(label ? [text(label)] : []), encodeMarker(marker)];
+/** A wake as the server sends it: a visible label is marked `labeled` (never submitted as a prompt). */
+const wake = (marker: Marker, label: string | null): PromptInput[] =>
+  label ? [text(label), encodeMarker({ ...marker, labeled: true } as Marker)] : [encodeMarker(marker)];
 const call = async (method: string, params: object) => {
   const id = nextId++;
   rpc.sendRequest(id, method, params as never);
