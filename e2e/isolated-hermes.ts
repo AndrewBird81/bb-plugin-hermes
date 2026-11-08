@@ -265,7 +265,8 @@ export async function startIsolatedHermes(opts: IsolatedOptions) {
         const ep = await discoverEndpoint(H);
         if (ep.instanceId !== notInstance) return ep;
       } catch (err) {
-        if (i > 240) throw err;
+        // A fresh home first installs its own Python runtime (Hermes "prepares dependencies for this data root").
+        if (i > 1200) throw err;
       }
       await sleep(500);
     }
