@@ -210,14 +210,16 @@ export class HermesClient {
     return snap;
   }
 
-  // Typed verbs: exactly the params in `contract/used-surface.json`.
+  // Typed verbs: exactly the params in `contract/used-surface.json`. On a host socket `profile` routes a call
+  // to a served profile; without it a call reaches the root profile (`gateway/session_controls.py:305-318`).
 
   describe() {
     return this.rpc<RuntimeDescribe>("runtime.describe");
   }
 
-  profilesList(profile?: string) {
-    return this.rpc<{ profiles: ProfileRow[]; bot_mode_protocol?: boolean }>("profiles.list", profile ? { profile } : {});
+  /** Every profile folder, served or not; `include_sessions: false` skips Hermes' per-profile session reads. */
+  profilesList(params: { profile?: string; include_sessions?: boolean } = {}) {
+    return this.rpc<{ profiles: ProfileRow[]; bot_mode_protocol?: boolean }>("profiles.list", params);
   }
 
   sessionList(params: { profile?: string; title?: string; include_hidden?: boolean; scope?: "live" | "stored"; limit?: number } = {}) {
@@ -241,11 +243,11 @@ export class HermesClient {
     return this.rpc<AdmissionStatus>("prompt.submit", params);
   }
 
-  cancel(params: { session_id: string; admission_id: string }) {
+  cancel(params: { profile?: string; session_id: string; admission_id: string }) {
     return this.rpc<AdmissionStatus>("prompt.cancel", params);
   }
 
-  resolveUnknown(params: { session_id: string; admission_id: string; execution_generation: number }) {
+  resolveUnknown(params: { profile?: string; session_id: string; admission_id: string; execution_generation: number }) {
     return this.rpc<AdmissionStatus>("prompt.resolve_unknown", params);
   }
 
@@ -261,11 +263,12 @@ export class HermesClient {
     return this.rpc<PromptResponse>("approval.respond", params);
   }
 
-  clarifyRespond(params: { session_id: string; execution_generation: number; prompt_id: string; answer: string }) {
+  clarifyRespond(params: { profile?: string; session_id: string; execution_generation: number; prompt_id: string; answer: string }) {
     return this.rpc<PromptResponse>("clarify.respond", params);
   }
 
   mutate(params: {
+    profile?: string;
     session_id: string;
     request_id: string;
     expected_revision: number;
@@ -280,8 +283,8 @@ export class HermesClient {
     return this.rpc<EventsSinceResult>("session.events.since", params);
   }
 
-  /** No `profile` key (R1 S6); `end_reason: null` keeps the row (A24). */
-  detach(params: { session_id: string; subscription_id: string; end_reason: string | null }) {
+  /** `end_reason: null` keeps the row (A24). */
+  detach(params: { profile?: string; session_id: string; subscription_id: string; end_reason: string | null }) {
     return this.rpc<{ session_id: string; subscription_id: string; detached: boolean }>("session.detach", params);
   }
 

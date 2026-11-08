@@ -71,6 +71,12 @@ export class Refusal extends Error {
   }
 }
 
+/** Every recording in test/fixtures/rest/, latest first: where two answer the same read, the latest state wins. */
+export const RECORDINGS_LATEST_FIRST = [
+  "default-profile", "conduit-held", "legacy", "compaction-rotating", "compaction-rotating-before", "compaction-in-place",
+  "compaction-in-place-before", "retry", "hidden-prompt", "steer", "bot-chat", "create",
+];
+
 export interface RecordedExchange {
   profile: string;
   path: string;
@@ -105,7 +111,10 @@ export interface FakeHermes {
   readonly instanceId: string;
   readonly authorityEpoch: number;
   readonly apiOrigin: string;
+  /** Served profiles, the root first. */
   readonly profiles: FakeProfile[];
+  /** Profile folders the gateway doesn't serve. */
+  readonly unserved: FakeProfile[];
   readonly requests: RequestRecord[];
   /** Every ticket minted on `gateway.sock`, with its purpose and profile. */
   readonly tickets: { purpose: string; profile_id: string; scope: string }[];
@@ -135,9 +144,8 @@ export async function startFakeHermes(opts: FakeOptions = {}): Promise<FakeHerme
     { name: "default", home: folder },
     ...(opts.profiles ?? ["alex", "bob"]).map((name) => ({ name, home: path.join(folder, "profiles", name) })),
   ];
-  for (const name of [...(opts.profiles ?? ["alex", "bob"]), ...(opts.unserved ?? [])]) {
-    mkdirSync(path.join(folder, "profiles", name), { recursive: true, mode: 0o700 });
-  }
+  const unserved = (opts.unserved ?? []).map((name) => ({ name, home: path.join(folder, "profiles", name) }));
+  for (const p of [...profiles.slice(1), ...unserved]) mkdirSync(p.home, { recursive: true, mode: 0o700 });
   const recorded: RecordedExchange[] = (opts.rest ?? []).flatMap(
     (name) => (JSON.parse(readFileSync(path.join(RECORDINGS, `${name}.json`), "utf8")) as { exchanges: RecordedExchange[] }).exchanges,
   );
@@ -357,6 +365,7 @@ export async function startFakeHermes(opts: FakeOptions = {}): Promise<FakeHerme
       return `http://127.0.0.1:${port}`;
     },
     profiles,
+    unserved,
     requests: [],
     tickets: [],
     violations: [],
@@ -391,8 +400,9 @@ function p0Handlers(): Record<string, Handler> {
       capabilities: ["durable-admission-v1", "event-replay-v1", "local-cli-create-v1"],
       session_create: { sources: ["acp", "cli", "gui", "oneshot", "tool", "tui"], parameters: ["cwd", "follow_profile_config", "model", "provider", "reasoning", "request_id", "source", "title"] },
     }),
+    // Every profile folder, the root first, then by name (`hermes_cli/profiles.py:983-1001`).
     "profiles.list": (_p, { fake }) => ({
-      profiles: fake.profiles.map((p) => ({
+      profiles: [fake.profiles[0]!, ...[...fake.profiles.slice(1), ...fake.unserved].sort((a, b) => a.name.localeCompare(b.name))].map((p) => ({
         name: p.name,
         path: p.home,
         is_default: p.name === "default",

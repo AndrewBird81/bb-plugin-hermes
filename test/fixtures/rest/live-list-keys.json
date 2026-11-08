@@ -1,0 +1,246 @@
+{
+ "$comment": "Live Hermes, read only (T0.5): one GET /api/sessions per served profile. Key names and JSON types only; no values, no profile names.",
+ "hermes": "c314285f07",
+ "profiles": 5,
+ "results": [
+  "ok",
+  "ok",
+  "ok",
+  "ok",
+  "ok"
+ ],
+ "envelope": [
+  "limit",
+  "offset",
+  "sessions",
+  "storage",
+  "total"
+ ],
+ "list_row_keys": {
+  "actual_cost_usd": [
+   "null"
+  ],
+  "api_call_count": [
+   "number"
+  ],
+  "archived": [
+   "boolean"
+  ],
+  "auto_archived": [
+   "number"
+  ],
+  "billing_base_url": [
+   "null",
+   "string"
+  ],
+  "billing_mode": [
+   "null",
+   "string"
+  ],
+  "billing_provider": [
+   "null",
+   "string"
+  ],
+  "cache_read_tokens": [
+   "number"
+  ],
+  "cache_write_tokens": [
+   "number"
+  ],
+  "chat_id": [
+   "null",
+   "string"
+  ],
+  "chat_type": [
+   "null",
+   "string"
+  ],
+  "compression_failure_cooldown_until": [
+   "null"
+  ],
+  "compression_failure_error": [
+   "null"
+  ],
+  "compression_fallback_streak": [
+   "number"
+  ],
+  "compression_ineffective_count": [
+   "number"
+  ],
+  "compression_overload_streak": [
+   "number"
+  ],
+  "compression_recovery_deadline": [
+   "null"
+  ],
+  "cost_source": [
+   "null",
+   "string"
+  ],
+  "cost_status": [
+   "null",
+   "string"
+  ],
+  "created_source": [
+   "null",
+   "string"
+  ],
+  "cwd": [
+   "null",
+   "string"
+  ],
+  "display_name": [
+   "null",
+   "string"
+  ],
+  "end_reason": [
+   "null",
+   "string"
+  ],
+  "ended_at": [
+   "null",
+   "number"
+  ],
+  "estimated_cost_usd": [
+   "null",
+   "number"
+  ],
+  "expiry_finalized": [
+   "number"
+  ],
+  "git_branch": [
+   "null"
+  ],
+  "git_repo_root": [
+   "null"
+  ],
+  "handoff_error": [
+   "null"
+  ],
+  "handoff_platform": [
+   "null"
+  ],
+  "handoff_state": [
+   "null"
+  ],
+  "hidden": [
+   "number"
+  ],
+  "id": [
+   "string"
+  ],
+  "input_tokens": [
+   "number"
+  ],
+  "is_active": [
+   "boolean"
+  ],
+  "is_default_profile": [
+   "boolean"
+  ],
+  "last_active": [
+   "number"
+  ],
+  "last_activity_at": [
+   "null",
+   "number"
+  ],
+  "last_activity_description": [
+   "null",
+   "string"
+  ],
+  "last_activity_provenance": [
+   "null",
+   "string"
+  ],
+  "last_read_at": [
+   "null"
+  ],
+  "message_count": [
+   "number"
+  ],
+  "model": [
+   "string"
+  ],
+  "origin_json": [
+   "null",
+   "string"
+  ],
+  "output_tokens": [
+   "number"
+  ],
+  "parent_session_id": [
+   "null"
+  ],
+  "pinned": [
+   "boolean"
+  ],
+  "preview": [
+   "string"
+  ],
+  "pricing_version": [
+   "null"
+  ],
+  "profile": [
+   "string"
+  ],
+  "profile_name": [
+   "string"
+  ],
+  "reasoning_tokens": [
+   "number"
+  ],
+  "rewind_count": [
+   "number"
+  ],
+  "runtime_generation": [
+   "number"
+  ],
+  "runtime_revision": [
+   "number"
+  ],
+  "session_key": [
+   "null",
+   "string"
+  ],
+  "source": [
+   "string"
+  ],
+  "started_at": [
+   "number"
+  ],
+  "thread_id": [
+   "null",
+   "string"
+  ],
+  "title": [
+   "null",
+   "string"
+  ],
+  "title_source": [
+   "null",
+   "string"
+  ],
+  "tool_call_count": [
+   "number"
+  ],
+  "tool_names": [
+   "null",
+   "string"
+  ],
+  "transcript_revision": [
+   "number"
+  ],
+  "transport_profile": [
+   "null",
+   "string"
+  ],
+  "unread": [
+   "boolean"
+  ],
+  "user_id": [
+   "null",
+   "string"
+  ]
+ }
+}

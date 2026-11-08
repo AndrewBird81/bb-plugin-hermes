@@ -1,0 +1,151 @@
+{
+ "$comment": "A turn, then /retry as prompt.submit text (alex).",
+ "hermes": "c314285f07",
+ "notes": {
+  "session": "local-40ebbc19824ea846b81a6b1b18cf4a3a0a47a8f0a0095d58834be8b0f9a9a941"
+ },
+ "exchanges": [
+  {
+   "profile": "alex",
+   "path": "/api/sessions/local-40ebbc19824ea846b81a6b1b18cf4a3a0a47a8f0a0095d58834be8b0f9a9a941/messages",
+   "query": {
+    "order": "oldest",
+    "limit": "500"
+   },
+   "status": 200,
+   "body": {
+    "session_id": "local-40ebbc19824ea846b81a6b1b18cf4a3a0a47a8f0a0095d58834be8b0f9a9a941",
+    "profile": "alex",
+    "messages": [
+     {
+      "id": 20,
+      "session_id": "local-40ebbc19824ea846b81a6b1b18cf4a3a0a47a8f0a0095d58834be8b0f9a9a941",
+      "role": "user",
+      "content": "first ask",
+      "tool_call_id": null,
+      "tool_calls": null,
+      "tool_name": null,
+      "effect_disposition": null,
+      "timestamp": 1794165213.698296,
+      "token_count": null,
+      "finish_reason": null,
+      "reasoning": null,
+      "reasoning_content": null,
+      "reasoning_details": null,
+      "codex_reasoning_items": null,
+      "codex_message_items": null,
+      "platform_message_id": "0a30f91842a74c36aaa51ec82f5c6100",
+      "observed": 0,
+      "active": 1,
+      "compacted": 0,
+      "api_content": null,
+      "display_kind": null,
+      "display_metadata": {
+       "gateway_input_owner": "<redacted>",
+       "submission_id": "bb:thr_rec_retry:1"
+      },
+      "message_uid": "8bc851bee06644f297ad771cdf9d0877",
+      "absorbed_message_uids": null,
+      "tool_call_uids": null,
+      "tool_call_uid": null
+     },
+     {
+      "id": 21,
+      "session_id": "local-40ebbc19824ea846b81a6b1b18cf4a3a0a47a8f0a0095d58834be8b0f9a9a941",
+      "role": "assistant",
+      "content": "echo(2): first ask",
+      "tool_call_id": null,
+      "tool_calls": null,
+      "tool_name": null,
+      "effect_disposition": null,
+      "timestamp": 1794165213.743587,
+      "token_count": null,
+      "finish_reason": "stop",
+      "reasoning": null,
+      "reasoning_content": null,
+      "reasoning_details": null,
+      "codex_reasoning_items": null,
+      "codex_message_items": null,
+      "platform_message_id": null,
+      "observed": 0,
+      "active": 1,
+      "compacted": 0,
+      "api_content": null,
+      "display_kind": null,
+      "display_metadata": null,
+      "message_uid": "1678e2da6389485a9ef7789751b97bde",
+      "absorbed_message_uids": null,
+      "tool_call_uids": null,
+      "tool_call_uid": null
+     },
+     {
+      "id": 22,
+      "session_id": "local-40ebbc19824ea846b81a6b1b18cf4a3a0a47a8f0a0095d58834be8b0f9a9a941",
+      "role": "user",
+      "content": "first ask",
+      "tool_call_id": null,
+      "tool_calls": null,
+      "tool_name": null,
+      "effect_disposition": null,
+      "timestamp": 1794165213.807418,
+      "token_count": null,
+      "finish_reason": null,
+      "reasoning": null,
+      "reasoning_content": null,
+      "reasoning_details": null,
+      "codex_reasoning_items": null,
+      "codex_message_items": null,
+      "platform_message_id": null,
+      "observed": 0,
+      "active": 1,
+      "compacted": 0,
+      "api_content": null,
+      "display_kind": null,
+      "display_metadata": {
+       "gateway_input_owner": "<redacted>"
+      },
+      "message_uid": "07ce02147b664f96bcdaa7fc24e62d56",
+      "absorbed_message_uids": null,
+      "tool_call_uids": null,
+      "tool_call_uid": null
+     },
+     {
+      "id": 23,
+      "session_id": "local-40ebbc19824ea846b81a6b1b18cf4a3a0a47a8f0a0095d58834be8b0f9a9a941",
+      "role": "assistant",
+      "content": "echo(4): first ask",
+      "tool_call_id": null,
+      "tool_calls": null,
+      "tool_name": null,
+      "effect_disposition": null,
+      "timestamp": 1794165213.8247721,
+      "token_count": null,
+      "finish_reason": "stop",
+      "reasoning": null,
+      "reasoning_content": null,
+      "reasoning_details": null,
+      "codex_reasoning_items": null,
+      "codex_message_items": null,
+      "platform_message_id": null,
+      "observed": 0,
+      "active": 1,
+      "compacted": 0,
+      "api_content": null,
+      "display_kind": null,
+      "display_metadata": null,
+      "message_uid": "1ec0f701a8374efbb51f04ec1d3fd88d",
+      "absorbed_message_uids": null,
+      "tool_call_uids": null,
+      "tool_call_uid": null
+     }
+    ],
+    "pagination": {
+     "limit": 500,
+     "offset": 0,
+     "order": "oldest",
+     "returned": 4
+    }
+   }
+  }
+ ]
+}

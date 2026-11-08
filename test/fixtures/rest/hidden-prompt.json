@@ -1,0 +1,152 @@
+{
+ "$comment": "A hidden prompt (prompt.submit display_kind hidden), then a visible turn (alex).",
+ "hermes": "c314285f07",
+ "notes": {
+  "session": "local-740e1e58d5c6199fd2301b437358648a9d6600b54aeba1bbfa740b2f0c8c22d3"
+ },
+ "exchanges": [
+  {
+   "profile": "alex",
+   "path": "/api/sessions/local-740e1e58d5c6199fd2301b437358648a9d6600b54aeba1bbfa740b2f0c8c22d3/messages",
+   "query": {
+    "order": "oldest",
+    "limit": "500"
+   },
+   "status": 200,
+   "body": {
+    "session_id": "local-740e1e58d5c6199fd2301b437358648a9d6600b54aeba1bbfa740b2f0c8c22d3",
+    "profile": "alex",
+    "messages": [
+     {
+      "id": 16,
+      "session_id": "local-740e1e58d5c6199fd2301b437358648a9d6600b54aeba1bbfa740b2f0c8c22d3",
+      "role": "user",
+      "content": "hidden instruction",
+      "tool_call_id": null,
+      "tool_calls": null,
+      "tool_name": null,
+      "effect_disposition": null,
+      "timestamp": 1794165213.34692,
+      "token_count": null,
+      "finish_reason": null,
+      "reasoning": null,
+      "reasoning_content": null,
+      "reasoning_details": null,
+      "codex_reasoning_items": null,
+      "codex_message_items": null,
+      "platform_message_id": "46cbb26749ea4926b67c2c1f1fcfdae6",
+      "observed": 0,
+      "active": 1,
+      "compacted": 0,
+      "api_content": null,
+      "display_kind": "hidden",
+      "display_metadata": {
+       "gateway_input_owner": "<redacted>",
+       "submission_id": "bb:thr_rec_hidden:1"
+      },
+      "message_uid": "43842c051f8d4dda91e4f33028dd6930",
+      "absorbed_message_uids": null,
+      "tool_call_uids": null,
+      "tool_call_uid": null
+     },
+     {
+      "id": 17,
+      "session_id": "local-740e1e58d5c6199fd2301b437358648a9d6600b54aeba1bbfa740b2f0c8c22d3",
+      "role": "assistant",
+      "content": "echo(2): hidden instruction",
+      "tool_call_id": null,
+      "tool_calls": null,
+      "tool_name": null,
+      "effect_disposition": null,
+      "timestamp": 1794165213.370919,
+      "token_count": null,
+      "finish_reason": "stop",
+      "reasoning": null,
+      "reasoning_content": null,
+      "reasoning_details": null,
+      "codex_reasoning_items": null,
+      "codex_message_items": null,
+      "platform_message_id": null,
+      "observed": 0,
+      "active": 1,
+      "compacted": 0,
+      "api_content": null,
+      "display_kind": null,
+      "display_metadata": null,
+      "message_uid": "9974db3d25b942c780c7f04b888fbab5",
+      "absorbed_message_uids": null,
+      "tool_call_uids": null,
+      "tool_call_uid": null
+     },
+     {
+      "id": 18,
+      "session_id": "local-740e1e58d5c6199fd2301b437358648a9d6600b54aeba1bbfa740b2f0c8c22d3",
+      "role": "user",
+      "content": "visible after",
+      "tool_call_id": null,
+      "tool_calls": null,
+      "tool_name": null,
+      "effect_disposition": null,
+      "timestamp": 1794165213.451107,
+      "token_count": null,
+      "finish_reason": null,
+      "reasoning": null,
+      "reasoning_content": null,
+      "reasoning_details": null,
+      "codex_reasoning_items": null,
+      "codex_message_items": null,
+      "platform_message_id": "013fd4f6cbf24472a47f2a3cfc8d7610",
+      "observed": 0,
+      "active": 1,
+      "compacted": 0,
+      "api_content": null,
+      "display_kind": null,
+      "display_metadata": {
+       "gateway_input_owner": "<redacted>",
+       "submission_id": "bb:thr_rec_hidden:2"
+      },
+      "message_uid": "91a65b613d4440539522578191549281",
+      "absorbed_message_uids": null,
+      "tool_call_uids": null,
+      "tool_call_uid": null
+     },
+     {
+      "id": 19,
+      "session_id": "local-740e1e58d5c6199fd2301b437358648a9d6600b54aeba1bbfa740b2f0c8c22d3",
+      "role": "assistant",
+      "content": "echo(4): visible after",
+      "tool_call_id": null,
+      "tool_calls": null,
+      "tool_name": null,
+      "effect_disposition": null,
+      "timestamp": 1794165213.5405161,
+      "token_count": null,
+      "finish_reason": "stop",
+      "reasoning": null,
+      "reasoning_content": null,
+      "reasoning_details": null,
+      "codex_reasoning_items": null,
+      "codex_message_items": null,
+      "platform_message_id": null,
+      "observed": 0,
+      "active": 1,
+      "compacted": 0,
+      "api_content": null,
+      "display_kind": null,
+      "display_metadata": null,
+      "message_uid": "623940240a7c40ada93964240d0e518e",
+      "absorbed_message_uids": null,
+      "tool_call_uids": null,
+      "tool_call_uid": null
+     }
+    ],
+    "pagination": {
+     "limit": 500,
+     "offset": 0,
+     "order": "oldest",
+     "returned": 4
+    }
+   }
+  }
+ ]
+}

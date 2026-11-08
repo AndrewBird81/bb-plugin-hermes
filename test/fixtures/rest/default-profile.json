@@ -1,0 +1,24 @@
+{
+ "$comment": "The root profile's list: no chats.",
+ "hermes": "c314285f07",
+ "notes": {},
+ "exchanges": [
+  {
+   "profile": "default",
+   "path": "/api/sessions",
+   "query": {
+    "order": "recent",
+    "archived": "include",
+    "limit": "100"
+   },
+   "status": 200,
+   "body": {
+    "sessions": [],
+    "total": 0,
+    "limit": 100,
+    "offset": 0,
+    "storage": {}
+   }
+  }
+ ]
+}

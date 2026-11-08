@@ -2,7 +2,7 @@
   "$comment": "The Hermes surface bb-plugin-hermes uses (flow 11, A51). Method -> the params we may send. The worker checks each against <folder>/hermes-agent/apps/shared/src/gateway-contract.openrpc.json: canonical in x-canonical-methods, legacy in methods. rest: keys we read from the REST projection (T0.5 fills them). `profile` is the host socket's routing key on every method: Hermes strips it before validation (gateway/session_controls.py:96-100, 305-318), so the check accepts it even where the schema lacks it. Checked against Hermes c314285f07.",
   "canonical": {
     "runtime.describe": [],
-    "profiles.list": ["profile"],
+    "profiles.list": ["profile", "include_sessions"],
     "session.list": ["profile", "title", "include_hidden", "scope", "limit"],
     "session.create": ["profile", "request_id", "source", "cwd", "model", "provider", "reasoning", "title", "hidden", "follow_profile_config"],
     "session.resume": ["profile", "session_id", "omit_messages"],
@@ -21,7 +21,7 @@
     "model.options": ["profile"]
   },
   "rest": {
-    "list": [],
-    "messages": []
+    "list": ["id", "title", "source", "created_source", "chat_id", "hidden", "archived", "cwd", "message_count", "last_activity_at"],
+    "messages": ["session_id", "message_uid", "role", "content", "display_kind", "display_metadata", "timestamp", "tool_calls", "tool_call_id", "tool_name", "reasoning"]
   }
 }

@@ -47,3 +47,17 @@ export function missingSurface(used: UsedSurface, contract: OpenRpcContract): st
   check(contract.methods, used.legacy);
   return missing;
 }
+
+/**
+ * The REST keys bb reads (`used.rest`) that these responses lack (flow 11): `rest:list.<key>` or
+ * `rest:messages.<key>` when no row has the key. An empty response proves nothing and lacks nothing.
+ */
+export function missingRestKeys(
+  rest: { list: string[]; messages: string[] },
+  list: { sessions?: object[] } | null,
+  messages: { messages?: object[] } | null,
+): string[] {
+  const lacks = (rows: object[] | undefined, keys: string[], route: string) =>
+    rows?.length ? keys.filter((k) => !rows.some((r) => k in r)).map((k) => `rest:${route}.${k}`) : [];
+  return [...lacks(list?.sessions, rest.list, "list"), ...lacks(messages?.messages, rest.messages, "messages")];
+}
