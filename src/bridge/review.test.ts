@@ -43,7 +43,7 @@ describe("a wake in a bot thread watches the bound session", () => {
     const anchor = await userRow("bob", chat.session_id, "from conduit");
     const view = { kind: "bot", lineage_root: chat.session_id, session_id: chat.session_id };
     await startThread(rig, "thr_bw", opts("bob", view));
-    await rig.call("turn/start", { threadId: "thr_bw", providerThreadId: "x", input: [text("[Conduit] from conduit"), encodeMarker({ op: "mirror", anchor_uid: anchor })], clientRequestId: creq(), options: { ...AUTO, ...opts("bob", view) } });
+    await rig.call("turn/start", { threadId: "thr_bw", providerThreadId: "x", input: [text("[Conduit] from conduit"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })], clientRequestId: creq(), options: { ...AUTO, ...opts("bob", view) } });
     await rig.waitFor(() => events(rig, "thr_bw").some((e) => e.type === "item/agentMessage/delta"));
     await rig.call("thread/stop", { threadId: "thr_bw", providerThreadId: "x", intent: "interrupt", activeTurnId: null });
     expect(statuses(rig, "thr_bw")).toEqual(["interrupted"]);
@@ -59,7 +59,7 @@ describe("a wake in a bot thread watches the bound session", () => {
     const anchor = await userRow("bob", legacy, "conduit asks");
     const view = { kind: "bot", lineage_root: legacy, session_id: legacy, legacy: true };
     await startThread(rig, "thr_bl", opts("bob", view));
-    await turn(rig, "thr_bl", [text("[Conduit] conduit asks"), encodeMarker({ op: "mirror", anchor_uid: anchor })], opts("bob", view));
+    await turn(rig, "thr_bl", [text("[Conduit] conduit asks"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })], opts("bob", view));
     await pending;
     expect(rig.fake.requests.filter((r) => ["session.list", "session.resume", "session.create"].includes(r.method))).toEqual([]);
     expect(mirrored("thr_bl")).toEqual([expect.objectContaining({ anchor_uid: anchor, partial: true })]);
@@ -127,4 +127,70 @@ it("each thread's record is its own file: one bridge's write never drops another
   updateThread(rig.dataDir, "thr_one", { bot: true });
   expect(readThread(rig.dataDir, "thr_two")).toMatchObject({ profile: "bob" });
   expect(readThread(rig.dataDir, "thr_one")).toMatchObject({ profile: "alex", bot: true });
+});
+
+describe("second review", () => {
+  it("steering a queued wake renders it through its marker: its label never reaches Hermes", async () => {
+    const cli = await rig.cli();
+    const snap = await cli.create({ profile: "alex", request_id: "cli-st", source: "cli" });
+    await cli.submit({ profile: "alex", session_id: snap.session_id, text: "outside ask", submission_id: "cli-st-1" });
+    const anchor = await userRow("alex", snap.session_id, "outside ask");
+    await rig.waitFor(() => rig.fake.session("alex", snap.session_id)!.rows.length === 2);
+    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id, tag: "CLI" };
+    await startThread(rig, "thr_sw", opts("alex", view));
+    rig.fake.nextTurn("alex", { holdMs: 200 });
+    await rig.call("turn/start", { threadId: "thr_sw", providerThreadId: "x", input: [text("mine")], clientRequestId: creq(), options: { ...AUTO, ...opts("alex", view) } });
+    await rig.waitFor(() => rig.fake.session("alex", snap.session_id)!.running);
+    const res = await rig.call("turn/steer", {
+      threadId: "thr_sw",
+      providerThreadId: "x",
+      expectedTurnId: "t",
+      clientRequestId: creq(),
+      input: [text("[CLI] outside ask"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })],
+      options: { ...AUTO, ...opts("alex", view) },
+    });
+    expect(res.result).toEqual({});
+    await rig.waitFor(() => statuses(rig, "thr_sw").length === 1);
+    expect(rig.requests("prompt.submit").filter((r) => String(r.params.submission_id).startsWith("bb:")).map((r) => r.params.text)).toEqual(["mine"]);
+    expect(rig.requests("session.steer")).toHaveLength(0);
+    expect(agentTexts(rig, "thr_sw")).toEqual([expect.stringContaining("mine"), "echo(2): outside ask"]);
+  });
+
+  it("a malformed marker fails the turn and nothing of it reaches Hermes, its label included", async () => {
+    await startThread(rig, "thr_iv", opts("alex"));
+    const bad = { type: "text" as const, mentions: [], text: '<hermes-bb>{"op":"mirror"}</hermes-bb>', visibility: "agent-only" as const };
+    await turn(rig, "thr_iv", [text("before"), text("[CLI] label"), bad], opts("alex"));
+    expect(statuses(rig, "thr_iv")).toEqual(["failed"]);
+    expect(rig.requests("prompt.submit")).toHaveLength(0);
+    expect(rig.requests("session.create")).toHaveLength(0);
+  });
+
+  it("after Stop, a later outside turn with the same text isn't matched to the stale admission", async () => {
+    const cli = await rig.cli();
+    const snap = await cli.create({ profile: "alex", request_id: "cli-stale", source: "cli" });
+    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id, tag: "CLI" };
+    await startThread(rig, "thr_stale", opts("alex", view));
+    rig.fake.outsideTurn("alex", snap.session_id, "same", { script: { chunkMs: 40, reply: "one two three four five six" } });
+    const first = await userRow("alex", snap.session_id, "same");
+    const wake = (anchor: string) => [text("[CLI] same"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })];
+    await rig.call("turn/start", { threadId: "thr_stale", providerThreadId: "x", input: wake(first), clientRequestId: creq(), options: { ...AUTO, ...opts("alex", view) } });
+    await rig.waitFor(() => events(rig, "thr_stale").some((e) => e.type === "item/agentMessage/delta"));
+    await rig.call("thread/stop", { threadId: "thr_stale", providerThreadId: "x", intent: "interrupt", activeTurnId: null });
+    await rig.waitFor(() => !rig.fake.session("alex", snap.session_id)!.running);
+    rig.fake.outsideTurn("alex", snap.session_id, "same", { script: { chunkMs: 20, reply: "second reply" } });
+    const second = await rig.waitFor(() => rig.fake.session("alex", snap.session_id)!.rows.filter((r) => r.role === "user" && r.content === "same")[1]?.message_uid);
+    await turn(rig, "thr_stale", wake(second), opts("alex", view));
+    expect(statuses(rig, "thr_stale")).toEqual(["interrupted", "completed"]);
+    expect(agentTexts(rig, "thr_stale").at(-1)).toBe("second reply");
+  });
+
+  it("Stop with no turn running drops the session: switching an idle bot off leaves no reconnect", async () => {
+    await startThread(rig, "thr_idle", opts("alex"));
+    await turn(rig, "thr_idle", [text("one")], opts("alex"));
+    await rig.call("thread/stop", { threadId: "thr_idle", providerThreadId: "x", intent: "interrupt", activeTurnId: null });
+    const before = rig.fake.requests.length;
+    await rig.fake.restart();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(rig.fake.requests.slice(before)).toEqual([]);
+  });
 });

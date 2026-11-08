@@ -9,7 +9,7 @@ import { HermesDisconnectedError, HermesRpcError, type HermesClient } from "../h
 import type { RestMessage } from "../hermes/history.js";
 import type { AdmissionStatus, GatewayEvent, PendingPrompt, Snapshot } from "../hermes/types.js";
 import { EXTENSION_KINDS, PERSISTED_TURNS_KEPT, type PersistedTurnState, type StatusState } from "../shared/extension-state.js";
-import { type Marker, segmentInput } from "../shared/marker.js";
+import { type Marker, type Segment, segmentInput } from "../shared/marker.js";
 import type { SourceTag } from "../shared/sources.js";
 import { BOT_CHAT_TITLE } from "../shared/sources.js";
 import { botIdentity, chatIdentity, isPending, resolveContext, type ThreadContext, UserFacingError } from "./context.js";
@@ -23,6 +23,7 @@ import { renderRows, rowText, StreamRenderer, textItem } from "./render.js";
 export const DELETED_TEXT = "Deleted in Hermes.";
 export const RESTARTED_TEXT = "Hermes restarted: resend?";
 export const EARLIER_TEXT = "Earlier messages stay in Hermes.";
+export const invalidMarkerText = (error: string) => `The Hermes plugin sent a message this version can't read (${error}); nothing was sent to Hermes.`;
 export const INIT_REFUSED_TEXT = "This chat is already set up.";
 /** Flow 3 step 4: 2, 5, 10, 30 s, then every 60 s. */
 export const HOLD_RETRY_MS = [2000, 5000, 10_000, 30_000, 60_000];
@@ -90,7 +91,11 @@ class BbTurn {
   queued: Promise<void>[] = [];
   private wake = new Set<() => void>();
   readonly finished = new Deferred<void>();
-  submits = 0;
+  private submits = new Map<string, number>();
+  /** A steer that can't run (a malformed marker): the turn settles failed with this. */
+  failure: string | null = null;
+  /** Steers carrying a marker: their segments run in order after the turn's own (R1 M6). */
+  deferred: { requestId: string; segments: Segment[] }[] = [];
   /** Mirror markers rendered in this turn. */
   mirrors = 0;
   constructor(readonly clientRequestId: string) {}
@@ -114,9 +119,11 @@ class BbTurn {
     for (const fn of [...this.wake]) fn();
   }
 
-  nextSubmissionId(threadId: string): string {
-    const n = this.submits++;
-    return `bb:${threadId}:${this.clientRequestId}${n ? `:${n}` : ""}`;
+  /** One `submission_id` per prompt: `bb:<thread>:<request>`, then `:1`, `:2` for more prompts of the same request. */
+  nextSubmissionId(threadId: string, requestId = this.clientRequestId): string {
+    const n = this.submits.get(requestId) ?? 0;
+    this.submits.set(requestId, n + 1);
+    return `bb:${threadId}:${requestId}${n ? `:${n}` : ""}`;
   }
 }
 
@@ -198,28 +205,41 @@ export class HostedThread {
     for (const entry of this.prompts.values()) this.raise(entry);
     let outcome: Outcome = { status: "completed" };
     try {
-      for (const segment of segmentInput(params.input)) {
-        if (turn.stopped) break;
-        if (segment.kind === "invalid") {
-          this.emit([{ kind: "provider.error", message: `Ignored a malformed Hermes plugin marker (${segment.error}).` }]);
-        } else if (segment.kind === "marker") {
-          await this.runMarker(turn, segment.marker, params);
-        } else {
-          const ctx = this.resolve(params);
-          const unitOutcome = await this.submitPrompt(turn, ctx, segment.parts, params);
-          if (unitOutcome.status === "failed") outcome = unitOutcome;
-        }
+      const segments = segmentInput(params.input);
+      const invalid = segments.find((s) => s.kind === "invalid");
+      // A marker that doesn't decode: the turn fails and nothing of it reaches Hermes, its label included.
+      if (invalid) throw new UserFacingError(invalidMarkerText(invalid.error));
+      outcome = await this.runSegments(turn, segments, params, params.clientRequestId);
+      while (turn.deferred.length && !turn.stopped) {
+        const next = turn.deferred.shift()!;
+        const result = await this.runSegments(turn, next.segments, params, next.requestId);
+        if (result.status === "failed") outcome = result;
       }
       await Promise.all(turn.queued);
       for (const unit of turn.units) {
         const result = await unit.settled.promise;
         if (result.status === "failed" && outcome.status !== "failed") outcome = result;
       }
+      if (turn.failure) outcome = { status: "failed", error: turn.failure };
     } catch (error) {
       if (!(error instanceof Stopped)) outcome = { status: "failed", error: errorText(error) };
     }
     if (turn.stopped && outcome.status !== "failed") outcome = { status: "interrupted" };
     await this.settleTurn(turn, outcome);
+  }
+
+  /** Segments in order: markers render, prompts submit (each with its own `submission_id`). */
+  private async runSegments(turn: BbTurn, segments: Segment[], params: TurnParams, requestId: string): Promise<Outcome> {
+    let outcome: Outcome = { status: "completed" };
+    for (const segment of segments) {
+      if (turn.stopped) break;
+      if (segment.kind === "marker") await this.runMarker(turn, segment.marker, params);
+      else if (segment.kind === "prompt") {
+        const result = await this.submitPrompt(turn, this.resolve(params), segment.parts, params, requestId);
+        if (result.status === "failed") outcome = result;
+      }
+    }
+    return outcome;
   }
 
   private async settleTurn(turn: BbTurn, outcome: Outcome): Promise<void> {
@@ -288,7 +308,7 @@ export class HostedThread {
 
   // ---- bb's own sends ----------------------------------------------------------------------------------
 
-  private async submitPrompt(turn: BbTurn, ctx: ThreadContext, parts: PromptInput[], params: TurnParams): Promise<Outcome> {
+  private async submitPrompt(turn: BbTurn, ctx: ThreadContext, parts: PromptInput[], params: TurnParams, requestId: string): Promise<Outcome> {
     const text = parts
       .filter((p): p is Extract<PromptInput, { type: "text" }> => p.type === "text")
       .map((p) => p.text)
@@ -306,7 +326,7 @@ export class HostedThread {
     const choice = chooseModel(await this.catalog(ctx), params.options.model, params.options.reasoningLevel);
     for (const summary of [...warnings, ...(choice.warning ? [choice.warning] : [])]) this.emit([{ kind: "provider.warning", summary }]);
     const unit = this.newUnit(true, null);
-    unit.submissionId = turn.nextSubmissionId(this.threadId);
+    unit.submissionId = turn.nextSubmissionId(this.threadId, requestId);
     turn.units.push(unit);
     try {
       await this.submit(turn, ctx, unit, text, choice, attachments);
@@ -456,9 +476,11 @@ export class HostedThread {
 
   // ---- sessions ----------------------------------------------------------------------------------------
 
+  /** Unsubscribe and forget the session; admissions not seen to finish go too (a later match would hang on them). */
   private dropSession(): void {
     this.session?.unsubscribe();
     this.session = null;
+    for (const [id, log] of this.logs) if (!log.done) this.logs.delete(id);
   }
 
   private async ensureSession(turn: BbTurn, ctx: ThreadContext, choice: ModelChoice | null = null): Promise<SessionState> {
@@ -844,7 +866,7 @@ export class HostedThread {
   /** `thread/stop{interrupt}` (02 §Protocol mapping; S8 step 8; D27 narrowed). Settles before it returns. */
   async stop(): Promise<void> {
     const turn = this.turn;
-    if (!turn) return;
+    if (!turn) return this.dropSession();
     turn.stop();
     await Promise.all(turn.units.filter((u) => !u.done).map((u) => this.stopUnit(u)));
     const timer = setTimeout(() => {
@@ -885,9 +907,24 @@ export class HostedThread {
   async steer(clientRequestId: string, input: PromptInput[], params: TurnParams): Promise<boolean> {
     const turn = this.turn;
     if (!turn || turn.stopped) return false;
+    const segments = segmentInput(input);
+    const invalid = segments.find((s) => s.kind === "invalid");
+    if (invalid) {
+      // Nothing of it reaches Hermes; the turn it joined fails (as a turn with that input would).
+      this.emit([{ kind: "input.accepted", clientRequestId }]);
+      turn.failure ??= invalidMarkerText(invalid.error);
+      return true;
+    }
     this.emit([{ kind: "input.accepted", clientRequestId }]);
-    const text = input
-      .filter((p): p is Extract<PromptInput, { type: "text" }> => p.type === "text" && p.visibility !== "agent-only")
+    if (segments.some((s) => s.kind === "marker")) {
+      // bb steers the next queued message into the turn: a queued wake (its label, its marker) renders in
+      // order after the turn's own work, through `runMarker`; never as text to Hermes (02 §Invariants).
+      turn.deferred.push({ requestId: clientRequestId, segments });
+      return true;
+    }
+    const text = segments
+      .flatMap((s) => (s.kind === "prompt" ? s.parts : []))
+      .filter((p): p is Extract<PromptInput, { type: "text" }> => p.type === "text")
       .map((p) => p.text)
       .join("\n")
       .trim();
@@ -907,7 +944,7 @@ export class HostedThread {
     }
     const ctx = this.ctx ?? this.resolve(params);
     const unit = this.newUnit(true, null);
-    unit.submissionId = `bb:${this.threadId}:${clientRequestId}`;
+    unit.submissionId = turn.nextSubmissionId(this.threadId, clientRequestId);
     turn.units.push(unit);
     turn.queued.push(
       this.submit(turn, ctx, unit, text).catch((error) => {

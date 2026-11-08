@@ -17,7 +17,9 @@ afterEach(async () => {
 const home = (profile: string) => rig.fake.profiles.find((p) => p.name === profile)!.home;
 const view = (id: string, more: object = {}) => ({ kind: "mirror", lineage_root: id, session_id: id, tag: "CLI", ...more });
 const opts = (profile: string, v: object) => ({ providerOptions: rig.options(profile, v as never) });
-const wake = (marker: Marker, label: string | null = "[CLI] hi") => [...(label ? [text(label)] : []), encodeMarker(marker)];
+/** A wake as the server sends it: `labeled` when a bubble comes before the marker. */
+const wake = (marker: Marker, label: string | null = "[CLI] hi") =>
+  label ? [text(label), encodeMarker({ ...marker, labeled: true } as Marker)] : [encodeMarker(marker)];
 const mirrored = (threadId: string) =>
   (deltas(rig, threadId).filter((d) => d.extensionKind === "hermes/persisted-turn").at(-1)?.payload as { mirrored: { anchor_uid: string; reply_uids: string[]; partial: boolean }[] } | undefined)?.mirrored ?? [];
 
