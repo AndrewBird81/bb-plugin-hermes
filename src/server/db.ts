@@ -150,6 +150,10 @@ export function botByName(db: Db, name: string): BotRecord | null {
   return botFromRow(db.prepare(`SELECT * FROM bots WHERE name = ? ORDER BY enabled DESC LIMIT 1`).get(name) as BotRecordRow | undefined);
 }
 
+export function allBots(db: Db): BotRecord[] {
+  return (db.prepare(`SELECT * FROM bots ORDER BY profile_home`).all() as BotRecordRow[]).map((r) => botFromRow(r)!);
+}
+
 export function enabledBots(db: Db): BotRecord[] {
   return (db.prepare(`SELECT * FROM bots WHERE enabled = 1 ORDER BY profile_home`).all() as BotRecordRow[]).map((r) => botFromRow(r)!);
 }

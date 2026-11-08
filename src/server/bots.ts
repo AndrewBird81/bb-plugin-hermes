@@ -6,6 +6,7 @@ import { encodeMarker, type Marker } from "../shared/marker.js";
 import { BOTS_CHANNEL, type BotRow } from "../shared/rpc-contract.js";
 import { errorCode } from "./connection.js";
 import {
+  allBots,
   bindingsOf,
   botBinding,
   botRecord,
@@ -76,10 +77,19 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
     };
   }
 
+  /** The worker's profiles; while it can't describe, the last answer, else the bots on record (so an on bot can go off offline). */
   async function rows(): Promise<BotRow[]> {
     const target = targetOf(connection);
-    if (!target) return [];
-    return (described ?? (await describe(target))).profiles.map(row);
+    if (target) {
+      try {
+        return (described ?? (await describe(target))).profiles.map(row);
+      } catch (error) {
+        fail(errorCode(error, "describe_failed"));
+      }
+    }
+    if (described) return described.profiles.map(row);
+    // On record only: an enabled bot was served when switched on.
+    return allBots(db).map((b) => row({ name: b.name, home: b.profile_home, handle: b.handle, terminal_cwd: b.cwd, served: b.enabled }));
   }
 
   // ---- bb access (skill + wrapper): retried until the worker confirms, so an off bot never keeps it ----
@@ -91,6 +101,8 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
     try {
       const result = await host.call("setBotAccess", { root: target.root, profile_home: profileHome, on, enabled_bots: enabled }, { hostId: target.machine });
       if (result.detail) fail(result.detail);
+      // Done only once the sessions saw it (02 flow 1); else retried at the next connect.
+      if (!result.refreshed || result.detail) throw Object.assign(new Error("not refreshed"), { code: "set_bot_access_incomplete" });
       const { [profileHome]: _, ...rest } = pendingAccess();
       setKv(db, ACCESS_PENDING, rest);
     } catch (error) {

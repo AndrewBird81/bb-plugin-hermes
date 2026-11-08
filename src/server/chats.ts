@@ -118,10 +118,10 @@ export function createChats(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; des
     const thread = await bb.sdk.threads.get({ threadId });
     if (thread.title !== placeholder) return;
     const history = await bb.sdk.threads.promptHistory({ threadId });
-    const first = [...history].sort((a, b) => a.createdAt - b.createdAt)[0];
-    const message = first?.input
-      .flatMap((part) => (part.type === "text" && (part as { visibility?: string }).visibility !== "agent-only" ? [part.text] : []))
-      .join(" ");
+    const visible = (entry: (typeof history)[number]) =>
+      entry.input.flatMap((part) => (part.type === "text" && (part as { visibility?: string }).visibility !== "agent-only" ? [part.text] : [])).join(" ");
+    // The first entry with visible text: an agent-only `init`, if bb records one, never names the chat.
+    const message = [...history].sort((a, b) => a.createdAt - b.createdAt).map(visible).find((t) => titleFrom(t) !== null);
     const title = message ? titleFrom(message) : null;
     if (!title) return;
     await bb.sdk.threads.update({ threadId, title });

@@ -51,10 +51,11 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
   const levels = new Map<string, string>();
   const levelCalls: { threadId: string; level: string }[] = [];
   /** Hermes chats by lineage root. */
-  const history = new Map<string, { session_id: string; turns: HistoryTurn[]; truncated?: boolean }>();
+  /** `pageSize`: an `after_uid` read returns at most this many turns, oldest first, `truncated` when more follow. */
+  const history = new Map<string, { session_id: string; turns: HistoryTurn[]; truncated?: boolean; pageSize?: number }>();
   const botChats = new Map<string, BotChat>();
   const access: { profile_home: string; on: boolean; enabled_bots: string[] }[] = [];
-  const state = { failSend: 0, failAccess: false, boot: "boot_1", supported: true, seq: 0, ids: 0 };
+  const state = { failSend: 0, failAccess: false, refreshed: true, online: true, boot: "boot_1", supported: true, seq: 0, ids: 0 };
 
   const thread = (id: string) => {
     const t = threads.get(id);
@@ -86,7 +87,7 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
       case "setBotAccess":
         if (state.failAccess) throw Object.assign(new Error("offline"), { code: "host_offline" });
         access.push({ profile_home: input.profile_home, on: input.on, enabled_bots: input.enabled_bots });
-        return { skill: input.on ? "written" : "removed", wrapper: "written", refreshed: true, detail: null };
+        return { skill: input.on ? "written" : "removed", wrapper: "written", refreshed: state.refreshed, detail: state.refreshed ? null : "refresh_failed:1" };
       case "findBotChat":
         return botChats.get(input.profile_home) ?? { state: "none" };
       case "readTurns": {
@@ -98,6 +99,8 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
         if (at >= 0) turns = turns.slice(at + 1);
         const since = input.since;
         if (since !== undefined) turns = turns.filter((t) => t.ts >= since);
+        if (chat.pageSize !== undefined && after !== undefined && turns.length > chat.pageSize)
+          return { session_id: chat.session_id, turns: turns.slice(0, chat.pageSize), truncated: true };
         return { session_id: chat.session_id, turns, truncated: chat.truncated ?? false };
       }
       default:
@@ -109,7 +112,7 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
     pluginId: "hermes",
     experimental_callHostRpc: hostCall,
     sdk: {
-      hosts: { list: async () => [makeHostResponse({ id: MACHINE, name: "hermes-mac", status: "connected" })] },
+      hosts: { list: async () => [makeHostResponse({ id: MACHINE, name: "hermes-mac", status: state.online ? "connected" : "disconnected" })] },
       projects: { list: async () => [{ id: "proj_personal", kind: "personal" }] },
       plugins: {
         callRpc: async ({ method, input }) => {
@@ -160,10 +163,13 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
         promptHistory: async ({ threadId }) => prompts.get(threadId) ?? [],
         getPluginMetadata: async () => ({ metadata: {} }),
         events: {
-          list: async ({ threadId, types, order }) => {
-            const rows = (events.get(threadId) ?? []).filter((e) => !types || (types as readonly string[]).includes(e.type));
+          list: async ({ threadId, types, order, limit, beforeSeq }) => {
+            const rows = (events.get(threadId) ?? []).filter(
+              (e) => (!types || (types as readonly string[]).includes(e.type)) && (beforeSeq === undefined || e.seq < Number(beforeSeq)),
+            );
             const out = rows.map((e) => ({ id: `ev_${e.seq}`, scope: { kind: "thread" }, threadId, seq: e.seq, createdAt: e.seq, type: e.type, data: e.data }));
-            return order === "desc" ? out.reverse() : out;
+            const ordered = order === "desc" ? out.reverse() : out;
+            return limit ? ordered.slice(0, Number(limit)) : ordered;
           },
         },
         queuedMessages: { list: async () => ({ messages: [] }) },

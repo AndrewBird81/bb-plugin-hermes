@@ -32,6 +32,8 @@ import {
 import type { Notify } from "./notify.js";
 
 export const IMPORT_WINDOW_MS = 30 * 86_400_000;
+/** Pages of a truncated wake read before the rest waits for the next reconcile. */
+const MAX_TURN_PAGES = 20;
 
 /** 02 identity rules: the session id bb's first send will create, known before it exists (S0-S4 §S4b). */
 export const expectedId = (profileHome: string, uid: number, threadId: string) =>
@@ -90,6 +92,12 @@ function label(binding: Binding, turn: HistoryTurn, imported: boolean): PromptIn
   if (turn.user_hidden || turn.user_text === null) return [];
   if (isBbSubmission(turn)) return [text(turn.user_text)];
   return [text(formatTag(turnTag(binding, turn), imported ? new Date(turn.ts) : undefined) + turn.user_text)];
+}
+
+/** A turn's input: its label, then the marker, `labeled` when a label is there, so the bridge never submits it. */
+function turnInput(binding: Binding, turn: HistoryTurn, imported: boolean, marker: Exclude<Marker, { op: "init" }>): PromptInput[] {
+  const visible = label(binding, turn, imported);
+  return [...visible, encodeMarker(visible.length ? { ...marker, labeled: true } : marker)];
 }
 
 const hasNew = (now: string[], shown: string[]) => now.some((uid) => !shown.includes(uid));
@@ -152,7 +160,7 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
     for (const turn of read.turns) {
       if (turnRow(db, binding.thread_id, turn.anchor_uid)) continue;
       if (!claimTurn(db, { thread_id: binding.thread_id, anchor_uid: turn.anchor_uid, kind: "replay", at: turn.ts, reply_uids: turn.reply_uids })) continue;
-      const marker: Marker = bound
+      const marker: Exclude<Marker, { op: "init" }> = bound
         ? { op: "replay", anchor_uid: turn.anchor_uid }
         : {
             op: "bind",
@@ -163,7 +171,7 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
             ...(read.truncated ? { since } : {}),
           };
       readAtIdle.add(binding.thread_id);
-      if (!(await sendClaimed(binding, turn.anchor_uid, [...label(binding, turn, true), encodeMarker(marker)], "muted"))) return;
+      if (!(await sendClaimed(binding, turn.anchor_uid, turnInput(binding, turn, true, marker), "muted"))) return;
       bound = true;
     }
     unfinished.delete(binding.thread_id);
@@ -188,16 +196,7 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
       if (settle) for (const row of queuedTurnsOf(db, binding.thread_id)) settleTurn(db, binding.thread_id, row.anchor_uid, "done");
       return;
     }
-    const read = await host.call(
-      "readTurns",
-      {
-        root: target.root,
-        profile_home: binding.profile_home,
-        lineage_root: binding.lineage_root,
-        ...(binding.cursor_uid ? { after_uid: binding.cursor_uid } : {}),
-      },
-      { hostId: target.machine },
-    );
+    const read = await readAfter(binding, target);
     if (read.session_id !== binding.session_id) updateBinding(db, binding.thread_id, { session_id: read.session_id });
     if (settle) {
       const byAnchor = new Map(read.turns.map((t) => [t.anchor_uid, t]));
@@ -215,7 +214,7 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
           continue;
         }
         if (!claimTurn(db, { thread_id: binding.thread_id, anchor_uid: turn.anchor_uid, kind: "mirror", at: turn.ts, reply_uids: turn.reply_uids })) continue;
-        const input = [...label(binding, turn, false), encodeMarker({ op: "mirror", anchor_uid: turn.anchor_uid })];
+        const input = turnInput(binding, turn, false, { op: "mirror", anchor_uid: turn.anchor_uid });
         // Keep Hermes' order: stop at a failed send; the next re-list retries from there.
         if (!(await sendClaimed(binding, turn.anchor_uid, input, "input-only"))) break;
       } else if (row.kind !== "bb" && row.state !== "queued" && turn.complete && hasNew(turn.reply_uids, row.reply_uids)) {
@@ -225,6 +224,25 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
       }
     }
     advanceCursor(bindingByThread(db, binding.thread_id) ?? binding, read.turns);
+  }
+
+  /**
+   * Turns after the cursor, in pages: a `truncated` answer is read on from its last turn, so a long
+   * outage wakes every turn in order and the cursor never passes a turn no page returned.
+   */
+  async function readAfter(binding: Binding, target: Target): Promise<{ session_id: string; turns: HistoryTurn[] }> {
+    const turns: HistoryTurn[] = [];
+    let after = binding.cursor_uid;
+    for (let page = 1; ; page++) {
+      const read = await host.call(
+        "readTurns",
+        { root: target.root, profile_home: binding.profile_home, lineage_root: binding.lineage_root!, ...(after ? { after_uid: after } : {}) },
+        { hostId: target.machine },
+      );
+      turns.push(...read.turns);
+      if (!read.truncated || !read.turns.length || page === MAX_TURN_PAGES) return { session_id: read.session_id, turns };
+      after = read.turns.at(-1)!.anchor_uid;
+    }
   }
 
   /**
@@ -356,8 +374,14 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
   async function wakeExists(threadId: string, anchorUid: string): Promise<boolean> {
     const queued = await bb.sdk.threads.queuedMessages.list({ threadId });
     if (JSON.stringify(queued).includes(anchorUid)) return true;
-    const requested = await bb.sdk.threads.events.list({ threadId, types: ["client/turn/requested"], order: "desc", limit: "100" });
-    return JSON.stringify(requested).includes(anchorUid);
+    // Every turn request of the thread, newest first, page by page (R1 M1: a wake that ran is never sent twice).
+    let before: string | undefined;
+    for (;;) {
+      const page = await bb.sdk.threads.events.list({ threadId, types: ["client/turn/requested"], order: "desc", limit: "100", ...(before ? { beforeSeq: before } : {}) });
+      if (JSON.stringify(page).includes(anchorUid)) return true;
+      if (page.length < 100) return false;
+      before = String(page.at(-1)!.seq);
+    }
   }
 
   return { active, readAtIdle, importNow, reconcileNow, applyPersisted, ingestPersistedNow, finalizeNow, recoverQueuedNow };

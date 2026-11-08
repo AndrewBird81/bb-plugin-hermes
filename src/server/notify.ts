@@ -10,8 +10,10 @@ export type QuietLevel = "muted" | "input-only";
 const QUIETNESS = { all: 2, "input-only": 1, muted: 0 } as const;
 
 /**
- * push-notifications sends "turn finished" from its own `thread.idle` listener: restoring in ours at
- * once could beat it and let the push out. Restore a little later instead.
+ * push-notifications (bb 0.49.0) coalesces a thread's events for 2 s, then reads the thread's level, and
+ * skips a thread read since the event. So the hold set right after `threads.spawn` only has to land
+ * within 2 s of the init's `thread.idle` (the init's `markRead` also covers it): there is no way to set a
+ * level at spawn. The restore must come after that flush: 3 s.
  */
 export const RESTORE_DELAY_MS = 3_000;
 

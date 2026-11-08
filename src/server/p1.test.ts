@@ -3,6 +3,7 @@ import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderOptions } from "../shared/provider-options.js";
 import type { BotRow, Diagnostics, ThreadInfo } from "../shared/rpc-contract.js";
+import { segmentInput } from "../shared/marker.js";
 import { formatTag } from "../shared/sources.js";
 import { HELD_RETRY_MS } from "./bots.js";
 import { bindingByThread, botRecord, claimTurn, MIGRATIONS, openMappingDb, turnRow } from "./db.js";
@@ -106,6 +107,49 @@ describe("switches (T1.9)", () => {
     expect(w.access.at(-1)).toEqual({ profile_home: NEO, on: false, enabled_bots: [] });
   });
 
+  it("setBotAccess answered without refresh stays pending and is retried", async () => {
+    const w = await world();
+    await w.connect();
+    w.state.refreshed = false;
+    await on(w);
+    expect(await errors(w)).toContain("refresh_failed:1");
+    w.state.refreshed = true;
+    w.state.boot = "boot_2";
+    await w.connect();
+    expect(w.access.map((a) => a.on)).toEqual([true, true]);
+    w.state.boot = "boot_3";
+    await w.connect();
+    expect(w.access).toHaveLength(2);
+  });
+
+  it("offline: bots answers the last rows (or the bots on record), and an on bot can be switched off", async () => {
+    const w = await world();
+    await w.connect();
+    await on(w);
+    w.state.online = false;
+    await w.connect();
+    expect((await w.rpc<{ bots: BotRow[] }>("bots")).bots.map((b) => [b.profile, b.enabled])).toEqual([
+      ["neo", true],
+      ["bob", false],
+    ]);
+    expect(await off(w)).toMatchObject({ profile_home: NEO, enabled: false });
+    expect(w.thread("thr_1").archivedAt).toBe(1);
+
+    // A restart while offline: no worker answer yet, so the bots on record.
+    const fresh = await world({
+      seed: (db) => {
+        db.prepare(`INSERT INTO bots (profile_home, name, enabled, enabled_at) VALUES (?, 'neo', 1, 1)`).run(NEO);
+      },
+    });
+    fresh.state.online = false;
+    await fresh.connect();
+    expect((await fresh.rpc<{ bots: BotRow[] }>("bots")).bots).toEqual([
+      { profile: "neo", profile_home: NEO, bot_label: "Neo", served: true, enabled: true, thread_id: null, import_count: null },
+    ]);
+    expect(await off(fresh)).toMatchObject({ profile_home: NEO, enabled: false });
+    expect(botRecord(fresh.db, NEO)?.enabled).toBe(false);
+  });
+
   it("a deleted bot thread is re-created, pinned, at the next reconcile", async () => {
     const w = await liveBotThread();
     w.thread("thr_1").deletedAt = 9;
@@ -117,7 +161,7 @@ describe("switches (T1.9)", () => {
     expect(w.thread(bot.thread_id!)).toMatchObject({ pinned: true, title: "Neo" });
   });
 
-  it("held: findBotChat retries at 2, 5, 10, 30 s, then binds when Conduit lets go", async () => {
+  it("held (unverified: profiles.list isn't known to refuse): findBotChat retries at 2, 5, 10, 30 s, then binds when Conduit lets go", async () => {
     const w = await world();
     await w.connect();
     w.botChats.set(NEO, { state: "held" });
@@ -127,13 +171,13 @@ describe("switches (T1.9)", () => {
     await vi.advanceTimersByTimeAsync(HELD_RETRY_MS[0]!);
     await w.flush();
     expect(w.hostCalls("findBotChat")).toHaveLength(2);
-    w.botChats.set(NEO, { state: "found", lineage_root: "root_bc", session_id: "tip_bc", legacy: true });
+    w.botChats.set(NEO, { state: "found", lineage_root: "root_bc", session_id: "tip_bc", legacy: false });
     w.history.set("root_bc", { session_id: "tip_bc", turns: [] });
     await vi.advanceTimersByTimeAsync(HELD_RETRY_MS[1]!);
     await w.flush();
     expect(w.hostCalls("findBotChat")).toHaveLength(3);
     // No turns to import: live at once.
-    expect(bindingByThread(w.db, "thr_1")).toMatchObject({ lineage_root: "root_bc", legacy: true, state: "live" });
+    expect(bindingByThread(w.db, "thr_1")).toMatchObject({ lineage_root: "root_bc", legacy: false, state: "live" });
     await vi.advanceTimersByTimeAsync(60_000);
     await w.flush();
     expect(w.hostCalls("findBotChat")).toHaveLength(3);
@@ -145,12 +189,12 @@ describe("Bot Chat import (T1.11)", () => {
     const w = await world();
     await w.connect();
     const ts = Date.now() - 2 * 86_400_000;
-    w.botChats.set(NEO, { state: "found", lineage_root: "root_bc", session_id: "tip_bc", legacy: true });
+    w.botChats.set(NEO, { state: "found", lineage_root: "root_bc", session_id: "tip_bc", legacy: false });
     w.history.set("root_bc", {
       session_id: "tip_bc",
       truncated: true,
       turns: [
-        turn("u1", { surface: "desktop", ts }),
+        turn("u1", { surface: null, ts }),
         turn("u2", { submission_id: "bb:thr_x:1", user_text: "mine", ts }),
         turn("u3", { user_hidden: true, user_text: null, ts }),
       ],
@@ -159,11 +203,15 @@ describe("Bot Chat import (T1.11)", () => {
     const enabledAt = botRecord(w.db, NEO)!.enabled_at!;
     expect(w.markers("thr_1")).toEqual([
       { op: "init", profile: "neo", bot: true },
-      { op: "bind", profile_home: NEO, lineage_root: "root_bc", legacy: true, anchor_uid: "u1", since: enabledAt - IMPORT_WINDOW_MS },
-      { op: "replay", anchor_uid: "u2" },
+      { op: "bind", profile_home: NEO, lineage_root: "root_bc", legacy: false, anchor_uid: "u1", since: enabledAt - IMPORT_WINDOW_MS, labeled: true },
+      { op: "replay", anchor_uid: "u2", labeled: true },
       { op: "replay", anchor_uid: "u3" },
     ]);
     expect(w.texts("thr_1")).toEqual([`${formatTag("Conduit", new Date(ts))}text u1`, "mine"]);
+    // The bridge never takes a label for a prompt: bb's own untagged message is never submitted again.
+    const segments = w.thread("thr_1").inputs.slice(1).flatMap((input) => segmentInput(input));
+    expect(segments.map((s) => s.kind)).toEqual(["marker", "marker", "marker"]);
+    expect(segments.map((s) => (s.kind === "marker" ? s.label : null))).toEqual([`${formatTag("Conduit", new Date(ts))}text u1`, "mine", null]);
     expect(bindingByThread(w.db, "thr_1")).toMatchObject({ state: "replaying", cursor_uid: "u3" });
     expect(turnRow(w.db, "thr_1", "u2")).toMatchObject({ kind: "replay", state: "queued" });
 
@@ -209,7 +257,7 @@ describe("wakes (T1.11)", () => {
     await w.changed(NEO);
     await w.changed(NEO);
     await w.changed(NEO);
-    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u2" }]);
+    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u2", labeled: true }]);
     expect(w.texts("thr_1").at(-1)).toBe("[CLI] text u2");
     expect(w.levels.get("thr_1")).toBe("input-only");
 
@@ -233,7 +281,7 @@ describe("wakes (T1.11)", () => {
     expect(turnRow(w.db, "thr_1", "u2")).toMatchObject({ state: "done", reply_uids: ["u2-a", "u2-b"] });
     chat.turns[1] = turn("u2", { reply_uids: ["u2-a", "u2-b"] });
     await w.changed(NEO);
-    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u2" }]);
+    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u2", labeled: true }]);
 
     // Conduit's own turn: the bridge shows the bubble only and closes partial; the reply rows come later.
     chat.turns.push(turn("u3", { surface: null, reply_uids: [] }));
@@ -296,8 +344,34 @@ describe("wakes (T1.11)", () => {
     w.event("thr_1", "client/turn/requested", { input: [{ type: "text", text: '<hermes-bb>{"op":"mirror","anchor_uid":"u3"}</hermes-bb>' }] });
     w.state.boot = "boot_2";
     await w.connect();
-    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u2" }]);
+    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u2", labeled: true }]);
     expect(turnRow(w.db, "thr_1", "u3")?.state).toBe("done");
+  });
+
+  it("a truncated wake read pages on: every turn of a long outage wakes once, in order", async () => {
+    const w = await liveBotThread();
+    const chat = w.history.get("root_bc")!;
+    chat.pageSize = 2;
+    chat.turns.push(...["u2", "u3", "u4", "u5", "u6"].map((a) => turn(a)));
+    await w.changed(NEO);
+    const woken = () => w.markers("thr_1").filter((m) => m.op === "mirror").map((m) => (m as { anchor_uid: string }).anchor_uid);
+    expect(woken()).toEqual(["u2", "u3", "u4", "u5", "u6"]);
+    await w.idle("thr_1");
+    expect(bindingByThread(w.db, "thr_1")?.cursor_uid).toBe("u6");
+    await w.changed(NEO);
+    expect(woken()).toHaveLength(5);
+  });
+
+  it("boot recovery finds a wake that ran beyond the latest 100 turn requests", async () => {
+    const w = await liveBotThread();
+    w.history.get("root_bc")!.turns.push(turn("u2"));
+    claimTurn(w.db, { thread_id: "thr_1", anchor_uid: "u2", kind: "mirror", at: 1 });
+    w.event("thr_1", "client/turn/requested", { input: [{ type: "text", text: '<hermes-bb>{"op":"mirror","anchor_uid":"u2"}</hermes-bb>' }] });
+    for (let i = 0; i < 150; i++) w.event("thr_1", "client/turn/requested", { input: [{ type: "text", text: `later ${i}` }] });
+    w.state.boot = "boot_2";
+    await w.connect();
+    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([]);
+    expect(turnRow(w.db, "thr_1", "u2")?.state).toBe("done");
   });
 
   it("not_supported pauses wakes", async () => {
@@ -310,7 +384,7 @@ describe("wakes (T1.11)", () => {
     w.state.supported = true;
     await w.connect();
     await w.changed(NEO);
-    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u2" }]);
+    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u2", labeled: true }]);
   });
 });
 
@@ -356,7 +430,7 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     // An outside turn after it wakes; bb's never does.
     w.history.get(sid)!.turns.push(turn("s2", { surface: "tui" }));
     await w.changed(NEO);
-    expect(w.markers(chat).slice(1)).toEqual([{ op: "mirror", anchor_uid: "s2" }]);
+    expect(w.markers(chat).slice(1)).toEqual([{ op: "mirror", anchor_uid: "s2", labeled: true }]);
     expect(w.texts(chat).at(-1)).toBe("[TUI] text s2");
   });
 
@@ -416,8 +490,8 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     expect(bindingByThread(w.db, "thr_1")).toMatchObject({ state: "replaying", lineage_root: "root_conduit", legacy: false });
     expect(w.markers("thr_1")).toEqual([
       { op: "init", profile: "neo", bot: true },
-      { op: "bind", profile_home: NEO, lineage_root: "root_conduit", legacy: false, anchor_uid: "c1" },
-      { op: "replay", anchor_uid: "c2" },
+      { op: "bind", profile_home: NEO, lineage_root: "root_conduit", legacy: false, anchor_uid: "c1", labeled: true },
+      { op: "replay", anchor_uid: "c2", labeled: true },
     ]);
     // bb's own turn is already in the thread: never imported, never woken.
     expect(turnRow(w.db, "thr_1", "b1")).toMatchObject({ kind: "bb" });
@@ -434,7 +508,12 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     await on(w);
     const { thread_id } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
     const long = "  Plan   my week: " + "x".repeat(80);
-    w.prompts.set(thread_id, [{ createdAt: 1, id: "p1", input: [{ type: "text", mentions: [], text: long }] }]);
+    // Whether or not bb records the spawn's agent-only init, the title comes from the first visible message.
+    const init = w.thread(thread_id).inputs[0]!;
+    w.prompts.set(thread_id, [
+      { createdAt: 0, id: "p0", input: init },
+      { createdAt: 1, id: "p1", input: [{ type: "text", mentions: [], text: long }] },
+    ]);
     await w.idle(thread_id);
     expect(w.thread(thread_id).title).toBe(("Plan my week: " + "x".repeat(80)).slice(0, 60));
     // Renamed in bb afterwards: never touched again.
