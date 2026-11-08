@@ -36,7 +36,8 @@ function BotSwitch({ bot, onChanged }: { bot: BotRow; onChanged: () => Promise<v
         aria-describedby={`${id}-text`}
         className="mt-0.5 size-4 shrink-0 cursor-pointer accent-foreground disabled:cursor-not-allowed"
         checked={pending ?? bot.enabled}
-        disabled={!bot.served || pending !== null}
+        // An unserved bot can't turn on; one already on can still turn off.
+        disabled={(!bot.served && !bot.enabled) || pending !== null}
         onChange={(event) => toggle(event.target.checked)}
       />
       <div className="flex min-w-0 flex-col gap-0.5">

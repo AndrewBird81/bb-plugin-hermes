@@ -44,6 +44,13 @@ describe("bot switches", () => {
     expect(slot.queryByText(GRANT_NEO)).toBeNull();
   });
 
+  it("an unserved bot that is on can still turn off", async () => {
+    const slot = render({ bots: () => ({ bots: [bot("neo", { served: false, enabled: true })] }) });
+    const neo = (await slot.findByRole("switch", { name: "Neo" })) as HTMLInputElement;
+    expect(neo.checked).toBe(true);
+    expect(neo.disabled).toBe(false);
+  });
+
   it("no bots while not connected", async () => {
     const slot = render({ bots: () => ({ bots: [] }) });
     expect(await slot.findByText("No bots yet: connect to Hermes above.")).toBeTruthy();
