@@ -2,7 +2,7 @@
 
 Status: revised 2026-11-04 after reviews R1–R6 (`docs/plan/reviews/`), user batches 1–4 and parent batch 5a.
 
-**Superseded in part.** User decisions D42–D46 (the answers to Q18–Q21, and a scope reset) are not yet applied to this README's other sections or to `01`–`05`. Read `scope-reset.md` first: the proposed lean v1 is awaiting the user's OK (Q22–Q25). Pictures: [`../diagrams/README.md`](../diagrams/README.md).
+**Superseded in part.** User decisions D42–D46 (the answers to Q18–Q21, and a scope reset) are not yet applied to this README's other sections or to `01`–`05`. Read `scope-reset.md` first: the proposed lean v1 is awaiting the user's OK (Q22–Q25). Pictures: [`../diagrams/README.md`](../../diagrams/README.md).
 
 Integrates:
 - S7 (`docs/spikes/S7-bb-profile-entry-sync.md`, cited `S7 §n`);

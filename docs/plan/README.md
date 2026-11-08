@@ -92,7 +92,7 @@ Superseded, one line each:
 | Term | Meaning |
 |---|---|
 | bot | A Hermes profile served by the host's gateway. Shown by its Bot Mode handle, else the profile name; `default` shows as "Hermes" (r11 §2) |
-| Bot Chat | A profile's one session titled exactly `Bot Chat`, hidden in Hermes' lists. Desktop, Conduit, Bot Mode DMs and bb all write it. Identified by title, never by a stored id (`apps/desktop/src/AGENTS.md:63-86`) |
+| Bot Chat | A profile's one session titled exactly `Bot Chat`, hidden in Hermes' lists. Desktop, Conduit, Bot Mode DMs from other bots and bb all write it. Discord DMs never do (r12 §2). Identified by title, never by a stored id (`apps/desktop/src/AGENTS.md:63-86`) |
 | bot thread | The bot's pinned bb thread, bound to `(profile home, "Bot Chat")` |
 | side chat | A chat started in bb with a bot: its own new Hermes session (Desktop calls these side-chats) |
 | mirrored thread | A bb thread for a session started outside bb: CLI, TUI, Desktop or Conduit |
