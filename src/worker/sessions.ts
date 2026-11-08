@@ -1,9 +1,9 @@
-// History reads for the server (02 §Contracts, §History reader): REST list rows and the Bot Chat lookup.
+// History reads for the server (02 §Contracts, §History reader): REST list rows, chat turns and the Bot Chat lookup.
 // Read-only Hermes routes; outputs hold ids, titles and bounded fields only (never `system_prompt`,
 // `model_config` or `origin_json`, 02 §bb access and security).
 import { HermesRpcError, type HermesClient } from "../hermes/client.js";
-import { listSessions, type RestSessionRow, type SessionsPage } from "../hermes/history.js";
-import type { BotChat, SessionRow } from "../shared/host-contract.js";
+import { groupTurns, listSessions, summarizeTurn, type RestMessage, type RestSessionRow, type SessionsPage } from "../hermes/history.js";
+import type { BotChat, HistoryTurn, SessionRow } from "../shared/host-contract.js";
 
 /** The REST list's page cap (`le=100`, `hermes_cli/web_routers/sessions.py:182`). */
 export const LIST_PAGE = 100;
@@ -79,4 +79,54 @@ export async function findBotChat(client: HermesClient, profile: string): Promis
   // `chat_id`, and an unadopted legacy row is adopted by the lookup itself (or refused while held), so a
   // found Bot Chat is never legacy here.
   return { state: "found", lineage_root: row.session_id, session_id: row.id ?? row.resolved_id ?? row.session_id, legacy: false };
+}
+
+/**
+ * A16: host RPC output is capped at 8 MiB (bb's host limits). `readTurns` keeps its answer under half of
+ * that, newest turns first, and says `truncated` when it leaves older ones out.
+ */
+export const TURNS_MAX_BYTES = 4 * 1024 * 1024;
+
+export interface TurnsQuery {
+  after_uid?: string;
+  since?: number;
+  /** Is the chat's tip (or its lineage root) running a turn now? */
+  running: () => Promise<boolean>;
+  maxBytes?: number;
+}
+
+/**
+ * A chat's turns, root to tip (02 §Contracts `readTurns`): every message of the chain grouped by the anchor
+ * rules (`groupTurns`). `after_uid`: only turns after that anchor (unknown → every turn). `since` (Unix ms):
+ * only turns from then on. `complete`: a later turn exists, or the chat isn't running. `truncated`: older
+ * turns exist that the answer leaves out, by `since` or by the size cap.
+ */
+export async function readHistoryTurns(chain: { session_id: string; messages: RestMessage[] }, q: TurnsQuery): Promise<{ session_id: string; turns: HistoryTurn[]; truncated: boolean }> {
+  let turns = groupTurns(chain.messages).map(summarizeTurn);
+  const after = q.after_uid ? turns.findIndex((t) => t.anchor_uid === q.after_uid) : -1;
+  if (after >= 0) turns = turns.slice(after + 1);
+  let truncated = false;
+  if (q.since !== undefined) {
+    const kept = turns.filter((t) => t.ts >= q.since!);
+    truncated = kept.length < turns.length;
+    turns = kept;
+  }
+  const running = turns.length ? await q.running().catch(() => true) : false;
+  const out: HistoryTurn[] = turns.map((t, i) => ({ ...t, complete: i < turns.length - 1 || !running }));
+  const max = q.maxBytes ?? TURNS_MAX_BYTES;
+  let bytes = 0;
+  let first = out.length;
+  while (first > 0) {
+    const size = Buffer.byteLength(JSON.stringify(out[first - 1])) + 1;
+    if (bytes + size > max) break;
+    bytes += size;
+    first--;
+  }
+  return { session_id: chain.session_id, turns: out.slice(first), truncated: truncated || first > 0 };
+}
+
+/** Is `ids` running, per the live `session.list` (02 §Contracts `readTurns`)? */
+export async function isRunning(client: HermesClient, profile: string, ids: string[]): Promise<boolean> {
+  const { sessions } = await client.sessionList({ profile, include_hidden: true });
+  return sessions.some((s) => s.running && (ids.includes(s.session_id) || (s.resolved_id != null && ids.includes(s.resolved_id))));
 }

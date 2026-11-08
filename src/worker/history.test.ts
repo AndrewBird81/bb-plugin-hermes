@@ -9,7 +9,7 @@ import { removeDir, tempDir } from "../../test/fake-hermes/wire.js";
 import type { SessionsPage } from "../hermes/history.js";
 import { bridgeDataDir, modelsFile, WORKER_FILE } from "../shared/bridge-files.js";
 import { createHostEntry, type HostEntryOptions } from "./entry.js";
-import { listAllSessions, toSessionRow } from "./sessions.js";
+import { listAllSessions, readHistoryTurns, toSessionRow } from "./sessions.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function until(check: () => boolean, ms = 3000) {
@@ -235,5 +235,66 @@ describe("version check, REST half (flow 11)", () => {
     expect(reads).toBe(2);
     await h.experimental_call("ensureWatch", { root, enabled_bots: [alex] });
     expect(fake.tickets.filter((t) => t.purpose === "native-http").length).toBe(reads);
+  });
+});
+
+describe("readTurns", () => {
+  const LINEAGE = "local-736a762bea4383cfa36fa1ab6ccc5818a7d4fa0f3ffde22b9b0d22bde9d33f44";
+  const read = (h: Awaited<ReturnType<typeof setup>>["h"], root: string, alex: string, more: { after_uid?: string; since?: number } = {}) =>
+    h.experimental_call("readTurns", { root, profile_home: alex, lineage_root: LINEAGE, ...more });
+
+  it("groups the whole chain (recorded in-place compaction): turns root to tip, complete when not running", async () => {
+    const { fake, h, root, alex } = await setup({ rest: ["compaction-in-place"] });
+    const all = await read(h, root, alex);
+    expect(all.session_id).toBe(LINEAGE);
+    expect(all.truncated).toBe(false);
+    expect(all.turns.map((t) => t.user_text?.slice(0, 16))).toEqual(["in place turn 1 ", "in place turn 2 ", "in place turn 3 ", "in place turn 4 ", "after compaction"]);
+    expect(all.turns.every((t) => t.complete && !t.user_hidden && t.reply_uids.length === 1 && t.surface === null)).toBe(true);
+    expect(all.turns[0]!.ts).toBe(1794165213947);
+    expect(JSON.stringify(all)).not.toMatch(/system_prompt|model_config|origin_json/);
+
+    const anchors = all.turns.map((t) => t.anchor_uid);
+    expect((await read(h, root, alex, { after_uid: anchors[3] })).turns.map((t) => t.anchor_uid)).toEqual([anchors[4]]);
+    expect((await read(h, root, alex, { after_uid: "unknown-uid" })).turns).toHaveLength(5);
+    expect((await read(h, root, alex, { after_uid: anchors[4] })).turns).toEqual([]);
+    const since = await read(h, root, alex, { since: all.turns[2]!.ts });
+    expect([since.turns.length, since.truncated]).toEqual([3, true]);
+    expect(fake.violations).toEqual([]);
+  });
+
+  it("a running chat leaves its last turn incomplete (live session.list)", async () => {
+    const { fake, h, root, alex } = await setup({ rest: ["compaction-in-place"] });
+    fake.handle("session.list", () => ({ sessions: [{ session_id: LINEAGE, id: LINEAGE, title: "", source: "local", started_at: 1, message_count: 13, running: true }], scope: "live" }));
+    const { turns } = await read(h, root, alex);
+    expect(turns.map((t) => t.complete)).toEqual([true, true, true, true, false]);
+    expect(fake.requests.filter((r) => r.method === "session.list").map((r) => r.params)).toEqual([{ profile: "alex", include_hidden: true }]);
+  });
+
+  it("caps the answer to fit host RPC (A16): newest turns kept, truncated", async () => {
+    const { h, root, alex } = await setup({ rest: ["compaction-in-place"] }, { turnsMaxBytes: 1200 });
+    const { turns, truncated } = await read(h, root, alex);
+    expect(truncated).toBe(true);
+    expect(turns.length).toBeGreaterThan(0);
+    expect(turns.length).toBeLessThan(5);
+    expect(turns.at(-1)!.user_text).toMatch(/^after compaction/);
+  });
+});
+
+describe("readHistoryTurns", () => {
+  const recorded = (name: string) => (JSON.parse(readFileSync(path.join(import.meta.dirname, "../../test/fixtures/rest", `${name}.json`), "utf8")) as { exchanges: { body: { session_id: string; messages: never[] } }[] }).exchanges.at(-1)!.body;
+
+  it("a hidden-prompt turn renders its reply only; no running check without turns", async () => {
+    let checks = 0;
+    const running = async () => (checks++, false);
+    const { turns } = await readHistoryTurns(recorded("hidden-prompt"), { running });
+    expect(turns.some((t) => t.user_hidden && t.user_text === null && t.reply_uids.length > 0)).toBe(true);
+    expect(checks).toBe(1);
+    expect((await readHistoryTurns(recorded("hidden-prompt"), { running, after_uid: turns.at(-1)!.anchor_uid })).turns).toEqual([]);
+    expect(checks).toBe(1);
+  });
+
+  it("a failed running check counts as running: the last turn stays open", async () => {
+    const { turns } = await readHistoryTurns(recorded("steer"), { running: () => Promise.reject(new Error("not_connected")) });
+    expect(turns.at(-1)!.complete).toBe(false);
   });
 });
