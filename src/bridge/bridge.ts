@@ -28,7 +28,7 @@ import type { ConnectionOptions } from "../hermes/client.js";
 import { canonicalHome } from "../hermes/control.js";
 import { availableModels, botOption, fetchCatalog } from "./composer.js";
 import { resolveContext } from "./context.js";
-import { expandHome, readThreads, readWorkerFile, threadForCwd } from "./files.js";
+import { expandHome, readThread, readWorkerFile, threadForCwd } from "./files.js";
 import { HermesLink, type History, restHistory } from "./hermes.js";
 import { type BuildRegistry, openRegistry } from "./registry.js";
 import { HOLD_RETRY_MS, HostedThread, type ThreadHost, type TurnParams } from "./thread.js";
@@ -141,7 +141,7 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
     const o = (options ?? {}) as { providerOptions?: unknown; sessionOptions?: Record<string, string | boolean> };
     let ctx;
     try {
-      ctx = resolveContext({ providerOptions: o.providerOptions, sessionOptions: o.sessionOptions, saved: readThreads(host.dataDir)[thread.threadId], dataDir: host.dataDir });
+      ctx = resolveContext({ providerOptions: o.providerOptions, sessionOptions: o.sessionOptions, saved: readThread(host.dataDir, thread.threadId), dataDir: host.dataDir });
     } catch {
       return;
     }
@@ -185,7 +185,7 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
       }),
     ),
     [BRIDGE_REQUEST_METHODS.providerHealth]: method(providerMaintenanceParamsSchema, (_, reply) => reply(HEALTH)),
-    // A maintenance process: no provider options, so the thread's bot comes from `threads.json` by cwd (S7 1c).
+    // A maintenance process: no provider options, so the thread's bot comes from its `threads/` record by cwd (S7 1c).
     [BRIDGE_REQUEST_METHODS.modelList]: method(modelListParamsSchema, async ({ cwd }, reply) => reply(await modelList(cwd))),
     [BRIDGE_REQUEST_METHODS.threadStart]: method(threadStartParamsSchema, ({ threadId, options }, reply) => {
       const providerThreadId = pendingIdentity(threadId);
@@ -198,6 +198,7 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
     // Records the identity only; never touches a session (R4 M4). Republishes the chip and the bot's models.
     [BRIDGE_REQUEST_METHODS.threadResume]: method(threadResumeParamsSchema, ({ threadId, providerThreadId, options }, reply) => {
       const thread = hostThread(threadId, providerThreadId);
+      thread.noteOptions((options as { providerOptions?: unknown } | undefined)?.providerOptions);
       reply({ providerThreadId: thread.providerThreadId, sessionRestorable: true });
       publishComposer(thread, options);
     }),

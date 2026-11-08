@@ -1,7 +1,8 @@
 // The bridge's dataDir (02 §Bridge state): `worker.json` and `models/` are the worker's (read here,
-// `models/` also written after a fresh `model.options`); `threads.json` is the bridge's own record of each
+// `models/` also written after a fresh `model.options`); `threads/<threadId>.json` is the bridge's own record of each
 // thread's bot, for `model/list` (no provider options there, S7 1c) and for a `bb thread spawn` thread the
 // server hasn't bound yet, plus bb's own turns as stored (the cumulative `persisted-turn` state).
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -51,7 +52,10 @@ export function writeCatalog(dataDir: string, catalog: Catalog): void {
   writeJson(modelsFile(dataDir, catalog.profile_home), catalog);
 }
 
-export const THREADS_FILE = "threads.json";
+/** One file per thread: several bridge processes write their own threads' records with no read-modify-write race. */
+export const THREADS_DIR = "threads";
+const threadFile = (dataDir: string, threadId: string) =>
+  path.join(dataDir, THREADS_DIR, `${/^[A-Za-z0-9_-]{1,128}$/.test(threadId) ? threadId : createHash("sha256").update(threadId).digest("hex")}.json`);
 
 const threadEntrySchema = z.object({
   profile: z.string(),
@@ -67,32 +71,23 @@ const threadEntrySchema = z.object({
 });
 export type ThreadEntry = z.infer<typeof threadEntrySchema>;
 
-/** `threads.json`: `{threadId: entry}`. Several bridge processes share it: read, change one key, write. */
-export function readThreads(dataDir: string): Record<string, ThreadEntry> {
-  const raw = readJson(path.join(dataDir, THREADS_FILE));
-  const out: Record<string, ThreadEntry> = {};
-  if (!raw || typeof raw !== "object") return out;
-  for (const [id, value] of Object.entries(raw)) {
-    const parsed = threadEntrySchema.safeParse(value);
-    if (parsed.success) out[id] = parsed.data;
-  }
-  return out;
+/** The bridge's record of a thread, or undefined. */
+export function readThread(dataDir: string, threadId: string): ThreadEntry | undefined {
+  const parsed = threadEntrySchema.safeParse(readJson(threadFile(dataDir, threadId)));
+  return parsed.success ? parsed.data : undefined;
 }
 
-/** Merge `patch` into the thread's entry (a new entry needs `profile`). */
+/** Merge `patch` into the thread's entry (a new entry needs `profile`). Only this thread's file is written. */
 export function updateThread(dataDir: string, threadId: string, patch: Partial<ThreadEntry>): ThreadEntry {
-  const all = readThreads(dataDir);
-  const next: ThreadEntry = { profile: "", bot: false, profile_home: null, turns: [], mirrored: [], asked: null, ...all[threadId], ...patch };
-  all[threadId] = next;
-  writeJson(path.join(dataDir, THREADS_FILE), all);
+  const next: ThreadEntry = { profile: "", bot: false, profile_home: null, turns: [], mirrored: [], asked: null, ...readThread(dataDir, threadId), ...patch };
+  writeJson(threadFile(dataDir, threadId), next);
   return next;
 }
 
 /** The thread a `model/list` cwd belongs to: personal-workspace cwds end in the threadId (S7 finding 1). */
 export function threadForCwd(dataDir: string, cwd: string | undefined): { threadId: string; entry: ThreadEntry } | null {
   if (!cwd) return null;
-  const threads = readThreads(dataDir);
   const leaf = path.basename(cwd);
-  const entry = threads[leaf];
+  const entry = readThread(dataDir, leaf);
   return entry ? { threadId: leaf, entry } : null;
 }

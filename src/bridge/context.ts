@@ -36,7 +36,7 @@ export interface ThreadContext {
 export interface ResolveInput {
   providerOptions: unknown;
   sessionOptions?: Record<string, string | boolean> | undefined;
-  /** What `threads.json` remembers for this thread (the `init` marker's profile). */
+  /** What the bridge remembers for this thread (the `init` marker's profile). */
   saved?: ThreadEntry | undefined;
   dataDir: string;
 }

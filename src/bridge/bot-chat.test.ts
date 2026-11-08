@@ -142,3 +142,25 @@ describe("/new in a bot thread", () => {
     expect(events(rig, "thr_bc").some((e) => e.type === "thread/compacted")).toBe(true);
   });
 });
+
+describe("a rotated Bot Chat (S8 E8; rotating-viewer.json)", () => {
+  it("the title on the tip is the same chat: lineage root stays the root, session_id names the tip", async () => {
+    await rig.close();
+    rig = await startRig({ rotating: ["bob"] });
+    await startThread(rig, "thr_rot", bot());
+    await turn(rig, "thr_rot", [text("one")], bot());
+    await turn(rig, "thr_rot", [text("two")], bot());
+    const root = rig.requests("prompt.submit")[0]!.params.session_id as string;
+    // Another app compresses: bb's socket hears nothing about the tip.
+    const cli = await rig.cli();
+    const snap = await cli.resume({ profile: "bob", session_id: root, omit_messages: true });
+    await cli.mutate({ profile: "bob", session_id: root, request_id: "desk-compress", expected_revision: snap.revision, expected_generation: snap.execution_generation, operation: "compress", payload: {} });
+    const tip = rig.fake.engine.tipOf(rig.fake.session("bob", root)!).id;
+    expect(tip).not.toBe(root);
+    await turn(rig, "thr_rot", [text("three")], bot());
+    expect(rig.requests("session.create").filter((r) => r.params.title === BOT_CHAT_TITLE)).toHaveLength(1);
+    expect(statuses(rig, "thr_rot")).toEqual(["completed", "completed", "completed"]);
+    const state = deltas(rig, "thr_rot").filter((d) => d.extensionKind === "hermes/persisted-turn").at(-1)!.payload as { lineage_root: string; session_id: string };
+    expect(state).toEqual(expect.objectContaining({ lineage_root: root, session_id: tip }));
+  });
+});

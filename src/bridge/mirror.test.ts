@@ -33,6 +33,10 @@ async function cliChat(profile: string, asks: string[]): Promise<{ id: string; a
   return { id: snap.session_id, anchors: rows.filter((r) => r.role === "user").map((r) => r.message_uid) };
 }
 
+/** The uid of the user row with this text, once Hermes stored it. */
+const userRow = (profile: string, id: string, content: string) =>
+  rig.waitFor(() => rig.fake.session(profile, id)!.rows.find((r) => r.role === "user" && r.content === content)?.message_uid);
+
 const canonical = () => rig.fake.requests.filter((r) => ["session.resume", "session.create", "prompt.submit", "session.mutate"].includes(r.method) && !String(r.params.request_id ?? r.params.submission_id ?? "").startsWith("cli-"));
 
 describe("replay (flow 5)", () => {
@@ -63,8 +67,8 @@ describe("mirror modes (flow 6)", () => {
     await startThread(rig, "thr_live", opts("alex", view(chat.id)));
     rig.fake.outsideTurn("alex", chat.id, "slow outside", { script: { chunkMs: 40, reply: "a reply that streams in several chunks" } });
     await rig.waitFor(() => rig.fake.session("alex", chat.id)!.running);
-    // The user row isn't stored until the turn ends: the wake's anchor is the pending input (no row yet).
-    await turn(rig, "thr_live", wake({ op: "mirror", anchor_uid: "uid-not-stored-yet" }), opts("alex", view(chat.id)));
+    // Hermes stores the user row when the turn starts (per-step flush): the wake names it.
+    await turn(rig, "thr_live", wake({ op: "mirror", anchor_uid: await userRow("alex", chat.id, "slow outside") }), opts("alex", view(chat.id)));
     expect(agentTexts(rig, "thr_live")).toEqual(["a reply that streams in several chunks"]);
     expect(statuses(rig, "thr_live")).toEqual(["completed"]);
     expect(rig.requests("prompt.submit").filter((r) => String(r.params.submission_id).startsWith("bb:"))).toHaveLength(0);
@@ -130,24 +134,28 @@ describe("legacy rows (D16, A23)", () => {
 });
 
 describe("compaction and rotation (flow 7, A8)", () => {
-  it("a rotating compress → follow the tip, context.compacted; nothing renders twice", async () => {
-    await startThread(rig, "thr_rot", opts("bob", { kind: "chat" }));
-    await turn(rig, "thr_rot", [text("one")], opts("bob", { kind: "chat" }));
-    await turn(rig, "thr_rot", [text("two")], opts("bob", { kind: "chat" }));
+  it("a rotating compress: the live session stays the root, history follows the tip; one compacted, nothing renders twice", async () => {
+    const v = opts("bob", { kind: "chat" });
+    await startThread(rig, "thr_rot", v);
+    await turn(rig, "thr_rot", [text("one")], v);
+    await turn(rig, "thr_rot", [text("two")], v);
     const root = rig.requests("prompt.submit")[0]!.params.session_id as string;
-    await turn(rig, "thr_rot", [text("/new")], opts("bob", { kind: "chat" }));
-    const tip = rig.fake.session("bob", root)!.id;
+    await turn(rig, "thr_rot", [text("/new")], v);
+    const tip = rig.fake.engine.tipOf(rig.fake.session("bob", root)!).id;
     expect(tip).not.toBe(root);
-    await turn(rig, "thr_rot", [text("three")], opts("bob", { kind: "chat" }));
-    expect(events(rig, "thr_rot").filter((e) => e.type === "thread/compacted").length).toBeGreaterThanOrEqual(1);
+    await turn(rig, "thr_rot", [text("three")], v);
+    // As recorded (rotating-viewer.json): the root keeps the live session; bb keeps submitting by it.
+    expect(rig.requests("prompt.submit").map((r) => r.params.session_id)).toEqual([root, root, root]);
+    // One compacted, from the compress result: a `stored_session_id` that stays the root adds none.
+    expect(events(rig, "thr_rot").filter((e) => e.type === "thread/compacted")).toHaveLength(1);
     expect(agentTexts(rig, "thr_rot")).toEqual(["echo(2): one", "echo(4): two", expect.stringContaining("three")]);
-    // The persisted state names the tip, and the root as the lineage root.
+    // The persisted state names the tip for history, the root as the lineage root.
     const state = deltas(rig, "thr_rot").filter((d) => d.extensionKind === "hermes/persisted-turn").at(-1)!.payload as { lineage_root: string; session_id: string };
     expect(state).toMatchObject({ lineage_root: root, session_id: tip });
-    // A mirror of an old anchor after the clone renders it once.
-    const anchor = rig.fake.session("bob", tip)!.rows.find((r) => r.role === "user")!.message_uid;
-    await turn(rig, "thr_rot", wake({ op: "mirror", anchor_uid: anchor }, null), opts("bob", { kind: "chat" }));
-    expect(agentTexts(rig, "thr_rot").filter((t) => t === "echo(2): one")).toHaveLength(2); // the mirror render, nothing more
+    // A mirror of a cloned anchor renders that turn once (A8).
+    const anchor = rig.fake.engine.tipOf(rig.fake.session("bob", root)!).rows.find((r) => r.role === "user")!.message_uid;
+    await turn(rig, "thr_rot", wake({ op: "mirror", anchor_uid: anchor }, null), v);
+    expect(agentTexts(rig, "thr_rot").filter((t) => t === "echo(2): one")).toHaveLength(2); // the first answer and the mirror render
   });
 });
 
@@ -163,7 +171,8 @@ describe("Stop on outside turns (01 §5, D27 narrowed)", () => {
     await startThread(rig, "thr_sc", opts("alex", view(chat.id)));
     rig.fake.outsideTurn("alex", chat.id, "slow outside", { script: { chunkMs: 50, reply: "one two three four five six seven" } });
     await rig.waitFor(() => rig.fake.session("alex", chat.id)!.running);
-    await rig.call("turn/start", { threadId: "thr_sc", providerThreadId: "x", input: wake({ op: "mirror", anchor_uid: "pending" }), clientRequestId: creq(), options: { ...AUTO, ...opts("alex", view(chat.id)) } });
+    const anchor = await userRow("alex", chat.id, "slow outside");
+    await rig.call("turn/start", { threadId: "thr_sc", providerThreadId: "x", input: wake({ op: "mirror", anchor_uid: anchor }), clientRequestId: creq(), options: { ...AUTO, ...opts("alex", view(chat.id)) } });
     await rig.waitFor(() => events(rig, "thr_sc").some((e) => e.type === "item/agentMessage/delta"));
     await stop("thr_sc");
     expect(statuses(rig, "thr_sc")).toEqual(["interrupted"]);
@@ -184,7 +193,7 @@ describe("Stop on outside turns (01 §5, D27 narrowed)", () => {
     await rig.fake.conduitTurn("alex", chat.session_id, "conduit during bb");
     await rig.waitFor(() => statuses(rig, "thr_sf").length === 1);
     await rig.waitFor(() => rig.fake.session("alex", chat.session_id)!.running?.admission.submission_id?.startsWith("desktop-forward-"));
-    await rig.call("turn/start", { threadId: "thr_sf", providerThreadId: "x", input: wake({ op: "mirror", anchor_uid: "pending" }, "[Conduit] conduit during bb"), clientRequestId: creq(), options: { ...AUTO, ...opts("alex", v) } });
+    await rig.call("turn/start", { threadId: "thr_sf", providerThreadId: "x", input: wake({ op: "mirror", anchor_uid: await userRow("alex", chat.session_id, "conduit during bb") }, "[Conduit] conduit during bb"), clientRequestId: creq(), options: { ...AUTO, ...opts("alex", v) } });
     await rig.waitFor(() => events(rig, "thr_sf").filter((e) => e.type === "turn/started").length === 2);
     await new Promise((r) => setTimeout(r, 30));
     await stop("thr_sf");

@@ -13,7 +13,8 @@ import { type Marker, segmentInput } from "../shared/marker.js";
 import type { SourceTag } from "../shared/sources.js";
 import { BOT_CHAT_TITLE } from "../shared/sources.js";
 import { botIdentity, chatIdentity, isPending, resolveContext, type ThreadContext, UserFacingError } from "./context.js";
-import { readThreads, updateThread } from "./files.js";
+import { readThread, updateThread } from "./files.js";
+import { readProviderOptions } from "../shared/provider-options.js";
 import { findTurn, type History, type HermesLink } from "./hermes.js";
 import { chooseModel, composerStates, fetchCatalog, type ModelChoice, prepareAttachments } from "./composer.js";
 import { ANSWERED_ELSEWHERE_TEXT, answerFor, type PromptCard, promptCard, TIMED_OUT_TEXT } from "./interactions.js";
@@ -164,7 +165,7 @@ export class HostedThread {
     public providerThreadId: string,
     private readonly host: ThreadHost,
   ) {
-    const saved = readThreads(host.dataDir)[threadId];
+    const saved = readThread(host.dataDir, threadId);
     this.persisted = saved?.turns ?? [];
     this.mirrored = saved?.mirrored ?? [];
   }
@@ -191,6 +192,7 @@ export class HostedThread {
   async runTurn(params: TurnParams): Promise<void> {
     const turn = new BbTurn(params.clientRequestId);
     this.turn = turn;
+    this.botChatCreated = false;
     this.emit([{ kind: "input.accepted", clientRequestId: params.clientRequestId }, { kind: "turn.open" }]);
     if (this.banner?.kind === "running_elsewhere") this.setBanner(null);
     for (const entry of this.prompts.values()) this.raise(entry);
@@ -257,8 +259,18 @@ export class HostedThread {
     return root ? chatIdentity(ctx.profileHome, root) : null;
   }
 
+  /** Provider options said the bot is switched off: no Hermes I/O for it, a reconnect included (02 §Invariants). */
+  private off = false;
+
+  /** Every command's provider options: a switched-off bot drops the session and its reconnect hook. */
+  noteOptions(providerOptions: unknown): void {
+    this.off = readProviderOptions(providerOptions)?.thread?.enabled === false;
+    if (this.off) this.dropSession();
+  }
+
   private resolve(params: TurnParams): ThreadContext {
-    const saved = readThreads(this.host.dataDir)[this.threadId];
+    this.noteOptions(params.options.providerOptions);
+    const saved = readThread(this.host.dataDir, this.threadId);
     const ctx = resolveContext({ providerOptions: params.options.providerOptions, sessionOptions: params.options.sessionOptions, saved, dataDir: this.host.dataDir });
     // The server's view lags a session this process created (until it reads `persisted-turn`): keep ours.
     if (this.ctx && this.ctx.profileHome === ctx.profileHome && !ctx.lineageRoot && this.ctx.lineageRoot) {
@@ -393,7 +405,7 @@ export class HostedThread {
    * bb send into an existing chat only records it (the chat keeps its model). `null` reasoning = the bot's level.
    */
   private async applyChoice(session: SessionState, choice: ModelChoice): Promise<void> {
-    const before = readThreads(this.host.dataDir)[this.threadId]?.asked ?? null;
+    const before = readThread(this.host.dataDir, this.threadId)?.asked ?? null;
     const model = choice.model ? `${choice.provider}/${choice.model}` : null;
     this.remember(choice);
     if (!before) return;
@@ -427,6 +439,12 @@ export class HostedThread {
         if (typeof result.revision === "number") cursor.revision = result.revision;
         const generation = (result as { execution_generation?: unknown }).execution_generation;
         if (typeof generation === "number") cursor.executionGeneration = generation;
+        // A rotating compress names the new tip here: history reads follow it; the live id stays (flow 7).
+        const target = (result as { target_session_id?: unknown }).target_session_id;
+        if (typeof target === "string" && target) {
+          session.stored = target;
+          if (this.ctx) this.ctx.sessionId = target;
+        }
         return;
       } catch (error) {
         const reason = reasonOf(error);
@@ -513,29 +531,55 @@ export class HostedThread {
   private async openBotChat(ctx: ThreadContext, create = true): Promise<SessionState | null> {
     const client = await this.host.link(ctx.root).client();
     const lookup = async () => {
+      // Hermes resolves the title itself (exact `Bot Chat`, projected along its chain): its answer is the Bot
+      // Chat even when the row it names shows another title (a rotated root's is empty; `session_controls.py:575-589`).
       const { sessions } = await client.sessionList({ profile: ctx.profile, title: BOT_CHAT_TITLE, include_hidden: true });
-      return sessions.find((s) => s.title === BOT_CHAT_TITLE) ?? null;
+      return sessions[0] ?? null;
     };
     const row = (await lookup()) ?? (await lookup());
     const current = this.session;
     if (row && current && !current.client.closed && current.client === client && (row.session_id === current.id || row.session_id === current.stored)) return current;
     this.dropSession();
     if (row) {
+      const lineageRoot = await this.chainRoot(ctx, row.session_id);
       const snap = await this.resume(client, ctx.profile, row.session_id);
-      // `id` is the chain's root: the title moves to a rotated tip, the root stays (S8 E8).
-      return this.adopt(ctx, client, snap, (row as { id?: string }).id ?? row.session_id);
+      return this.adopt(ctx, client, snap, lineageRoot);
     }
     if (!create) return null;
     if (this.botChatCreated) throw new HermesRpcError({ message: "runtime_coordination_required" });
     this.botChatCreated = true;
-    const snap = await client.create({
-      profile: ctx.profile,
-      title: BOT_CHAT_TITLE,
-      hidden: true,
-      follow_profile_config: true,
-      request_id: `bb:botchat:${ctx.profileHome}`,
-    });
+    let snap: Snapshot;
+    try {
+      snap = await client.create({
+        profile: ctx.profile,
+        title: BOT_CHAT_TITLE,
+        hidden: true,
+        follow_profile_config: true,
+        request_id: `bb:botchat:${ctx.profileHome}`,
+      });
+    } catch (error) {
+      // Only a hold makes the create "done" for this wait; any other failure may be retried by the next send.
+      if (reasonOf(error) !== "runtime_coordination_required") this.botChatCreated = false;
+      throw error;
+    }
     return this.adopt(ctx, client, snap, snap.session_id);
+  }
+
+  /**
+   * The lineage root of the chain `sessionId` belongs to. `session.list{title}` names the session that holds the
+   * title, and a rotating compress moves the title to the tip (S8 E8; `session_controls.py:575-589`,
+   * `session_local_title.py:21-23`), so neither its `session_id` nor its `id` is the root. The chain's first
+   * row is (REST answers any chain id with the whole chain, T0.5); an empty chain is its own root.
+   */
+  private async chainRoot(ctx: ThreadContext, sessionId: string): Promise<string> {
+    if (this.session && (sessionId === this.session.id || sessionId === this.session.stored)) return this.session.lineageRoot;
+    const rows = await this.host
+      .history(ctx.root)
+      .chain(ctx.profile, sessionId)
+      .then((c) => c.messages)
+      .catch(() => [] as RestMessage[]);
+    if (ctx.lineageRoot && rows.some((r) => r.session_id === ctx.lineageRoot)) return ctx.lineageRoot;
+    return rows[0]?.session_id ?? sessionId;
   }
 
   /** One create per bot thread's wait: retries only look up (flow 3 step 4: never a second create). */
@@ -611,14 +655,10 @@ export class HostedThread {
       if (cursor && typeof p.revision === "number") cursor.revision = p.revision;
       if (cursor && typeof p.execution_generation === "number") cursor.executionGeneration = p.execution_generation;
       const stored = typeof p.stored_session_id === "string" ? p.stored_session_id : null;
-      if (stored && this.session && stored !== this.session.stored) {
-        // Rotating compaction: follow the tip (flow 7). Cloned rows keep their uids, so nothing re-renders (A8).
+      // A rotating compress keeps a root subscriber's events, epoch and `stored_session_id` on the root
+      // (rotating-viewer.json): the live id never changes. Only the tip for history reads moves (flow 7).
+      if (stored && this.session && stored !== this.session.stored && stored !== this.session.id) {
         this.session.stored = stored;
-        // The tip's events may carry its own id: listen there too (the old id keeps answering, S8 E8).
-        const tip = this.host.link(this.session.root).subscribe(stored, (e) => this.onEvent(e));
-        const previous = this.session.unsubscribe;
-        this.session.unsubscribe = () => (previous(), tip());
-        this.session.id = stored;
         if (this.ctx) this.ctx.sessionId = stored;
         if (this.turn) this.emit([{ kind: "context.compacted" }]);
       }
@@ -689,6 +729,7 @@ export class HostedThread {
    */
   private async reattach(session: SessionState, client: HermesClient): Promise<void> {
     if (this.session !== session) return;
+    if (this.off) return this.dropSession();
     const cursor = session.client.cursors.get(session.id);
     session.client = client;
     let snap: Snapshot;
@@ -811,6 +852,8 @@ export class HostedThread {
     }, STOP_SETTLE_MS);
     await turn.finished.promise;
     clearTimeout(timer);
+    // Stop leaves nothing listening: the next send resolves its session again (bot off, gateway restart).
+    this.dropSession();
   }
 
   private async stopUnit(unit: Unit): Promise<void> {
@@ -954,11 +997,12 @@ export class HostedThread {
       const uids = this.renderReplies(ctx, anchorUid, found.turn.replies, rest ? shown : new Set());
       return this.noteMirrored(turn, anchorUid, uids, !found.complete);
     }
-    if (!ctx.legacy) {
-      const session = await this.ensureSession(turn, ctx);
-      const admission = this.runningOutside(found?.turn.user?.content ?? null);
+    const session = await this.watch(ctx);
+    if (session) {
+      const admission = this.runningOutside(found?.turn.user ? rowText(found.turn.user) : null);
       if (admission) {
-        const unit = this.newUnit(false, ctx.tag);
+        // A bot binding has no tag: its outside turns come from Conduit (the server tags them `[Conduit]`).
+        const unit = this.newUnit(false, ctx.tag ?? (ctx.kind === "bot" ? "Conduit" : null));
         turn.units.push(unit);
         await this.replayGap(session, admission);
         this.attach(unit, admission.id);
@@ -972,11 +1016,27 @@ export class HostedThread {
     this.noteMirrored(turn, anchorUid, [], true);
   }
 
-  /** The outside admission running in the gateway, matched by its text when several are pending. */
+  /**
+   * The bound session, to watch an outside turn: never a title lookup, a create or a hold, and never a resume
+   * of a legacy row (A23). Null when there's nothing bound or Hermes won't let us watch.
+   */
+  private async watch(ctx: ThreadContext): Promise<SessionState | null> {
+    if (this.session && !this.session.client.closed) return this.session;
+    const id = ctx.sessionId ?? ctx.lineageRoot;
+    if (ctx.legacy || !id) return null;
+    try {
+      const client = await this.host.link(ctx.root).client();
+      return this.adopt(ctx, client, await client.resume({ profile: ctx.profile, session_id: id, omit_messages: true }), ctx.lineageRoot ?? id);
+    } catch {
+      return null;
+    }
+  }
+
+  /** The outside admission running in the gateway whose text is the turn's user text; null rather than a guess. */
   private runningOutside(userText: string | null): AdmissionLog | null {
-    const outside = [...this.logs.values()].filter((l) => !(l.inputId ?? "").startsWith(`bb:${this.threadId}:`) && !this.ownAdmission(l.id));
-    const live = outside.filter((l) => !l.done && (l.started || l.events.length));
-    return live.find((l) => userText !== null && l.text === userText) ?? live.at(-1) ?? null;
+    if (userText === null) return null;
+    const mine = `bb:${this.threadId}:`;
+    return [...this.logs.values()].find((l) => !l.done && l.text === userText && !(l.inputId ?? "").startsWith(mine) && !this.ownAdmission(l.id)) ?? null;
   }
 
   private ownAdmission(id: string): boolean {
@@ -1011,9 +1071,17 @@ export class HostedThread {
     const sessionId = this.session?.stored ?? ctx?.sessionId ?? ctx?.lineageRoot;
     const lineageRoot = this.session?.lineageRoot ?? ctx?.lineageRoot ?? sessionId;
     if (!ctx || !sessionId || !lineageRoot || (!own.length && !turn.mirrors)) return null;
+    let tip = sessionId;
     if (own.length) {
       const results = await Promise.all(own.map(async (u) => ({ unit: u, result: await u.settled.promise })));
-      const rows = (await this.host.history(ctx.root).latest(ctx.profile, sessionId).catch(() => ({ messages: [] as RestMessage[] }))).messages;
+      const page = await this.host
+        .history(ctx.root)
+        .latest(ctx.profile, sessionId)
+        .catch(() => ({ session_id: sessionId, messages: [] as RestMessage[] }));
+      // REST names the chain's tip (T0.5): the live socket keeps the root after a rotation (rotating-viewer.json).
+      tip = page.session_id;
+      if (this.session) this.session.stored = tip;
+      const rows = page.messages;
       const byId = new Map(rows.map((r) => [(r as RestMessage & { id?: number }).id, r]));
       for (const { unit, result } of results) {
         let turnRows: RestMessage[] = (result.persisted?.row_ids ?? []).map((id) => byId.get(id)).filter((r): r is RestMessage => !!r);
@@ -1037,7 +1105,7 @@ export class HostedThread {
     }
     const { persisted: turns, mirrored } = this;
     updateThread(this.host.dataDir, this.threadId, { profile: ctx.profile, bot: ctx.kind === "bot", profile_home: ctx.profileHome, turns, mirrored });
-    return { profile_home: ctx.profileHome, lineage_root: lineageRoot, session_id: sessionId, turns, mirrored };
+    return { profile_home: ctx.profileHome, lineage_root: lineageRoot, session_id: tip, turns, mirrored };
   }
 
   // ---- release ---------------------------------------------------------------------------------------------
