@@ -80,14 +80,14 @@ Identity rules:
 | `replay` | `anchor_uid` | later import turns | Render that turn from history |
 | `mirror` | `anchor_uid, rest?` | wake | Render or watch the outside turn (flow 6) |
 
-Input parsing (R1 M6): bb may merge queued sends into one turn. The bridge splits input into ordered segments: each marker, and the visible text before it. Text with no marker is a bb prompt.
+Input parsing (R1 M6): bb may merge queued sends into one turn. The bridge splits input into ordered segments: each marker, with its label (the visible part right before it, when that part starts with a source tag), and bb prompts (the other parts between markers). `segmentInput` in `marker.ts`.
 
 ### Server ↔ host worker (`src/shared/host-contract.ts`)
 
 | Call | Input → output |
 |---|---|
-| `ensureWatch` | `{root, enabled_bots}` → `{worker_boot_id, connected, instance_id, version, supported}`. Every 60 s: an idle worker dies at 300 s with no exit event (S7 §6). New boot id → full reconcile |
-| `describe` | → `{uid, profiles[{name, home, handle, terminal_cwd, served}]}` |
+| `ensureWatch` | `{root, enabled_bots}` → `{worker_boot_id, connected, instance_id, version, supported, detail}` (`detail`: a bounded reason code for health). Every 60 s: an idle worker dies at 300 s with no exit event (S7 §6). New boot id → full reconcile |
+| `describe` | `{root}` → `{uid, profiles[{name, home, handle, terminal_cwd, served}]}` |
 | `models` | `{profile}` → `model.options` rows; enabled bots prewarmed |
 | `listSessions` | `{profile_home, since?}` → `[{session_id, lineage_root, title, source, created_source, hidden, archived, cwd, message_count, last_activity_at, legacy}]` |
 | `readTurns` | `{profile_home, lineage_root, after_uid?, since?}` → `[{anchor_uid, user_text, user_hidden, source, submission_id, reply_uids, ts, complete}]`, root to tip |
