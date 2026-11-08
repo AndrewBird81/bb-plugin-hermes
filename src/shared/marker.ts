@@ -5,6 +5,11 @@ import { z } from "zod";
 import { SOURCE_TAG_PREFIX } from "./sources.js";
 
 const nonEmpty = z.string().min(1);
+/**
+ * The visible text part right before this marker is its label: the user's bubble for that Hermes turn,
+ * tagged (`[CLI] …`) or not (bb's own earlier message in an import). Never a prompt (02 §Invariants).
+ */
+const labeled = z.literal(true).optional();
 
 export const markerSchema = z.discriminatedUnion("op", [
   /** Spawn of a bot thread (`bot: true`) or an empty side chat. Refused unless the identity is `pending:`. */
@@ -18,12 +23,13 @@ export const markerSchema = z.discriminatedUnion("op", [
       legacy: z.boolean(),
       anchor_uid: nonEmpty,
       since: z.number().int().nonnegative().optional(),
+      labeled,
     })
     .strict(),
   /** Later import turns: render that turn from history. */
-  z.object({ op: z.literal("replay"), anchor_uid: nonEmpty }).strict(),
+  z.object({ op: z.literal("replay"), anchor_uid: nonEmpty, labeled }).strict(),
   /** Wake: render or watch an outside turn. `rest`: only the reply rows not shown yet (`/retry`, Conduit's second step). */
-  z.object({ op: z.literal("mirror"), anchor_uid: nonEmpty, rest: z.boolean().optional() }).strict(),
+  z.object({ op: z.literal("mirror"), anchor_uid: nonEmpty, rest: z.boolean().optional(), labeled }).strict(),
 ]);
 
 export type Marker = z.infer<typeof markerSchema>;
@@ -66,8 +72,9 @@ export function decodeMarker(text: string): Marker | null {
 
 /**
  * One turn's input split in order (R1 M6: bb may merge queued sends into one turn).
- * - `marker`: a marker, with its label: the visible text part right before it when that part starts
- *   with a source tag (`[CLI] …`, `[CLI · Oct 12] …`). A wake for a hidden user row has no label.
+ * - `marker`: a marker, with its label: the visible text part right before it when the marker says
+ *   `labeled`, or when that part starts with a source tag (`[CLI] …`, `[CLI · Oct 12] …`). A wake for a
+ *   hidden user row has no label.
  * - `prompt`: consecutive parts with no marker between them: a bb prompt for `prompt.submit`.
  *   Agent-only parts that aren't markers (bb's own context) stay in the prompt.
  * - `invalid`: a `<hermes-bb>` part that failed to decode. The bridge fails it; never submitted.
@@ -103,7 +110,8 @@ export function segmentInput(input: readonly PromptInput[]): Segment[] {
     }
     const last = prompt.at(-1);
     let label: string | null = null;
-    if (last?.type === "text" && last.visibility !== "agent-only" && SOURCE_TAG_PREFIX.test(last.text)) {
+    const labels = marker.op !== "init" && marker.labeled === true;
+    if (last?.type === "text" && last.visibility !== "agent-only" && (labels || SOURCE_TAG_PREFIX.test(last.text))) {
       label = last.text;
       prompt.pop();
     }

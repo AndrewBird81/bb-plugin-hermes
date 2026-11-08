@@ -13,6 +13,7 @@ describe("marker codec", () => {
       { op: "bind", profile_home: "/h/neo", lineage_root: "local-1", legacy: true, anchor_uid: "u1", since: 1_700_000_000_000 },
       { op: "replay", anchor_uid: "u2" },
       { op: "mirror", anchor_uid: "u3", rest: true },
+      { op: "replay", anchor_uid: "u4", labeled: true },
     ] as const) {
       const part = encodeMarker(m);
       expect(part.visibility).toBe("agent-only");
@@ -62,6 +63,20 @@ describe("segmentInput (R1 M6)", () => {
       { kind: "prompt", parts: [text("mine")] },
       { kind: "marker", marker: { op: "mirror", anchor_uid: "a1" }, label: "[TUI] theirs" },
       { kind: "prompt", parts: [text("after")] },
+    ]);
+  });
+
+  it("an untagged label (bb's own earlier message in an import) belongs to a labeled marker, never a prompt", () => {
+    const replay = encodeMarker({ op: "replay", anchor_uid: "a2", labeled: true });
+    expect(segmentInput([text("mine"), replay])).toEqual([{ kind: "marker", marker: { op: "replay", anchor_uid: "a2", labeled: true }, label: "mine" }]);
+    const bind = encodeMarker({ op: "bind", profile_home: "/h", lineage_root: "r", legacy: false, anchor_uid: "a0", labeled: true });
+    expect(segmentInput([text("first"), bind]).map((s) => s.kind)).toEqual(["marker"]);
+    // Without `labeled`, an untagged part stays a bb prompt (a send queued before a hidden row's wake).
+    expect(segmentInput([text("first"), encodeMarker({ op: "mirror", anchor_uid: "a1" })]).map((s) => s.kind)).toEqual(["prompt", "marker"]);
+    // `labeled` with nothing visible before it labels nothing.
+    expect(segmentInput([context("ctx"), replay])).toEqual([
+      { kind: "prompt", parts: [context("ctx")] },
+      { kind: "marker", marker: { op: "replay", anchor_uid: "a2", labeled: true }, label: null },
     ]);
   });
 
