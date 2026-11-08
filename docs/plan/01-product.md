@@ -5,7 +5,7 @@ What the user sees, feature by feature. Each ends with acceptance criteria (AC);
 ## 1. Connect and health [P0]
 
 - Plugin settings page: **Hermes folder** in bb's settings form; below it the plugin's Connection section with the **Hermes machine** picker and the health line (02 §Placement). Each setting appears once:
-  - **Hermes machine:** a picker of bb machines. Unset → "Not connected", no Hermes I/O.
+  - **Hermes machine:** a picker of bb machines. Unset → "Not connected", no Hermes I/O. The machine is saved with the folder it was set for: a folder that changed without a save (a reinstall resets the folder but keeps the machine) → "Not connected" until the connection is saved again.
   - **Hermes folder:** defaults to `~/.hermes`; editable for unusual installs and for tests (02 §Placement).
 - **Health line:** connected or not; Hermes version and "supported" or "not supported"; worker last seen.
   - Not supported → mirroring and import pause; chats from bb keep working while the methods they use are present (02 flow 11).
@@ -96,6 +96,7 @@ AC:
 | bb's own, queued or waiting for Conduit | drops it; it never reaches Hermes |
 | Conduit's, forwarded into the gateway | interrupts it (S8 step 8) |
 | Conduit's own (dashboard) | nothing: banner "Running in Conduit" |
+| any outside turn waiting on an approval | Stop interrupts bb's card (bb's own thread stop, T1.14); the approval can then be answered only in the other app |
 | CLI, TUI or Desktop | bb stops watching; banner "Running in CLI" (in a bot thread "Running in Conduit": Hermes records no per-turn surface at c314285f07, so the bot thread names every outside turn Conduit). The reply still shows when the turn ends (D27 narrowed) |
 
 AC: Stop on a CLI turn leaves it running in Hermes; its reply appears in bb when done.

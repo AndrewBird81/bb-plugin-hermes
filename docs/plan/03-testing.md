@@ -65,6 +65,7 @@ Conformance scenarios: `handshake/initialize`, `session/start-identity`, `sessio
 - Conduit = a legacy dashboard WebSocket client; bb = our canonical client.
 - Scenarios: S8 E1–E3, E6–E8, E10, E11b, E14. Assertions: transcript order, model context, no second Bot Chat, Conduit still sends after every bb action.
 - Never `pip install` into `<folder>/hermes-agent/venv` (R6 C3). Remove processes and the home afterwards; check that live locks and pids are unchanged.
+- In the repo: `npx vitest run --config e2e/vitest.config.ts` (`e2e/two-client.test.ts`, ~2 min; not part of `npm test`). It drives our bridge in-process. A fresh isolated home first installs its own Python runtime (~0.5 GB, up to 10 min). Recordings: `npx tsx e2e/record-frames.ts` → `test/fixtures/frames/`.
 
 ## E2E on an isolated bb
 
@@ -75,7 +76,8 @@ Conformance scenarios: `handshake/initialize`, `session/start-identity`, `sessio
 5. Set the machine to the local daemon and the folder to the fake (or isolated Hermes).
 6. **Before any check:** `diagnostics.instance_id` must equal the fake's; else abort (R3 M3).
 7. Assert with `sbb thread log|history|options`, `sbb plugin rpc call hermes …`, `sbb push-notifications thread`; check the UI with agent-browser screenshots against the DOM.
-8. Teardown: `kill -INT <bb-app pid>`; `rm -rf ~/.bb-hermes-e2e`.
+8. Teardown: `kill -INT <bb-app pid>`; keep or `rm -rf ~/.bb-hermes-e2e`.
+- Scripted in `e2e/bb-e2e.sh` (`preflight|start|install|dev|fake|hermes|connect|check|stop`) and `e2e/sbb`. Install only with the server up and no host daemon, folder set under the test root first: `bb plugin remove` keeps `data.db` (the machine) but drops the folder, so a reinstall with a daemon running reached the live gateway once for 0.4 s on 2026-11-08 (read-only, no session; the server's folder guard now refuses I/O until the connection is saved again).
 - Dogfood-only: a remote bb server, host RPC limits (A16), worker lifetime, two-machine spawns (A18), the phone (A30), the real Conduit app (A-S8a–c).
 
 ## Live dogfood checklist (owner present)

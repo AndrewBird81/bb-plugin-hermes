@@ -143,7 +143,7 @@ bb → bridge → Hermes:
 
 Hermes events → bb deltas:
 - **Text and tool events:** from bb's own admission, the mirrored one, or a foreign admission on bb's subscription (e.g. `desktop-forward-…`), rendered live as an outside turn. This replaces the old "only our admission" filter (S8 step 5).
-- **Approval and `clarify` requests:** session-scoped, raised whichever admission they belong to (R1 S1); every attach re-raises the snapshot's `prompts[]`. bb routes `interaction/request` only into an open turn and drops a turn's requests when it completes (T1.2), so an outside turn's approval shows in its wake's mirror turn, and the bridge re-raises open prompts at every turn open.
+- **Approval and `clarify` requests:** session-scoped, raised whichever admission they belong to (R1 S1); every attach re-raises the snapshot's `prompts[]`. bb routes `interaction/request` only into an open turn (T1.2), so an outside turn's approval shows in its wake's mirror turn, and the bridge re-raises open prompts at every turn open. A live card outlives its turn (bb doesn't drop it at turn end, T1.14); an answer after the turn reopens the bound session to reach Hermes, fenced by its generation.
 
 | Hermes event | bb delta |
 |---|---|
@@ -152,7 +152,7 @@ Hermes events → bb deltas:
 | `thinking.delta`, `agent.step` | ignored |
 | `tool.start` / `.progress` / `.complete` | `item.open` / `item.progress` / `item.close` by `tool_call_id`; terminal → command, write/patch → fileChange, read → fileRead, web search → webSearch, else tool. `subagent.*` → a tool item |
 | `approval.request` / `clarify.request` | `interaction/request` approval / userQuestion; choices never widened |
-| `*.settled`, `approval.cancelled` | close the interaction (A3) |
+| `*.settled` (Hermes sends `approval.settled`, never `approval.cancelled`, T1.0) | close the interaction (A3): bb 0.49.0 gives a bridge no way to close a card it raised, and bb's server refuses to cancel a provider card ("stop the turn instead"), so the bridge lists it in `status.dead_requests` and the server stops (releases) the thread once idle, which interrupts the card (matched by `providerRequestId` suffix, one stop per dead set); never an answer |
 | `todo.updated` / usage | planSteps / `usage`, `contextWindow` |
 | `session.info{stored_session_id}` change | follow the tip; `context.compacted` |
 | "another Hermes process is using this session" status | waiting text (S8 step 5) |
