@@ -490,7 +490,8 @@ describe("engine: fences", () => {
     const resumed = await k.c.resume({ profile: "bob", session_id: root, omit_messages: true });
     expect(resumed).toMatchObject({ session_id: root, stored_session_id: root, replay_epoch: snap.replay_epoch, message_count: 4 });
     expect((await k.c.resume({ profile: "bob", session_id: tip, omit_messages: true })).session_id).toBe(root);
-    expect((await k.c.sessionList({ profile: "bob", title: "Bot Chat", include_hidden: true })).sessions[0]).toMatchObject({ session_id: root });
+    // session.list{title} names the session holding the title: the tip.
+    expect((await k.c.sessionList({ profile: "bob", title: "Bot Chat", include_hidden: true })).sessions[0]).toMatchObject({ session_id: tip, id: tip, resolved_id: tip, title: "Bot Chat" });
     expect(f.session("bob", tip)).toMatchObject({ id: root, chat_id: root });
     const before6 = k.events.length;
     await k.turn("bob", root, "after rotation");

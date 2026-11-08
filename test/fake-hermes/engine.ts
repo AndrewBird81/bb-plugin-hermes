@@ -462,8 +462,11 @@ export class Engine {
           const s = this.titled(profile, params.title);
           if (!s) return { sessions: [], scope: "stored" };
           if (this.legacy(s) && (s.held || s.lease)) throw new Refusal("runtime_coordination_required");
+          // The session holding the title: after a rotation, the tip (`session_local_title.py:21-23`); `running` asks
+          // whether that id is live, and the live session stays the root (`session_controls.py:575-589`).
+          const t = this.tipOf(s);
           return {
-            sessions: [{ session_id: s.id, id: s.id, resolved_id: s.id, title: s.title ?? "", root_title: s.title ?? "", source: s.source, started_at: s.started_at, message_count: this.count(s), running: s.mounted }],
+            sessions: [{ session_id: t.id, id: t.id, resolved_id: t.id, title: t.title ?? "", root_title: t.title ?? "", source: t.source, started_at: t.started_at, message_count: this.count(s), running: t.mounted }],
             scope: "stored",
           };
         }
