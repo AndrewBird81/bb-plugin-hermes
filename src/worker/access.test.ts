@@ -112,12 +112,11 @@ describe("helpers", () => {
     expect(profileNameFromHome(root, path.join(alex, "profiles", "x"))).toBeNull();
   });
 
-  it("hermesCli: the install's launcher, then its venv, then PATH", () => {
+  it("hermesCli: the install's launcher, then its venv; never PATH", () => {
     const has = (...f: string[]) => (x: string) => f.includes(x);
-    expect(hermesCli("/h", "/usr/bin", has("/h/hermes-agent/.hermes/bin/hermes", "/h/hermes-agent/venv/bin/hermes"))).toBe("/h/hermes-agent/.hermes/bin/hermes");
-    expect(hermesCli("/h", "/usr/bin", has("/h/hermes-agent/venv/bin/hermes", "/usr/bin/hermes"))).toBe("/h/hermes-agent/venv/bin/hermes");
-    expect(hermesCli("/h", "/usr/bin", has("/usr/bin/hermes"))).toBe("/usr/bin/hermes");
-    expect(hermesCli("/h", "/usr/bin", has())).toBeNull();
+    expect(hermesCli("/h", has("/h/hermes-agent/.hermes/bin/hermes", "/h/hermes-agent/venv/bin/hermes"))).toBe("/h/hermes-agent/.hermes/bin/hermes");
+    expect(hermesCli("/h", has("/h/hermes-agent/venv/bin/hermes", "/usr/bin/hermes"))).toBe("/h/hermes-agent/venv/bin/hermes");
+    expect(hermesCli("/h", has("/usr/bin/hermes"))).toBeNull();
   });
 
   it("renders the skill with the wrapper path, quoted when needed", () => {
@@ -139,7 +138,7 @@ describe("refreshPrompts", () => {
   it("a failure or a hang → refreshed:false with a bounded detail", async () => {
     const { base, root } = setup();
     expect(await refreshPrompts(script(path.join(base, "f", "hermes"), "echo 'secret path /x' >&2; exit 3"), root, "alex", {})).toEqual({ refreshed: false, detail: "refresh_failed:3" });
-    expect(await refreshPrompts(script(path.join(base, "s", "hermes"), "sleep 5"), root, "alex", {}, 100)).toEqual({ refreshed: false, detail: "refresh_timeout" });
+    expect(await refreshPrompts(script(path.join(base, "s", "hermes"), "sleep 1"), root, "alex", {}, 100)).toEqual({ refreshed: false, detail: "refresh_timeout" });
     expect(await refreshPrompts(path.join(base, "none", "hermes"), root, "alex", {})).toEqual({ refreshed: false, detail: "refresh_spawn:ENOENT" });
   });
 });

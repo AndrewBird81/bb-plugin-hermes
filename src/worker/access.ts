@@ -164,18 +164,23 @@ export function profileNameFromHome(rootHome: string, profileHome: string): stri
   return path.dirname(home) === path.join(root, "profiles") ? path.basename(home) : null;
 }
 
-/** The Hermes CLI of the install under `rootHome` (the installer's launcher, then its venv), else `hermes` on `PATH`. */
-export function hermesCli(rootHome: string, envPath: string | undefined, exists: (file: string) => boolean = isExecutable): string | null {
+/**
+ * The Hermes CLI of the install under `rootHome`: the installer's launcher (`scripts/install.sh`), then its
+ * venv. Never `hermes` from `PATH`: a CLI whose checkout belongs to another data root first "prepares
+ * dependencies for this data root", a ~1 GB install into the folder (seen on isolated Hermes c314285f07).
+ * Other layouts → null (`hermes_not_found`), as the version check reports them unknown (A51).
+ */
+export function hermesCli(rootHome: string, exists: (file: string) => boolean = isExecutable): string | null {
   for (const rel of [[".hermes", "bin", "hermes"], ["venv", "bin", "hermes"]]) {
     const file = path.join(rootHome, "hermes-agent", ...rel);
     if (exists(file)) return file;
   }
-  return onPath("hermes", envPath, exists);
+  return null;
 }
 
 export interface RefreshResult {
   refreshed: boolean;
-  /** Bounded: `hermes_not_found`, `refresh_failed:<exit>`, `refresh_timeout`, `refresh_spawn:<code>`. */
+  /** Bounded: `refresh_failed:<exit>`, `refresh_timeout` (still running), `refresh_spawn:<code>`. */
   detail: string | null;
 }
 
@@ -199,8 +204,10 @@ export function refreshPrompts(
       env: { ...env, HERMES_HOME: rootHome },
       stdio: ["ignore", "ignore", "ignore"],
     });
+    // Past the deadline the run is left to finish on its own (Hermes may be repairing its install):
+    // killing it could leave that half done. The answer is then unknown.
     const timer = setTimeout(() => {
-      child.kill("SIGKILL");
+      child.unref();
       resolve({ refreshed: false, detail: "refresh_timeout" });
     }, timeoutMs);
     child.on("error", (err: NodeJS.ErrnoException) => {
@@ -251,7 +258,7 @@ export async function setBotAccess(input: AccessInput): Promise<BotAccess> {
     } else wrapper = await removeWrapper(dataDir);
   }
   if (skill === "foreign") return { skill, wrapper, refreshed: false, detail: "skill_foreign" };
-  const cli = hermesCli(rootHome, env.PATH, input.exists);
+  const cli = hermesCli(rootHome, input.exists);
   if (!cli) return { skill, wrapper, refreshed: false, detail: "hermes_not_found" };
   const { refreshed, detail } = await (input.refresh ?? refreshPrompts)(cli, rootHome, name, env);
   return { skill, wrapper, refreshed, detail };
