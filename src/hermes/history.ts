@@ -2,6 +2,7 @@
 // listener (`api_origin` from `identify`), with a `native-http` ticket minted on `gateway.sock` for each
 // request, as Desktop reads it (`apps/desktop/electron/local-gateway.ts:487`). Read-only routes
 // (`hermes_cli/web_routers/sessions.py:182, 739`); we never re-implement their projection.
+import type { HistoryTurn } from "../shared/host-contract.js";
 import { canonicalHome, ControlError, discoverEndpoint, mintTicket } from "./control.js";
 import { NATIVE_HTTP_HEADER, type GatewayEndpoint } from "./types.js";
 
@@ -93,6 +94,87 @@ export function readMessages(
   opts?: ReadOptions,
 ): Promise<MessagesPage> {
   return get<MessagesPage>(rootHome, profile, `/api/sessions/${encodeURIComponent(sessionId)}/messages`, query, opts);
+}
+
+const CHAIN_PAGE = 500;
+
+/**
+ * Every message of a chain, root to tip (02 §History reader): `order=oldest`, `include_compacted=true`, pages
+ * of 500 by `offset` until a short page. A rotated chain lists cloned rows twice: `groupTurns` dedupes them.
+ */
+export async function readChain(rootHome: string, profile: string, sessionId: string, opts?: ReadOptions): Promise<{ session_id: string; messages: RestMessage[] }> {
+  const messages: RestMessage[] = [];
+  for (let offset = 0; ; ) {
+    // Hermes' default offset is 0; leaving it out keeps the first read identical to a plain one.
+    const page = await readMessages(rootHome, profile, sessionId, { order: "oldest", limit: CHAIN_PAGE, include_compacted: true, ...(offset ? { offset } : {}) }, opts);
+    messages.push(...page.messages);
+    offset += page.messages.length;
+    if (page.messages.length < CHAIN_PAGE) return { session_id: page.session_id, messages };
+  }
+}
+
+/** One turn of a chain, as Hermes' own view shows it, with full rows for rendering. */
+export interface ChainTurn {
+  /** The user row's `message_uid`, else (hidden or no user row) the first reply row's. */
+  anchor_uid: string;
+  /** The row that opened the turn; null when the turn starts with reply rows. A hidden one stays here. */
+  user: RestMessage | null;
+  /** Mid-turn steers (`display_kind: steer` user rows): part of this turn, never anchors. */
+  steers: RestMessage[];
+  /** Assistant and tool rows, in order; hidden rows left out. */
+  replies: RestMessage[];
+  /** The user row's `display_metadata.submission_id` (`bb:` on bb's own sends; A4: none on steers or `/retry`). */
+  submission_id: string | null;
+  /** Unix ms of the anchor row. */
+  ts: number;
+}
+
+/**
+ * Hermes rows → turns by 02 §Mapping db anchor rules and T0.5 (A8): dedupe by `message_uid` (first wins); a
+ * user row opens a turn unless it is a steer, which joins the running turn; hidden reply rows are skipped;
+ * a turn whose user row is hidden anchors on its first reply, and waits for one to appear.
+ */
+export function groupTurns(messages: RestMessage[]): ChainTurn[] {
+  const seen = new Set<string>();
+  const open: { user: RestMessage | null; steers: RestMessage[]; replies: RestMessage[] }[] = [];
+  for (const m of messages) {
+    if (seen.has(m.message_uid)) continue;
+    seen.add(m.message_uid);
+    const opens = m.role === "user" && m.display_kind !== "steer";
+    if (opens) open.push({ user: m, steers: [], replies: [] });
+    else if (m.role !== "user" && m.display_kind === "hidden") continue;
+    else {
+      if (!open.length) open.push({ user: null, steers: [], replies: [] });
+      const turn = open.at(-1)!;
+      (m.role === "user" ? turn.steers : turn.replies).push(m);
+    }
+  }
+  const turns: ChainTurn[] = [];
+  for (const t of open) {
+    const anchor = t.user && t.user.display_kind !== "hidden" ? t.user : t.replies[0];
+    if (!anchor) continue;
+    turns.push({
+      anchor_uid: anchor.message_uid,
+      ...t,
+      submission_id: t.user?.display_metadata?.submission_id ?? null,
+      ts: Math.round(anchor.timestamp * 1000),
+    });
+  }
+  return turns;
+}
+
+/** The host contract's view of a turn; the caller sets `complete`. Hermes c314285f07 records no surface on a row. */
+export function summarizeTurn(turn: ChainTurn): Omit<HistoryTurn, "complete"> {
+  const hidden = turn.user?.display_kind === "hidden";
+  return {
+    anchor_uid: turn.anchor_uid,
+    user_text: turn.user && !hidden ? (turn.user.display_content ?? turn.user.content) : null,
+    user_hidden: hidden,
+    surface: null,
+    submission_id: turn.submission_id,
+    reply_uids: turn.replies.map((m) => m.message_uid),
+    ts: turn.ts,
+  };
 }
 
 /** The served `profile_id` of a profile name: `default` is the root, others live in `<root>/profiles/<name>`. */
