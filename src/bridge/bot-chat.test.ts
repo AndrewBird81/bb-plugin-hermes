@@ -123,3 +123,22 @@ describe("Conduit holds the chat (S8 step 3, E6)", () => {
     expect(agentTexts(rig, "thr_w")).toEqual([expect.stringContaining("bb asks")]);
   });
 });
+
+describe("/new in a bot thread", () => {
+  it("with no Bot Chat yet: nothing to compact, no session created", async () => {
+    await startThread(rig, "thr_bn", bot());
+    await turn(rig, "thr_bn", [text("/new")], bot());
+    expect(rig.requests("session.create")).toHaveLength(0);
+    expect(rig.requests("session.mutate")).toHaveLength(0);
+    expect(statuses(rig, "thr_bn")).toEqual(["completed"]);
+  });
+
+  it("compacts the same Bot Chat: same lineage, context.compacted (01 §4 AC)", async () => {
+    await startThread(rig, "thr_bc", bot("alex"));
+    await turn(rig, "thr_bc", [text("one")], bot("alex"));
+    await turn(rig, "thr_bc", [text("/new")], bot("alex"));
+    expect(rig.requests("session.create")).toHaveLength(1);
+    expect(rig.requests("session.mutate").map((m) => m.params.operation)).toEqual(["compress"]);
+    expect(events(rig, "thr_bc").some((e) => e.type === "thread/compacted")).toBe(true);
+  });
+});

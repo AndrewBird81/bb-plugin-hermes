@@ -210,3 +210,16 @@ describe("event mapping (02 §Protocol mapping)", () => {
     expect(events(rig, "thr_e").map((e) => e.type)).toEqual(expect.arrayContaining(["thread/tokenUsage/updated", "thread/contextWindowUsage/updated"]));
   });
 });
+
+describe("release mid-turn", () => {
+  it("never fabricates an interruption", async () => {
+    await startThread(rig, "thr_rm", opts());
+    rig.fake.nextTurn("alex", { holdMs: 2000 });
+    await rig.call("turn/start", { threadId: "thr_rm", providerThreadId: "x", input: [text("long")], clientRequestId: creq(), options: { ...AUTO, ...opts() } });
+    await rig.waitFor(() => rig.requests("prompt.submit").length === 1);
+    await rig.call("thread/stop", { threadId: "thr_rm", providerThreadId: "x", intent: "release", activeTurnId: null });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(statuses(rig, "thr_rm")).toEqual([]);
+    expect(rig.requests("session.interrupt")).toHaveLength(0);
+  });
+});

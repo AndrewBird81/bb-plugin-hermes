@@ -28,6 +28,8 @@ export const HOLD_RETRY_MS = [2000, 5000, 10_000, 30_000, 60_000];
 /** How long Stop waits for Hermes to settle an interrupted turn before settling it here. */
 const STOP_SETTLE_MS = 5000;
 const LOGGED_ADMISSIONS = 32;
+/** How long one chain read serves an import's replay markers. */
+const REPLAY_CACHE_MS = 15_000;
 const LOGGED_EVENTS = 5000;
 /** A Conduit (dashboard) send Hermes passed into the gateway queue: its submission id (S8 E3b, T1.0). Stop may interrupt it. */
 const FORWARDED = /^desktop-forward-/;
@@ -167,8 +169,11 @@ export class HostedThread {
     this.mirrored = saved?.mirrored ?? [];
   }
 
+  /** Released by bb: nothing more is said for this thread (a release never fabricates an interruption). */
+  private released = false;
+
   private emit(deltas: ThreadDelta[]): void {
-    if (deltas.length) this.host.emit(this.threadId, deltas);
+    if (deltas.length && !this.released) this.host.emit(this.threadId, deltas);
   }
 
   private state(kind: string, payload: unknown): ThreadDelta {
@@ -503,7 +508,9 @@ export class HostedThread {
    * then one lazy create (it returns any Bot Chat made meanwhile, E1); else resume. The same session as last
    * time keeps its subscription; another one (re-minted, renamed, rotated) is followed (step 6).
    */
-  private async openBotChat(ctx: ThreadContext): Promise<SessionState> {
+  private async openBotChat(ctx: ThreadContext, create: false): Promise<SessionState | null>;
+  private async openBotChat(ctx: ThreadContext, create?: true): Promise<SessionState>;
+  private async openBotChat(ctx: ThreadContext, create = true): Promise<SessionState | null> {
     const client = await this.host.link(ctx.root).client();
     const lookup = async () => {
       const { sessions } = await client.sessionList({ profile: ctx.profile, title: BOT_CHAT_TITLE, include_hidden: true });
@@ -518,6 +525,7 @@ export class HostedThread {
       // `id` is the chain's root: the title moves to a rotated tip, the root stays (S8 E8).
       return this.adopt(ctx, client, snap, (row as { id?: string }).id ?? row.session_id);
     }
+    if (!create) return null;
     if (this.botChatCreated) throw new HermesRpcError({ message: "runtime_coordination_required" });
     this.botChatCreated = true;
     const snap = await client.create({
@@ -555,7 +563,9 @@ export class HostedThread {
   /** `/new`, `/reset`: a compaction of the same chat, never a new session (S8 step 7, A46). */
   private async compress(turn: BbTurn, ctx: ThreadContext): Promise<void> {
     if (!ctx.sessionId && !ctx.lineageRoot && ctx.kind !== "bot") return; // nothing in Hermes yet
-    const session = await this.ensureSession(turn, ctx);
+    // A bot with no Bot Chat yet has nothing to compact: `/new` is no reason to create one (S8 step 2).
+    const session = ctx.kind === "bot" ? await this.withHold(turn, () => this.openBotChat(ctx, false)) : await this.ensureSession(turn, ctx);
+    if (!session) return;
     try {
       await this.mutate(session, "compress", {});
     } catch (error) {
@@ -906,11 +916,22 @@ export class HostedThread {
     return rows.map((r) => r.message_uid);
   }
 
-  /** Replay (flow 5): render that turn from history only; no canonical call (D16). */
+  /**
+   * Replay (flow 5): render that turn from history only; no canonical call (D16). An import sends one replay
+   * per turn in a row: one chain read serves them (re-read when the anchor isn't in it).
+   */
   private async replay(ctx: ThreadContext, anchorUid: string): Promise<void> {
-    const found = findTurn(await this.chainRows(ctx), anchorUid);
+    const cached = this.replayRows && Date.now() - this.replayRows.at < REPLAY_CACHE_MS ? this.replayRows.rows : null;
+    let found = cached ? findTurn(cached, anchorUid) : null;
+    if (!found) {
+      const rows = await this.chainRows(ctx);
+      this.replayRows = { rows, at: Date.now() };
+      found = findTurn(rows, anchorUid);
+    }
     if (found) this.renderReplies(ctx, anchorUid, found.turn.replies);
   }
+
+  private replayRows: { rows: RestMessage[]; at: number } | null = null;
 
   /** What a mirror turn showed: the server wakes `mirror{rest:true}` only for reply rows not in it. */
   private noteMirrored(turn: BbTurn, anchorUid: string, uids: string[], partial: boolean): void {
@@ -1024,7 +1045,7 @@ export class HostedThread {
   /** `thread/stop{release}`: detach without ending the row (`end_reason: null`, A24). No interruption is shown. */
   async release(): Promise<void> {
     const session = this.session;
-    this.turn?.stop();
+    this.released = true;
     this.session = null;
     if (!session) return;
     session.unsubscribe();
