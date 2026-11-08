@@ -3,11 +3,11 @@
 // `model_config` or `origin_json`, 02 §bb access and security).
 import { HermesRpcError, type HermesClient } from "../hermes/client.js";
 import { groupTurns, listSessions, summarizeTurn, type RestMessage, type RestSessionRow, type SessionsPage } from "../hermes/history.js";
+import type { ProfileRow } from "../hermes/types.js";
 import type { BotChat, HistoryTurn, SessionRow } from "../shared/host-contract.js";
 
 /** The REST list's page cap (`le=100`, `hermes_cli/web_routers/sessions.py:182`). */
 export const LIST_PAGE = 100;
-export const BOT_CHAT_TITLE = "Bot Chat";
 
 /** Hermes REST times are Unix seconds (float); the host contract speaks Unix ms. */
 const toMs = (s: number | null | undefined) => (typeof s === "number" && Number.isFinite(s) ? Math.round(s * 1000) : null);
@@ -51,34 +51,25 @@ export function listProfileSessions(rootHome: string, profile: string, since?: n
   return listAllSessions((q) => listSessions(rootHome, profile, q, { waitMs: 10_000 }), since);
 }
 
-/** A canonical title-lookup row (`gateway/session_controls.py` `list_sessions`, title branch). */
-interface TitleRow {
-  /** The logical id (`chat_id`, or an adopted legacy row's own id): what resume and submit address. */
-  session_id: string;
-  /** The row holding the title: the physical tip once a rotating compaction moved the title to it. */
-  id?: string;
-  resolved_id?: string | null;
-  title?: string;
-}
-
 /**
- * S8 step 1: `session.list{profile, title:"Bot Chat", include_hidden:true}`. Never creates.
- * `runtime_coordination_required` (Conduit holds an unadopted Bot Chat, S8 E6) → `held`.
+ * The Bot Chat, read-only (lead decision from the isolated evidence in `isolated/access.isolated.test.ts`):
+ * `profiles.list{profile, include_sessions:true}` → this profile's `canonical_session`, which Hermes fills
+ * only for a Bot Chat it owns (`gateway/session_group_controls.py:305-346`: "Discovery is read-only"). A
+ * legacy Conduit-made Bot Chat reads as `none` until a first bb send's title lookup adopts it (bridge, D16):
+ * `session.list{title}` adopts, so the worker never calls it. Only ids leave: never the row's `preview`.
  */
 export async function findBotChat(client: HermesClient, profile: string): Promise<BotChat> {
-  let rows: TitleRow[];
+  let profiles: ProfileRow[];
   try {
-    rows = (await client.sessionList({ profile, title: BOT_CHAT_TITLE, include_hidden: true })).sessions as unknown as TitleRow[];
+    profiles = (await client.profilesList({ profile, include_sessions: true })).profiles;
   } catch (err) {
     if (err instanceof HermesRpcError && err.reason === "runtime_coordination_required") return { state: "held" };
     throw err;
   }
-  const row = rows[0];
-  if (!row?.session_id) return { state: "none" };
-  // Hermes' title lookup resolves through `resolve_local_target`: a gateway-owned chat answers with its
-  // `chat_id`, and an unadopted legacy row is adopted by the lookup itself (or refused while held), so a
-  // found Bot Chat is never legacy here.
-  return { state: "found", lineage_root: row.session_id, session_id: row.id ?? row.resolved_id ?? row.session_id, legacy: false };
+  // This profile's row comes first; match by name all the same.
+  const chat = profiles.find((p) => p.name === profile)?.canonical_session;
+  if (!chat?.id) return { state: "none" };
+  return { state: "found", lineage_root: chat.id, session_id: chat.resolved_id || chat.id, legacy: false };
 }
 
 /**

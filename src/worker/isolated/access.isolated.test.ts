@@ -1,4 +1,4 @@
-// T1.8 evidence on an isolated Hermes (A43, A45; A16 timing; the Bot Chat lookup on a legacy row). Skipped
+// T1.8 evidence on an isolated Hermes (A43, A45; A16 timing; Bot Chat lookups on a legacy row). Skipped
 // in `npm test`; run it on purpose (vitest loads the bundled skill text):
 //   HERMES_ISOLATED_RUN=1 npx vitest run src/worker/isolated [--keep: HERMES_ISOLATED_KEEP=1]
 // Runs `~/.hermes/hermes-agent` (read only) with HERMES_HOME=/private/tmp/bb-hermes-test/worker-access, its own
@@ -193,7 +193,8 @@ async function main(): Promise<Record<string, any>> {
     gateway_pid_unchanged: gwPid() === pidBefore,
   };
 
-  // ---- The Bot Chat lookup on a legacy row: does findBotChat adopt it?
+  // ---- Bot Chat lookups on a legacy row: Hermes' title lookup (the bridge's send path) adopts it; findBotChat
+  // (profiles.list canonical_session) only reads.
   const token = Array.from(crypto.getRandomValues(new Uint8Array(24)), (x) => x.toString(16).padStart(2, "0")).join("");
   const dashPort = await new Promise<number>((r) => {
     const s = http.createServer().listen(0, "127.0.0.1", () => {
@@ -238,15 +239,20 @@ async function main(): Promise<Record<string, any>> {
     const cs = profiles.find((p) => p.name === "bob")?.canonical_session ?? null;
     return cs && { id: cs.id, resolved_id: cs.resolved_id, title: cs.title ?? null };
   };
-  const rosterHeld = { result: await roster(), rows: rows() };
-  const held = await findBotChat(c, "bob").catch((e) => ({ error: (e as Error).message }));
+  const titleLookup = () =>
+    c.sessionList({ profile: "bob", title: "Bot Chat", include_hidden: true }).then(
+      (r) => ({ session_id: (r.sessions[0] as { session_id?: string } | undefined)?.session_id ?? null }),
+      (e) => ({ refused: (e as { reason?: string }).reason ?? "error" }),
+    );
+  const rosterHeld = { result: await roster(), find: await findBotChat(c, "bob"), rows: rows() };
+  const held = await titleLookup();
   const whileHeld = rows();
   ws.close();
-  await sleep(25_000); // Conduit's claim lapses (S8 E6: ~21 s); the lookup below must then find it at once
-  const rosterUnheld = { result: await roster(), rows: rows() };
-  const afterLeave = await findBotChat(c, "bob").catch((e) => ({ error: (e as Error).message }));
+  await sleep(25_000); // Conduit's claim lapses (S8 E6: ~21 s); the title lookup below must then succeed at once
+  const rosterUnheld = { result: await roster(), find: await findBotChat(c, "bob"), rows: rows() };
+  const afterLeave = await titleLookup();
   const rowsAfter = rows();
-  const rosterAdopted = { result: await roster(), rows: rows() };
+  const rosterAdopted = { result: await roster(), find: await findBotChat(c, "bob"), rows: rows() };
   evidence.bot_chat_lookup_on_legacy = { before_lookup: beforeLookup, while_held: { result: held, rows: whileHeld }, after_conduit_left: { result: afterLeave, rows: rowsAfter } };
   evidence.roster_on_legacy = { while_held: rosterHeld, unheld_before_lookup: rosterUnheld, after_adoption: rosterAdopted };
 
@@ -286,18 +292,19 @@ describe.skipIf(process.env.HERMES_ISOLATED_RUN !== "1")("isolated Hermes: setBo
     expect([ev.a43.new_session_with_skill.listed, ev.a43.new_session_after_off.listed]).toEqual([true, false]);
     expect(ev.a43.set_on).toMatchObject({ skill: "current", wrapper: "written", refreshed: true });
     expect(ev.a43.set_off).toMatchObject({ skill: "removed", wrapper: "removed", refreshed: true });
-    // The Bot Chat lookup adopts an unheld legacy Bot Chat (reported to the lead; findBotChat runs on user actions only).
+    // Hermes' title lookup adopts an unheld legacy Bot Chat (so only the bridge's first send makes it, D16).
     const lookup = ev.bot_chat_lookup_on_legacy;
-    expect(lookup.while_held.result).toEqual({ state: "held" });
+    expect(lookup.while_held.result).toEqual({ refused: "runtime_coordination_required" });
     expect(lookup.while_held.rows.sessions[0].chat_id).toBeNull();
-    expect(lookup.after_conduit_left.result).toMatchObject({ state: "found", legacy: false });
-    expect(lookup.after_conduit_left.rows.sessions[0].chat_id).toBe(lookup.after_conduit_left.rows.sessions[0].id);
-    // profiles.list{include_sessions} is read-only: it ignores an unadopted legacy Bot Chat and names an adopted one.
-    const r = ev.roster_on_legacy;
-    expect(r.while_held.result).toBeNull();
-    expect(r.unheld_before_lookup.result).toBeNull();
-    expect(r.unheld_before_lookup.rows).toEqual(lookup.before_lookup);
     const id = lookup.after_conduit_left.rows.sessions[0].id;
+    expect(lookup.after_conduit_left.result).toEqual({ session_id: id });
+    expect(lookup.after_conduit_left.rows.sessions[0].chat_id).toBe(id);
+    // findBotChat (profiles.list{include_sessions}) is read-only: none for an unadopted legacy Bot Chat, found once adopted.
+    const r = ev.roster_on_legacy;
+    expect([r.while_held.result, r.while_held.find]).toEqual([null, { state: "none" }]);
+    expect([r.unheld_before_lookup.result, r.unheld_before_lookup.find]).toEqual([null, { state: "none" }]);
+    expect(r.unheld_before_lookup.rows).toEqual(lookup.before_lookup);
+    expect(r.after_adoption.find).toEqual({ state: "found", lineage_root: id, session_id: id, legacy: false });
     expect(r.after_adoption.result).toMatchObject({ id, resolved_id: id });
   });
 });

@@ -113,25 +113,29 @@ describe("models (A16)", () => {
 });
 
 describe("findBotChat", () => {
-  const row = (session_id: string, id: string) => ({ session_id, id, resolved_id: session_id, title: "Bot Chat", root_title: "Bot Chat", source: "local", started_at: 1, message_count: 2, running: false });
+  /** `profiles.list` rows as Hermes answers a host-scoped socket: the routed profile first, then its siblings. */
+  const roster = (fake: Awaited<ReturnType<typeof setup>>["fake"], chats: Record<string, object | null>) =>
+    fake.profiles.map((p) => ({ name: p.name, path: p.home, is_default: p.name === "default", canonical_session: chats[p.name] ?? null }));
+  const chat = (id: string, resolved_id: string) => ({ id, resolved_id, title: "Bot Chat", root_title: "Bot Chat", preview: "last words of the chat", started_at: 1, last_active: 2, message_count: 4 });
 
-  it("found / none / held, read-only, routed to the bot", async () => {
+  it("found / none / held from profiles.list canonical_session; read-only, ids only", async () => {
     const { fake, h, root, alex } = await setup();
-    let answer: () => unknown = () => ({ sessions: [row("local-abc", "local-abc")], scope: "stored" });
-    fake.handle("session.list", () => answer());
-    expect(await h.experimental_call("findBotChat", { root, profile_home: alex })).toEqual({ state: "found", lineage_root: "local-abc", session_id: "local-abc", legacy: false });
-    answer = () => ({ sessions: [row("local-abc", "tip-2")], scope: "stored" });
+    let answer: () => unknown = () => ({ profiles: roster(fake, { alex: chat("local-abc", "local-abc"), bob: chat("local-bob", "local-bob") }), bot_mode_protocol: true, install_id: "" });
+    fake.handle("profiles.list", (p) => (p.include_sessions ? answer() : { profiles: roster(fake, {}), bot_mode_protocol: true, install_id: "" }));
+    const found = await h.experimental_call("findBotChat", { root, profile_home: alex });
+    expect(found).toEqual({ state: "found", lineage_root: "local-abc", session_id: "local-abc", legacy: false });
+    expect(JSON.stringify(found)).not.toContain("last words");
+    answer = () => ({ profiles: roster(fake, { alex: chat("local-abc", "tip-2") }), bot_mode_protocol: true, install_id: "" });
     expect(await h.experimental_call("findBotChat", { root, profile_home: alex })).toMatchObject({ lineage_root: "local-abc", session_id: "tip-2" });
-    answer = () => ({ sessions: [], scope: "stored" });
+    answer = () => ({ profiles: roster(fake, { bob: chat("local-bob", "local-bob") }), bot_mode_protocol: true, install_id: "" });
     expect(await h.experimental_call("findBotChat", { root, profile_home: alex })).toEqual({ state: "none" });
     answer = () => {
       throw new Refusal("runtime_coordination_required");
     };
     expect(await h.experimental_call("findBotChat", { root, profile_home: alex })).toEqual({ state: "held" });
-    expect(fake.requests.filter((r) => r.method === "session.list").map((r) => [r.profile, r.params])).toEqual(
-      Array(4).fill(["alex", { profile: "alex", title: "Bot Chat", include_hidden: true }]),
-    );
-    expect(fake.requests.map((r) => r.method).filter((m) => m !== "session.list" && m !== "profiles.list")).toEqual([]);
+    const lookups = fake.requests.filter((r) => r.method === "profiles.list" && r.params.include_sessions);
+    expect(lookups.map((r) => [r.profile, r.params])).toEqual(Array(4).fill(["alex", { profile: "alex", include_sessions: true }]));
+    expect(fake.requests.filter((r) => r.method !== "profiles.list")).toEqual([]);
     expect(fake.violations).toEqual([]);
   });
 
