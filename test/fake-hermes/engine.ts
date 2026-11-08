@@ -6,7 +6,8 @@
  * `gateway/session_pending_controls.py`, `hermes_state_runtime.py`, `gateway/session_mutations.py`).
  *
  * Corrected by the T1.0 recordings (test/fixtures/frames/*.json): attachments, `/new` `/reset` `/approve` as text,
- * the lost turn after a restart, forwarded dashboard sends, change signals.
+ * the lost turn after a restart, forwarded dashboard sends, change signals, the lease wait, reasoning, approval
+ * settlement, rotating compression seen from the root.
  *
  * Per profile: sessions (canonical and legacy rows), messages with `message_uid`s, a FIFO of admissions per
  * session, `revision`, `execution_generation`, a replay ring (512 frames) per session, subscriptions per socket.
@@ -15,7 +16,7 @@
  *
  * The stub model echoes like `test/fixtures/rest/record.ts`'s: `echo(<context size>): <text>`. Words in the
  * prompt script a turn (reachable from bb's composer in e2e): `#slow` streams slowly, `#tool` calls read_file,
- * `#approval` / `#edit` raise an approval before the tool runs, `#clarify` asks, `#think` streams reasoning,
+ * `#approval` / `#edit` raise an approval before the tool runs, `#clarify` asks, `#think` reasons (streamed on tui/gui sessions),
  * `#fail` fails the turn. `nextTurn(profile, script)` scripts the next turn of a profile instead.
  */
 import { createHash, randomBytes } from "node:crypto";
@@ -45,7 +46,20 @@ const LOST_TURN = "This turn did not complete. Some actions may already have run
 const STEER_WRAP = (t: string) =>
   `[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]\n${t}\n[/OUT-OF-BAND USER MESSAGE]`;
 const WAITING = "⏳ Another Hermes process is using this session; waiting for it to finish before starting your turn...";
-const REASONING = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
+const FREE = "Session is free; loading the latest transcript...";
+const REASONING = new Set(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
+/** Surfaces whose turns stream `reasoning.delta` (T1.0 reasoning.json: a cli session streams none). */
+const REASONING_STREAMED = new Set(["tui", "gui"]);
+const BLOCKED = "The user has NOT consented to this action. Do NOT retry this command, do NOT rephrase it, and do NOT attempt the same outcome via a different command. Stop the current workflow and wait for the user to respond before taking any further destructive or irreversible action.";
+/** A blocked command's tool result (T1.0 approvals.json). */
+const blockedResult = (timedOut: boolean, timeoutS: number) =>
+  JSON.stringify({
+    output: "",
+    exit_code: -1,
+    error: timedOut ? `BLOCKED: Command timed out without user response. ${BLOCKED} Silence is not consent.` : `BLOCKED: Command denied by user. ${BLOCKED}`,
+    status: "blocked",
+    user_summary: timedOut ? `No answer within ${timeoutS} seconds — the command did not run.` : "You denied this command — it did not run.",
+  });
 
 // ---- recorded REST shapes (R5 C6: shapes recorded, values filled)
 const RECORDINGS = path.join(import.meta.dirname, "../fixtures/rest");
@@ -124,11 +138,15 @@ export interface Admission {
   script: TurnScript;
   /** The user row, once the turn flushed it (at its start). */
   userRow?: Row;
+  /** The authority epoch the admission was taken in; it keeps it across a restart. */
+  epoch: number;
 }
 
 interface Prompt {
   prompt: Json;
   resolve: (answer: string | null) => void;
+  /** Its deadline passed: no longer answerable; `*.settled` follows at the turn's end or the next look. */
+  expired?: boolean;
 }
 
 interface Turn {
@@ -209,7 +227,7 @@ export class Engine {
   private find(p: FakeProfile, id: string): Session | undefined {
     return this.all(p).find((s) => s.id === id);
   }
-  /** Any id of a chain → its tip (a rotated chain resolves to its newest segment, S8 E8). */
+  /** A chain's newest segment: where its rows go and what REST lists (S8 E8). */
   tipOf(s: Session): Session {
     while (s.tip) s = s.tip;
     return s;
@@ -218,9 +236,13 @@ export class Engine {
     while (s.parent) s = s.parent;
     return s;
   }
+  /**
+   * Any id of a chain → its live session, the root: a rotated chain keeps its subscribers, FIFO, fences and event
+   * stream on the root id; only its rows move on to the tip (T1.0 rotating-viewer.json).
+   */
   session(p: FakeProfile, id: string): Session | undefined {
     const s = this.find(p, id);
-    return s && this.tipOf(s);
+    return s && this.rootOf(s);
   }
   private require(p: FakeProfile, id: unknown): Session {
     const s = typeof id === "string" ? this.session(p, id) : undefined;
@@ -230,9 +252,10 @@ export class Engine {
   private legacy(s: Session) {
     return s.chat_id === null;
   }
-  /** The session holding this title: a hidden one included, the newest first (`resolve_titled_session`). */
+  /** The chat holding this title (on its tip), a hidden one included, the newest first (`resolve_titled_session`). */
   private titled(p: FakeProfile, title: string): Session | undefined {
-    return this.all(p).filter((s) => !s.tip && s.title === title).sort((a, b) => b.started_at - a.started_at)[0];
+    const tip = this.all(p).filter((s) => !s.tip && s.title === title).sort((a, b) => b.started_at - a.started_at)[0];
+    return tip && this.rootOf(tip);
   }
   private chainRows(s: Session): Row[] {
     const segs: Session[] = [];
@@ -303,7 +326,7 @@ export class Engine {
       sequence: a.sequence,
       status: a.status,
       outcome: a.outcome,
-      authority_epoch: this.hooks.authorityEpoch(),
+      authority_epoch: a.epoch,
       execution_generation: a.generation,
     };
   }
@@ -364,7 +387,7 @@ export class Engine {
       stored_session_id: s.id,
       messages: omit ? [] : rows.map((r) => ({ role: r.role, content: r.content, timestamp: r.timestamp, row_id: r.id, display_kind: r.display_kind ?? null, display_metadata: r.display_metadata ?? null })),
       ...(omit ? { messages_omitted: true } : {}),
-      message_count: rows.length,
+      message_count: this.count(s),
       todo_state: null,
       running: !!s.running,
       authority_epoch: this.hooks.authorityEpoch(),
@@ -374,7 +397,7 @@ export class Engine {
       revision: s.revision,
       execution_generation: s.generation,
       pending: this.pending(s),
-      prompts: [...s.prompts.values()].map((p) => p.prompt),
+      prompts: this.livePrompts(s),
       info: {
         desktop_protocol: "hermes-gateway-v1",
         // An adopted dashboard row resumes as `gui` on the wire (S8 E10).
@@ -418,7 +441,7 @@ export class Engine {
         // `hermes_state_keys.local_identity`: deterministic per (profile_id, principal, request_id).
         const id = "local-" + createHash("sha256").update(JSON.stringify([profile.home, `uid:${this.uid}`, request])).digest("hex");
         const known = this.find(profile, id);
-        if (known) return this.snapshot(this.tipOf(known), socket, false);
+        if (known) return this.snapshot(this.rootOf(known), socket, false);
         const s = this.newSession(profile, id, {
           title,
           hidden: params.hidden === true,
@@ -547,8 +570,9 @@ export class Engine {
     };
   }
 
+  /** Active rows of the physical tip: what the model is sent and resume's `message_count` (rotating-viewer.json). */
   private count(s: Session) {
-    return this.chainRows(s).filter((r) => r.active).length;
+    return this.tipOf(s).rows.filter((r) => r.active).length;
   }
   private handle(s: Session): Json {
     return {
@@ -610,6 +634,7 @@ export class Engine {
       attachments: (params.attachments as Json[] | null | undefined) ?? null,
       turn_author: (params.turn_author as Json | null | undefined) ?? null,
       script: opts.script ?? this.scriptFor(profile, params.text as string),
+      epoch: this.hooks.authorityEpoch(),
     };
     s.queue.push(a);
     const status = this.admissionStatus(a);
@@ -627,7 +652,7 @@ export class Engine {
       tool: has("tool") || has("approval") || has("edit") || undefined,
       approval: has("edit") ? { kind: "edit" } : has("approval") ? { kind: "command" } : undefined,
       clarify: has("clarify") ? {} : undefined,
-      reasoning: has("think") ? "Thinking about it." : undefined,
+      reasoning: has("think") ? "Thinking about it. Still thinking. Done thinking." : undefined,
       fail: has("fail") ? "stub failure" : undefined,
     };
   }
@@ -645,8 +670,7 @@ export class Engine {
       s.running = null;
       return;
     }
-    // A rotation mid-run moves the FIFO to the tip.
-    void this.drain(this.tipOf(s));
+    void this.drain(s);
   }
 
   private async run(s: Session, a: Admission) {
@@ -668,10 +692,14 @@ export class Engine {
     const stop = () => turn.interrupted || turn.aborted;
     this.publish(s, "message.start", {}, stamp);
     this.publishInfo(s, stamp);
+    const waited = !!s.lease;
     if (s.lease) {
-      // The dashboard holds the turn lease: wait, then reload (`agent/turn_facade_lease.py`, S8 E3a).
-      this.publish(s, "status.update", { kind: "status", text: WAITING }, stamp);
+      // The dashboard holds the turn lease: wait, then reload (`agent/turn_facade_lease.py`, T1.0 lease-wait.json).
+      this.publish(s, "agent.print", { text: WAITING }, stamp);
+      this.publish(s, "status.update", { kind: "lifecycle", text: WAITING }, stamp);
       await s.lease;
+      this.publish(s, "agent.print", { text: FREE }, stamp);
+      this.publish(s, "status.update", { kind: "lifecycle", text: FREE }, stamp);
     }
     const command = COMMAND_REPLIES[a.text.trim()];
     const context = this.count(s) + 2;
@@ -700,7 +728,12 @@ export class Engine {
     this.publish(s, "agent.step", { iteration: 1 }, stamp);
     const prompt = user!.content as string;
     let error: string | null = null;
-    if (a.script.reasoning && !stop()) this.publish(s, "reasoning.delta", { text: a.script.reasoning }, stamp);
+    if (a.script.reasoning && !stop() && REASONING_STREAMED.has(s.created_source)) {
+      for (const chunk of a.script.reasoning.split(/(?<=\. )/)) {
+        this.publish(s, "reasoning.delta", { text: chunk }, stamp);
+        await pause(a.script.chunkMs ?? 0);
+      }
+    }
     if (a.script.tool && !stop()) {
       const callId = `call_${hex(4)}`;
       const toolPath = path.join(s.cwd ?? s.profile.home, "note.txt");
@@ -731,7 +764,7 @@ export class Engine {
         );
         if (choice === null || choice === "deny") {
           isError = true;
-          result = JSON.stringify({ error: choice === null ? "approval timed out" : "denied by the user" });
+          result = blockedResult(choice === null, a.script.approval.timeout_s ?? 60);
         } else result = edit ? JSON.stringify({ bytes_written: 2 }) : JSON.stringify({ output: "approved", exit_code: 0 });
       }
       if (!turn.aborted) {
@@ -775,13 +808,15 @@ export class Engine {
     }
     if (turn.aborted) return;
     flushSteers();
-    const final = text ? [this.addRow(s, { tpl: "assistant", role: "assistant", content: text, finish_reason: "stop" })] : [];
+    const reasoning = a.script.reasoning && text ? { reasoning: a.script.reasoning, reasoning_content: a.script.reasoning } : {};
+    const final = text ? [this.addRow(s, { tpl: "assistant", role: "assistant", content: text, finish_reason: "stop", ...reasoning })] : [];
     rows.push(...steers, ...final);
     s.revision++;
     s.last_activity_at = now();
     const outcome = error ? "failed" : turn.interrupted ? "cancelled" : "completed";
     const usage = { model: s.model, input: 10, output: 5, reasoning: 0, prompt: 10, completion: 5, total: 15, calls: 1, context_used: 10, context_max: 65536, context_percent: 0 };
     this.publish(s, "session.usage", { usage }, stamp);
+    this.clearPrompts(s, gen);
     this.publish(
       s,
       "message.complete",
@@ -792,10 +827,12 @@ export class Engine {
         outcome,
         status: error ? "error" : turn.interrupted ? "interrupted" : "complete",
         ...(error ? { error } : {}),
+        ...(reasoning.reasoning ? { reasoning: reasoning.reasoning } : {}),
         usage,
         persisted_turn: {
           row_ids: rows.map((r) => r.id),
-          complete: !turn.interrupted && !error,
+          // A turn that waited for the lease reloads the transcript: Hermes leaves it false (lease-wait.json).
+          complete: !turn.interrupted && !error && !waited,
           user_row_id: user!.id,
           user_row_ids: [user!.id, ...steers.map((r) => r.id)],
           ...(final.length ? { final_assistant_row_id: final.at(-1)!.id } : {}),
@@ -806,7 +843,6 @@ export class Engine {
     );
     this.settle(s, a, outcome === "cancelled" ? "cancelled" : outcome);
     s.running = null;
-    this.clearPrompts(s, gen);
     this.publishInfo(s, stamp);
     this.changed(s.profile);
   }
@@ -822,7 +858,9 @@ export class Engine {
     return { tpl: "user", role: "user", content: notes.join("") + a.text, display_kind: a.display_kind, display_metadata: { gateway_input_owner: "<redacted>", submission_id: a.submission_id } };
   }
 
-  private addRow(s: Session, r: Partial<Row> & { tpl?: string }): Row {
+  /** Append a row to the chat's physical tip. */
+  private addRow(chat: Session, r: Partial<Row> & { tpl?: string }): Row {
+    const s = this.tipOf(chat);
     const { tpl, ...values } = r;
     // A compaction copy keeps its row's uid (R1 M2); anything new gets a fresh one.
     const row = { ...values, id: ++this.rowId, session_id: s.id, message_uid: (values.message_uid as string | undefined) ?? hex(), timestamp: now(), active: 1, compacted: 0, tpl } as unknown as Row;
@@ -851,17 +889,37 @@ export class Engine {
     const timeout = (fields.timeout_s as number) * this.hooks.secondMs;
     await Promise.race([done, pause(timeout)]);
     turn.wake(); // clears the deadline timer
-    if (s.prompts.delete(prompt_id) && !turn.aborted) {
-      // Answered, timed out (deny / no answer) or stopped: the prompt settles on the stream.
-      this.publish(s, `${kind}.settled`, { prompt_id, execution_generation: turn.generation }, this.stamp(s, turn.admission));
+    if (settled) {
+      // Answered (here or by another client): it settles at once (approvals.json, answered elsewhere).
+      if (s.prompts.delete(prompt_id) && !turn.aborted) this.settled(s, prompt);
+    } else {
+      // Timed out or stopped: the turn goes on; Hermes settles it at the turn's end (approvals.json, timeout).
+      const p = s.prompts.get(prompt_id);
+      if (p) p.expired = true;
     }
     return settled ? answer : null;
   }
 
+  private settled(s: Session, prompt: Json) {
+    const gen = prompt.execution_generation as number;
+    this.publish(s, `${prompt.kind}.settled`, { prompt_id: prompt.prompt_id, execution_generation: gen }, { authority_epoch: this.hooks.authorityEpoch(), execution_generation: gen, admission_id: s.running?.admission.admission_id ?? null });
+  }
+
+  /** Pending prompts; an expired one settles now, as Hermes' snapshot drops it (`session_pending_controls.snapshot`). */
+  private livePrompts(s: Session): Json[] {
+    for (const [id, p] of s.prompts) if (p.expired) {
+      s.prompts.delete(id);
+      this.settled(s, p.prompt);
+    }
+    return [...s.prompts.values()].map((p) => p.prompt);
+  }
+
+  /** The turn ended: every prompt of its generation settles. */
   private clearPrompts(s: Session, gen: number) {
     for (const [id, p] of s.prompts) if (p.prompt.execution_generation === gen) {
       s.prompts.delete(id);
       p.resolve(null);
+      this.settled(s, p.prompt);
     }
   }
 
@@ -869,6 +927,7 @@ export class Engine {
     const s = this.require(profile, params.session_id);
     if (!s.subscribers.has(socket)) throw new Refusal("permission_denied");
     if (!s.running || params.execution_generation !== s.generation) throw new Refusal("stale_generation");
+    this.livePrompts(s);
     const pending = s.prompts.get(params.prompt_id as string);
     if (!pending) return { status: "already_resolved", prompt_id: params.prompt_id };
     if (pending.prompt.kind !== kind) throw new Refusal("invalid_params");
@@ -900,7 +959,7 @@ export class Engine {
     let result: Json;
     if (operation === "compress") {
       if (s.running) throw new Refusal("session_busy");
-      result = this.compress(s, params);
+      result = this.compress(s);
     } else {
       if (operation === "model") {
         s.model = payload.model as string;
@@ -918,69 +977,62 @@ export class Engine {
 
   /**
    * In place (Hermes' default): the id stays; the summarized rows go inactive (`compacted`) and active copies with
-   * the same uids follow, with a carrier for the middle replies. Rotating (`compression.in_place: false`): a new
-   * tip with the same `chat_id`, the title and the live state move there; resuming any id of the chain reaches it.
+   * the same uids follow, with a carrier for the middle replies. Rotating (`compression.in_place: false`): a new tip
+   * segment with the same `chat_id` takes the rows and the title; the live session stays the root: its subscribers
+   * keep every event under the root id and epoch, resuming any id gives the root (T1.0 rotating-viewer.json).
    */
-  private compress(s: Session, params: Json): Json {
-    const before = s.rows.filter((r) => r.active);
+  private compress(s: Session): Json {
+    const tip = this.tipOf(s);
+    const before = tip.rows.filter((r) => r.active);
     const users = before.filter((r) => r.role === "user");
     const replies = before.filter((r) => r.role !== "user");
     const kept = new Set([replies[0], replies.at(-1)].filter(Boolean).map((r) => r!.message_uid));
     const carrierOf = replies.slice(1, -1).at(-1);
-    const copy = (target: Session, r: Row, over: Json = {}) => this.addRow(target, { ...this.strip(r), ...over });
-    let target = s;
+    const copy = (r: Row) => this.addRow(s, this.strip(r));
     if (this.hooks.rotating.has(s.profile.name)) {
-      target = this.newSession(s.profile, hex(), {
-        title: s.title,
-        hidden: s.hidden,
-        archived: s.archived,
-        source: s.source,
-        created_source: s.created_source,
-        chat_id: this.rootOf(s).id,
-        cwd: s.cwd,
-        model: s.model,
-        provider: s.provider,
-        reasoning: s.reasoning,
-        parent: s,
-        revision: s.revision,
-        generation: s.generation,
-        queue: s.queue,
-        subscribers: s.subscribers,
-        mounted: true,
+      const next = this.newSession(s.profile, hex(), {
+        title: tip.title,
+        hidden: tip.hidden,
+        archived: tip.archived,
+        source: tip.source,
+        created_source: tip.created_source,
+        chat_id: s.id,
+        cwd: tip.cwd,
+        model: tip.model,
+        provider: tip.provider,
+        reasoning: tip.reasoning,
+        parent: tip,
       });
-      s.tip = target;
-      s.title = null;
-      s.queue = [];
-      for (const a of target.queue) a.session = target;
-      if (users[0]) copy(target, users[0]);
-      this.addRow(target, { tpl: "hiddenCarrier", role: "assistant", content: "[CONTEXT COMPACTION — REFERENCE ONLY] Summary of the earlier turns.", display_kind: "hidden", _compressed_summary: true });
-      for (const u of users.slice(-2)) copy(target, u);
+      tip.tip = next;
+      tip.title = null;
+      if (users[0]) copy(users[0]);
+      this.addRow(s, { tpl: "hiddenCarrier", role: "assistant", content: "[CONTEXT COMPACTION — REFERENCE ONLY] Summary of the earlier turns.", display_kind: "hidden", _compressed_summary: true });
+      for (const u of users.slice(-2)) copy(u);
     } else {
       for (const r of before) {
         r.active = 0;
         r.compacted = 1;
       }
       for (const r of before) {
-        if (r.role === "user" || kept.has(r.message_uid)) copy(target, r);
+        if (r.role === "user" || kept.has(r.message_uid)) copy(r);
         else if (r === carrierOf)
-          this.addRow(target, { tpl: "inPlaceCarrier", role: "assistant", content: `[PRIOR CONTEXT — for reference only; not a new message]\n${r.content}\n\n[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]`, display_content: r.content, _compressed_summary: true, message_uid: r.message_uid });
+          this.addRow(s, { tpl: "inPlaceCarrier", role: "assistant", content: `[PRIOR CONTEXT — for reference only; not a new message]\n${r.content}\n\n[END OF PRIOR CONTEXT — COMPACTION SUMMARY BELOW]`, display_content: r.content, _compressed_summary: true, message_uid: r.message_uid });
       }
     }
-    target.revision = ++s.revision;
-    target.generation = ++s.generation;
+    s.revision++;
+    s.generation++;
+    const count = this.count(s);
     const result = {
       session_id: s.id,
-      revision: target.revision,
-      execution_generation: target.generation,
+      revision: s.revision,
+      execution_generation: s.generation,
       operation: "compress",
-      target_session_id: target.id,
-      previous_target_session_id: s.id,
-      message_count: target.rows.filter((r) => r.active).length,
-      summary: { noop: false, aborted: false, refused_would_grow: false, fallback_used: false, headline: `Compressed: ${before.length} → ${target.rows.filter((r) => r.active).length} messages`, token_line: "", note: "" },
+      target_session_id: this.tipOf(s).id,
+      previous_target_session_id: tip.id,
+      message_count: count,
+      summary: { noop: false, aborted: false, refused_would_grow: false, fallback_used: false, headline: `Compressed: ${before.length} → ${count} messages`, token_line: "", note: "" },
     };
-    // Viewers follow `session.info.stored_session_id` to the tip (02 flow 7).
-    this.publish(s, "session.info", { stored_session_id: target.id, pending: this.pending(target), authority_epoch: this.hooks.authorityEpoch(), desktop_protocol: "hermes-gateway-v1", running: false, execution_generation: target.generation, revision: target.revision });
-    void params;
+    this.publish(s, "session.updated", result);
     return result;
   }
 
@@ -1017,7 +1069,8 @@ export class Engine {
     return {
       status: 200,
       body: fill(TEMPLATES.messagesPage, {
-        session_id: s.id,
+        // Any id of a chain answers for its tip (T0.5).
+        session_id: this.tipOf(s).id,
         profile: p.name,
         messages: page.map((r) => this.restMessage(r)),
         pagination: { limit, offset, order: query.order ?? (explicit ? "oldest" : "latest"), returned: page.length },
@@ -1031,8 +1084,8 @@ export class Engine {
     const firstUser = rows.find((r) => r.role === "user");
     const values: Json = {
       id: s.id,
-      runtime_revision: s.revision,
-      runtime_generation: s.generation,
+      runtime_revision: root.revision,
+      runtime_generation: root.generation,
       source: s.source,
       created_source: s.created_source,
       chat_id: s.chat_id,
@@ -1095,13 +1148,15 @@ export class Engine {
    */
   async conduitTurn(profile: FakeProfile, sessionId: string, text: string, opts: { durationMs?: number; reply?: string } = {}): Promise<Json> {
     const s = this.require(profile, sessionId);
-    if (s.queue.some((a) => a.status === "unknown")) {
+    // Refused while an unknown admission is the queue's only work; with work queued behind it the send is
+    // forwarded like any other (restart-unknown.json).
+    if (s.queue.some((a) => a.status === "unknown") && !s.queue.some((a) => a.status === "queued")) {
       throw Object.assign(new Error(`Session ${s.id} has outcome-unknown work in the gateway's durable queue. Resume it through the gateway (hermes chat --resume, Desktop or the TUI) to resolve it; nothing was run here.`), {
         code: 4090,
         data: { reason: "SESSION_NOT_OWNED" },
       });
     }
-    if (s.running || s.queue.length) {
+    if (s.running || s.queue.some((a) => a.status === "queued")) {
       // Forwarded into the gateway's queue: an ordinary admission whose submission id names the dashboard (E3b).
       const st = this.submit(profile, null, { session_id: sessionId, text, submission_id: `desktop-forward-${hex()}` });
       return { status: "queued", admission_id: st.admission_id, forwarded: true };
@@ -1145,17 +1200,6 @@ export class Engine {
     const p = this.require(profile, sessionId).prompts.get(promptId);
     p?.resolve(answer);
     return !!p;
-  }
-
-  /**
-   * The dashboard dropped pending approvals (interrupt, reap, teardown): its `approval.cancelled` broadcast
-   * (`tui_gateway/session_lifecycle.py:585`), each wait resolved as deny.
-   */
-  cancelApprovals(profile: FakeProfile, sessionId: string, reason = "interrupt") {
-    const s = this.require(profile, sessionId);
-    const ids = [...s.prompts.entries()].filter(([, p]) => p.prompt.kind === "approval").map(([id]) => id);
-    for (const sock of this.hooks.sockets()) this.send(sock, { type: "approval.cancelled", session_id: s.id, payload: { session_id: s.id, stored_session_id: s.id, reason, cancelled_count: ids.length, request_ids: ids } });
-    for (const id of ids) s.prompts.get(id)?.resolve("deny");
   }
 
   /** A gateway restart: running turns become `unknown` and stop; replay rings and subscriptions are gone. */

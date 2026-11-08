@@ -85,8 +85,12 @@ it("every engine event and result has recorded keys; unrecorded event types are 
   await done(sid, 3);
   await submit(sid, "#approval");
   await until(() => seen.filter((e) => e.type === "approval.request").length === 2);
-  f.cancelApprovals("alex", sid);
+  const second = seen.filter((e) => e.type === "approval.request")[1]!.payload as { prompt_id: string };
+  f.answerElsewhere("alex", sid, second.prompt_id, "deny");
   await done(sid, 4);
+  const { session_id: gui } = await c.create({ profile: "alex", request_id: "bb:frames-gui", source: "gui", cwd: "/tmp" });
+  await c.submit({ profile: "alex", session_id: gui, text: "#think", submission_id: "bb:f:gui", turn_author: { id: "bb:f", name: "bb" } });
+  await done(gui, 1);
   const snap = await c.resume({ profile: "alex", session_id: sid, omit_messages: true });
   await c.mutate({ profile: "alex", session_id: sid, request_id: "m1", expected_revision: snap.revision, expected_generation: snap.execution_generation, operation: "reasoning", payload: { effort: "low" } });
   await c.eventsSince({ profile: "alex", session_id: sid, last_sequence: 1, replay_epoch: snap.replay_epoch });
@@ -108,7 +112,7 @@ it("every engine event and result has recorded keys; unrecorded event types are 
     for (const k of Object.keys(e.payload ?? {})) if (!own.has(k)) expect(rec.payload.has(k), `${e.type} payload key ${k}`).toBe(true);
   }
   // Shapes the bridge relies on that no recording shows yet (T1.0): payloads per Hermes' contracts (events.py).
-  expect([...unrecorded].sort()).toEqual(["approval.cancelled", "reasoning.delta", "status.update"]);
+  expect([...unrecorded].sort()).toEqual([]);
 
   const sentMethod = new Map(outFrames.map((fr) => [fr.id, fr.method!]));
   const checked = new Set<string>();

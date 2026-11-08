@@ -322,7 +322,15 @@ describe("engine: interactions", () => {
     await k.submit("alex", sid, "#approval");
     await k.until(() => k.completes(sid).length === 1);
     expect(k.of("approval.settled", sid)).toHaveLength(1);
-    expect(k.of("tool.complete", sid)[0]!.payload).toMatchObject({ is_error: true });
+    // Hermes' blocked result; the prompt settles at the turn's end, after the tool (T1.0 approvals.json).
+    const done = JSON.parse(k.of("tool.complete", sid)[0]!.payload!.result as string);
+    expect(done).toMatchObject({ exit_code: -1, status: "blocked", user_summary: "No answer within 60 seconds — the command did not run." });
+    expect(done.error).toMatch(/^BLOCKED: Command timed out without user response\..*Silence is not consent\.$/);
+    const order = k.events.filter((e) => e.session_id === sid).map((e) => e.type);
+    expect(order.indexOf("approval.settled")).toBeGreaterThan(order.indexOf("tool.complete"));
+    expect(order.indexOf("approval.settled")).toBeLessThan(order.indexOf("message.complete"));
+    const { prompt_id } = k.of("approval.request", sid)[0]!.payload as { prompt_id: string };
+    expect(await refusal(k.c.approvalRespond({ profile: "alex", session_id: sid, execution_generation: 1, prompt_id, choice: "deny" }))).toMatchObject({ reason: "stale_generation" });
   });
 
   it("clarify: 600 s by default; answered elsewhere it settles, and the reply uses the answer", async () => {
@@ -340,24 +348,36 @@ describe("engine: interactions", () => {
     expect(await k.c.clarifyRespond({ profile: "alex", session_id: sid, execution_generation: 1, prompt_id: req.prompt_id, answer: "red" }).catch((e) => e.reason)).toBe("stale_generation");
   });
 
-  it("the dashboard's approval.cancelled resolves the wait as deny", async () => {
+  it("an approval denied by another client settles at once, before the tool ends; ours afterwards is stale (approvals.json)", async () => {
     const f = await fake();
     const k = await client(f);
     const { session_id: sid } = await k.create("alex", "bb:thr_cx");
     await k.submit("alex", sid, "#approval");
     await k.until(() => k.of("approval.request", sid).length === 1);
-    f.cancelApprovals("alex", sid);
+    const { prompt_id } = k.of("approval.request", sid)[0]!.payload as { prompt_id: string };
+    expect(f.answerElsewhere("alex", sid, prompt_id, "deny")).toBe(true);
     await k.until(() => k.completes(sid).length === 1);
-    expect(k.of("approval.cancelled")[0]!.payload).toMatchObject({ reason: "interrupt", cancelled_count: 1 });
-    expect(k.of("tool.complete", sid)[0]!.payload).toMatchObject({ is_error: true });
+    const order = k.events.filter((e) => e.session_id === sid).map((e) => e.type);
+    expect(order.indexOf("approval.settled")).toBeLessThan(order.indexOf("tool.complete"));
+    expect(k.of("approval.settled", sid).map((e) => e.payload)).toEqual([{ prompt_id, execution_generation: 1 }]);
+    expect(JSON.parse(k.of("tool.complete", sid)[0]!.payload!.result as string)).toMatchObject({ status: "blocked", user_summary: "You denied this command — it did not run." });
+    expect(await refusal(k.c.approvalRespond({ profile: "alex", session_id: sid, execution_generation: 1, prompt_id, choice: "deny" }))).toMatchObject({ reason: "stale_generation" });
+    expect(k.of("approval.cancelled")).toEqual([]);
   });
 
-  it("streams reasoning; fails a turn on request", async () => {
+  it("reasoning streams on gui and tui sessions only; message.complete and the REST row carry it always (reasoning.json); fails a turn on request", async () => {
     const f = await fake();
     const k = await client(f);
     const { session_id: sid } = await k.create("alex", "bb:thr_th");
     await k.turn("alex", sid, "#think about it");
-    expect(k.of("reasoning.delta", sid).map((e) => e.payload)).toEqual([{ text: "Thinking about it." }]);
+    expect(k.of("reasoning.delta", sid)).toEqual([]);
+    const reasoning = "Thinking about it. Still thinking. Done thinking.";
+    expect(k.completes(sid)[0]!.payload).toMatchObject({ reasoning });
+    expect((await readMessages(f.folder, "alex", sid, { order: "oldest", limit: 500 })).messages[1]).toMatchObject({ reasoning });
+    const { session_id: gui } = await k.create("alex", "bb:thr_th_gui", { source: "gui" });
+    await k.turn("alex", gui, "#think about it");
+    expect(k.of("reasoning.delta", gui).map((e) => e.payload)).toEqual([{ text: "Thinking about it. " }, { text: "Still thinking. " }, { text: "Done thinking." }]);
+    expect(k.completes(gui)[0]!.payload).toMatchObject({ reasoning });
     await k.turn("alex", sid, "#fail");
     expect(k.completes(sid)[1]!.payload).toMatchObject({ outcome: "failed", status: "error", error: "stub failure" });
   });
@@ -452,7 +472,7 @@ describe("engine: fences", () => {
     expect(active.length).toBeLessThan(chain.messages.length);
   });
 
-  it("compress rotating makes a tip with the same chat_id; the title moves there; any id resumes the tip (S8 E8)", async () => {
+  it("compress rotating: a tip segment with the same chat_id takes the rows and title; the root stays the live session (rotating-viewer.json)", async () => {
     const f = await fake({ rotating: ["bob"] });
     const k = await client(f);
     const root = (await k.c.create({ profile: "bob", title: "Bot Chat", hidden: true, request_id: "bb:botchat:b" })).session_id;
@@ -462,12 +482,23 @@ describe("engine: fences", () => {
     const result = (await k.c.mutate({ profile: "bob", session_id: root, request_id: "bb:cx:r", expected_revision: snap.revision, expected_generation: snap.execution_generation, operation: "compress", payload: {} })) as unknown as { target_session_id: string };
     const tip = result.target_session_id;
     expect(tip).not.toBe(root);
-    expect(k.of("session.info", root).at(-1)!.payload).toMatchObject({ stored_session_id: tip });
+    expect(result).toMatchObject({ session_id: root, previous_target_session_id: root, revision: 4, execution_generation: 4 });
+    // Subscribers of the root get the result as `session.updated`, under the root id and epoch.
+    const updated = k.of("session.updated", root).at(-1)!;
+    expect(updated.payload).toEqual(result);
+    expect(updated.replay_epoch).toBe(snap.replay_epoch);
     const resumed = await k.c.resume({ profile: "bob", session_id: root, omit_messages: true });
-    expect(resumed.session_id).toBe(tip);
-    expect((await k.c.sessionList({ profile: "bob", title: "Bot Chat" })).sessions[0]).toMatchObject({ session_id: tip });
-    expect(f.session("bob", root)).toMatchObject({ id: tip, chat_id: root });
-    await k.turn("bob", tip, "after rotation");
+    expect(resumed).toMatchObject({ session_id: root, stored_session_id: root, replay_epoch: snap.replay_epoch, message_count: 4 });
+    expect((await k.c.resume({ profile: "bob", session_id: tip, omit_messages: true })).session_id).toBe(root);
+    expect((await k.c.sessionList({ profile: "bob", title: "Bot Chat", include_hidden: true })).sessions[0]).toMatchObject({ session_id: root });
+    expect(f.session("bob", tip)).toMatchObject({ id: root, chat_id: root });
+    const before6 = k.events.length;
+    await k.turn("bob", root, "after rotation");
+    const next = k.events.slice(before6).filter((e) => e.seq !== undefined);
+    expect(new Set(next.map((e) => e.session_id))).toEqual(new Set([root]));
+    expect(k.of("session.info", root).every((e) => e.payload!.stored_session_id === undefined || e.payload!.stored_session_id === root)).toBe(true);
+    // The model is sent the tip's rows: 4 after compression, plus the new user row and the system prompt.
+    expect(k.completes(root).at(-1)!.payload!.text).toBe("echo(6): after rotation");
     const byRoot = await readChain(f.folder, "bob", root);
     const byTip = await readChain(f.folder, "bob", tip);
     expect(byRoot).toEqual(byTip);
@@ -528,15 +559,21 @@ describe("engine: replay and restart", () => {
     const snap = await k.c.resume({ profile: "alex", session_id: sid, omit_messages: true });
     expect(snap).toMatchObject({ authority_epoch: 2, running: false, last_sequence: 0 });
     expect(snap.pending).toEqual([expect.objectContaining({ admission_id: a.admission_id, status: "unknown", execution_generation: 1 })]);
+    // The unknown admission keeps the epoch it was taken in.
+    expect(snap.pending[0]).toMatchObject({ authority_epoch: 1 });
+    // The unknown alone: the dashboard refuses; with a second submit queued behind it, it forwards (restart-unknown.json).
+    await expect(f.conduitTurn("alex", sid, "from conduit")).rejects.toMatchObject({ code: 4090, data: { reason: "SESSION_NOT_OWNED" }, message: expect.stringContaining("outcome-unknown work") });
     const b = await k.submit("alex", sid, "after restart");
     expect(b).toMatchObject({ status: "queued", authority_epoch: 2 });
-    await expect(f.conduitTurn("alex", sid, "from conduit")).rejects.toMatchObject({ code: 4090, data: { reason: "SESSION_NOT_OWNED" }, message: expect.stringContaining("outcome-unknown work") });
+    const forwarded = await f.conduitTurn("alex", sid, "conduit behind");
+    expect(forwarded).toMatchObject({ status: "queued", forwarded: true });
     await new Promise((r) => setTimeout(r, 50));
     expect(k.completes(sid)).toEqual([]);
     expect(await refusal(k.c.resolveUnknown({ profile: "alex", session_id: sid, admission_id: a.admission_id, execution_generation: 0 }))).toMatchObject({ reason: "stale_generation" });
     expect(await k.c.resolveUnknown({ profile: "alex", session_id: sid, admission_id: a.admission_id, execution_generation: 1 })).toMatchObject({ status: "terminal", outcome: "interrupted" });
-    await k.until(() => k.completes(sid).length === 1);
+    await k.until(() => k.completes(sid).length === 2);
     expect(k.completes(sid)[0]).toMatchObject({ admission_id: b.admission_id, execution_generation: 2 });
+    expect(k.completes(sid)[1]).toMatchObject({ admission_id: forwarded.admission_id, execution_generation: 3 });
     expect(await f.conduitTurn("alex", sid, "conduit after resolve")).toMatchObject({ status: "streaming" });
     // The discarded turn keeps its user row with Hermes' note; the model sees both (T1.0 restart-unknown.json).
     const rows = (await readMessages(f.folder, "alex", sid, { order: "oldest", limit: 500 })).messages;
@@ -545,8 +582,10 @@ describe("engine: replay and restart", () => {
       ["This turn did not complete. Some actions may already have run; verify their effects before resending.", "failed_turn"],
       ["after restart", null],
       ["echo(4): after restart", null],
+      ["conduit behind", null],
+      ["echo(6): conduit behind", null],
       ["conduit after resolve", null],
-      ["echo(6): conduit after resolve", null],
+      ["echo(8): conduit after resolve", null],
     ]);
     expect(rows[0]!.display_metadata?.submission_id).toBe("bb:thr_t:1");
   });
@@ -592,11 +631,18 @@ describe("engine: Conduit and other outside clients", () => {
     expect(k.events.filter((e) => e.session_id === sid)).toHaveLength(seqBefore);
     await k.submit("alex", sid, "from bb");
     await k.until(() => k.of("status.update", sid).length === 1);
-    expect(k.of("status.update", sid)[0]!.payload).toMatchObject({ kind: "status", text: expect.stringContaining("Another Hermes process") });
+    // lease-wait.json: agent.print and status.update lifecycle, then "Session is free" once the lease is free.
+    const waiting = "⏳ Another Hermes process is using this session; waiting for it to finish before starting your turn...";
+    expect(k.of("agent.print", sid)[0]!.payload).toEqual({ text: waiting });
+    expect(k.of("status.update", sid)[0]!.payload).toEqual({ kind: "lifecycle", text: waiting });
+    // No user row until the lease is free.
+    expect((await readChain(f.folder, "alex", sid)).messages.map((m) => m.content)).toEqual(["from conduit"]);
     expect(await conduit).toEqual({ status: "streaming", user_row_id: expect.any(Number) });
     await k.until(() => k.completes(sid).length === 1);
     // The model saw Conduit's turn (echo counts it).
     expect(k.completes(sid)[0]!.payload!.text).toBe("echo(4): from bb");
+    expect(k.of("status.update", sid).map((e) => e.payload!.text)).toEqual([waiting, "Session is free; loading the latest transcript..."]);
+    expect(k.completes(sid)[0]!.payload!.persisted_turn).toMatchObject({ complete: false });
     expect(groupTurns((await readChain(f.folder, "alex", sid)).messages).map((t) => [t.user!.content, t.submission_id])).toEqual([
       ["from conduit", null],
       ["from bb", "bb:thr_t:1"],

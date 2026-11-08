@@ -13,7 +13,6 @@
 //   /legacySession   {profile, title?, hidden?, turns?, held?} a dashboard (Conduit) chat → {session_id}
 //   /hold            {profile, session_id, on}          the dashboard's claim on a legacy row
 //   /answerElsewhere {profile, session_id, prompt_id, answer}
-//   /cancelApprovals {profile, session_id, reason?}
 //   /modelOptionsDelay {ms}
 //   /restart         {contract?, codeVersion?}          running turns → unknown; new port, instance, epoch
 //   /session         {profile, session_id}              engine state of a chat (ids, fences, pending, prompts)
@@ -73,7 +72,6 @@ const ops: Record<string, (b: Body, f: FakeHermes) => unknown> = {
   legacySession: (b, f) => ({ session_id: f.legacySession(b.profile, { title: b.title, hidden: b.hidden, turns: b.turns, held: b.held }) }),
   hold: (b, f) => f.hold(b.profile, b.session_id, b.on !== false),
   answerElsewhere: (b, f) => ({ answered: f.answerElsewhere(b.profile, b.session_id, b.prompt_id, b.answer) }),
-  cancelApprovals: (b, f) => f.cancelApprovals(b.profile, b.session_id, b.reason),
   modelOptionsDelay: (b, f) => void (f.modelOptionsDelayMs = Number(b.ms) || 0),
   restart: async (b, f) => {
     await f.restart({ contract: b.contract, codeVersion: b.codeVersion });

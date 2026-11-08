@@ -153,8 +153,6 @@ export interface FakeHermes {
   hold(profile: string, sessionId: string, on: boolean): void;
   /** Another client answers a pending approval or clarify. */
   answerElsewhere(profile: string, sessionId: string, promptId: string, answer: string): boolean;
-  /** The dashboard drops pending approvals (`approval.cancelled`). */
-  cancelApprovals(profile: string, sessionId: string, reason?: string): void;
   restart(opts?: Pick<FakeOptions, "contract" | "codeVersion">): Promise<void>;
   stop(): Promise<void>;
 }
@@ -430,7 +428,6 @@ export async function startFakeHermes(opts: FakeOptions = {}): Promise<FakeHerme
     legacySession: (profile, o) => engine.legacySession(named(profile), o),
     hold: (profile, id, on) => engine.hold(named(profile), id, on),
     answerElsewhere: (profile, id, promptId, answer) => engine.answerElsewhere(named(profile), id, promptId, answer),
-    cancelApprovals: (profile, id, reason) => engine.cancelApprovals(named(profile), id, reason),
     handle: (method, fn) => void handlers.set(method, fn),
     emit: (event) => {
       for (const s of sockets) s.send(JSON.stringify({ jsonrpc: "2.0", method: "event", params: event }));
