@@ -349,8 +349,10 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
     const pending = await bb.sdk.threads.interactions.list({ threadId });
     for (const interaction of pending) {
       if (interaction.status !== "pending" || interaction.origin?.kind !== "provider") continue;
-      const request = interaction.origin.providerRequestId;
-      if (!todo.has(request)) continue;
+      // bb's daemon stores `<per-process scope>:<JSON-RPC id>`; the bridge's ids are unique across processes.
+      const stored = interaction.origin.providerRequestId;
+      const request = todo.has(stored) ? stored : [...todo].find((id) => stored.endsWith(`:${id}`));
+      if (!request) continue;
       try {
         await bb.sdk.threads.interactions.cancel({ threadId, interactionId: interaction.id });
       } catch (error) {

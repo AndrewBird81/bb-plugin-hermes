@@ -641,14 +641,17 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
 describe("dead cards (A3)", () => {
   it("a dead request id → exactly one cancel of its pending card; none for others, none twice, never an answer", async () => {
     const w = await liveBotThread();
-    const card = (id: string, request: string, status = "pending") => ({ threadId: "thr_1", id, status, origin: { kind: "provider", providerRequestId: request } });
-    w.cards.push(card("int_1", "req_dead"), card("int_2", "req_live"), card("int_3", "req_old", "resolved"), {
+    // As bb's daemon stores it: `<random UUID per bridge process>:<JSON-RPC id>`.
+    const scope = "3f2b6c1e-9a4d-4e7b-8c21-5d0f7a9e1b42";
+    const card = (id: string, request: string, status = "pending") => ({ threadId: "thr_1", id, status, origin: { kind: "provider", providerRequestId: `${scope}:${request}` } });
+    w.cards.push(card("int_1", "hermes-0a1b2c3d-7"), card("int_2", "hermes-0a1b2c3d-8"), card("int_3", "hermes-0a1b2c3d-3", "resolved"), card("int_5", "hermes-0a1b2c3d-17"), {
       threadId: "thr_1",
       id: "int_4",
       status: "pending",
       origin: { kind: "plugin" },
     });
-    w.status("thr_1", { banner: null, since: null, dead_requests: ["req_dead", "req_old"] });
+    // `-7` must not match `…-17`.
+    w.status("thr_1", { banner: null, since: null, dead_requests: ["hermes-0a1b2c3d-7", "hermes-0a1b2c3d-3"] });
     await w.emit("experimental_thread.events" as never, "thr_1");
     expect(w.cancels).toEqual([{ threadId: "thr_1", interactionId: "int_1" }]);
     // Read again by the next event and at idle: nothing more.
