@@ -14,10 +14,14 @@ import type { HermesLink } from "./hermes.js";
 export const MODEL_OPTIONS_TIMEOUT_MS = 2000;
 /** The reasoning choice that leaves Hermes' own level (the bot's config): sent as no `reasoning` at all. */
 export const DEFAULT_REASONING = "default";
-/** Hermes' efforts with a bb rung, lowest to highest (r11 §1; `minimal` has none). */
-const HERMES_EFFORTS = ["none", "low", "medium", "high", "xhigh"] as const;
-/** bb rungs Hermes lacks → its nearest effort. */
-const NEAREST: Record<string, string> = { ultracode: "xhigh", max: "xhigh", ultra: "xhigh" };
+/**
+ * Hermes' efforts with a bb rung, lowest to highest (`hermes_constants.py:1073`; `minimal` has none). Hermes
+ * clamps each to what the route takes, never escalating (`agent/reasoning_effort.py:25-42`), and doesn't
+ * forward per-model effort lists (`hermes_cli/inventory.py:542-546`), so every model with reasoning offers all.
+ */
+const HERMES_EFFORTS = ["none", "low", "medium", "high", "xhigh", "max", "ultra"] as const;
+/** bb rungs Hermes lacks → the nearest lower Hermes level (never escalating). */
+const NEAREST: Record<string, string> = { ultracode: "xhigh" };
 
 export const unofferedModelText = (asked: string, used: string | null) =>
   `${asked} isn't one of this bot's models in Hermes; ${used ? `using ${used}` : "using the bot's default"}.`;

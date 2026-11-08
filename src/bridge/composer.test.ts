@@ -35,7 +35,7 @@ describe("model/list (maintenance: no provider options)", () => {
     expect(res.models).toEqual([
       expect.objectContaining({ id: "stub/stub", isDefault: true, sessionOptions: [expect.objectContaining({ id: "profile", value: "bob", values: expect.arrayContaining([{ id: "alex", label: "Alex" }, { id: "bob", label: "Bob" }]) })] }),
     ]);
-    expect(res.models[0]!.supportedReasoningEfforts.map((e: { reasoningEffort: string }) => e.reasoningEffort)).toEqual(["default", "none", "low", "medium", "high", "xhigh"]);
+    expect(res.models[0]!.supportedReasoningEfforts.map((e: { reasoningEffort: string }) => e.reasoningEffort)).toEqual(["default", "none", "low", "medium", "high", "xhigh", "max", "ultra"]);
     expect(existsSync(modelsFile(rig.dataDir, home("bob")))).toBe(true);
     expect(rig.fake.requests.filter((r) => r.method.startsWith("session."))).toEqual([]); // never a session (r09 M6)
   });
@@ -66,9 +66,14 @@ describe("model and reasoning", () => {
     await startThread(rig, "thr_mr", opts());
     await turn(rig, "thr_mr", [text("hi")], { ...opts(), model: "stub/stub", reasoningLevel: "high" });
     expect(rig.requests("session.create")[0]!.params).toMatchObject({ model: "stub", provider: "stub", reasoning: "high" });
+    for (const [asked, sent] of [["max", "max"], ["ultra", "ultra"], ["ultracode", "xhigh"]]) {
+      await startThread(rig, `thr_${asked}`, opts());
+      await turn(rig, `thr_${asked}`, [text("hi")], { ...opts(), model: "stub/stub", reasoningLevel: asked });
+      expect(rig.requests("session.create").at(-1)!.params.reasoning).toBe(sent);
+    }
     await startThread(rig, "thr_md", opts());
     await turn(rig, "thr_md", [text("hi")], { ...opts(), model: "stub/stub", reasoningLevel: "default" });
-    expect(rig.requests("session.create")[1]!.params.reasoning).toBeUndefined();
+    expect(rig.requests("session.create").at(-1)!.params.reasoning).toBeUndefined();
   });
 
   it("an unoffered model → the bot's current one and a warning; the turn still runs (S7 finding 6)", async () => {
