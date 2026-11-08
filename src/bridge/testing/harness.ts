@@ -60,7 +60,7 @@ export async function startRig(opts: { profiles?: string[]; enabled?: string[]; 
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(path.join(dataDir, WORKER_FILE), JSON.stringify(worker));
   }
-  const bridge = createBridge("test-build", { holdRetryMs: opts.holdRetryMs ?? [20, 20, 40], connection: { backoffMs: [20, 50] } });
+  const bridge = createBridge("test-build", { holdRetryMs: opts.holdRetryMs ?? [20, 20, 40], connection: { backoffMs: [20, 50] }, secondMs: opts.secondMs });
   bridge.start(dataDir, "hermes");
   const rpc = createHarness(bridge.handleLine);
   const rig: Rig = {

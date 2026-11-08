@@ -77,12 +77,17 @@ export interface BridgeOptions {
   holdRetryMs?: readonly number[];
   /** Canonical connection options (tests shorten the backoff). */
   connection?: ConnectionOptions;
+  /** One Hermes second in ms, for prompt deadlines; tests match the fake's `secondMs`. */
+  secondMs?: number;
 }
 
 export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
   const io = createBridgeIo<Notification>();
   const notify = (method: string, params: unknown) => io.send({ jsonrpc: "2.0", method, params });
   const threads = new Map<string, HostedThread>();
+  /** Our requests to the runtime, by id, awaiting its response line. */
+  const outbound = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+  let nextRequest = 0;
   const links = new Map<string, HermesLink>();
   const histories = new Map<string, History>();
   let registry: BuildRegistry | null = null;
@@ -98,8 +103,22 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
       return pluginId;
     },
     holdRetryMs: opts.holdRetryMs ?? HOLD_RETRY_MS,
+    secondMs: opts.secondMs ?? 1000,
     emit: (threadId: string, deltas: ThreadDelta[]) => notify(THREAD_DELTA_NOTIFICATION_METHOD, { threadId, deltas }),
     announce: (threadId: string, providerThreadId: string) => notify(BRIDGE_NOTIFICATION_METHODS.threadIdentity, { threadId, providerThreadId }),
+    request(method: string, params: unknown) {
+      const id = `hermes-${++nextRequest}`;
+      const result = new Promise<unknown>((resolve, reject) => outbound.set(id, { resolve, reject }));
+      io.send({ jsonrpc: "2.0", id, method, params } as never);
+      return { id, result };
+    },
+    cancel(id: string) {
+      const pending = outbound.get(id);
+      if (!pending) return;
+      outbound.delete(id);
+      notify("notifications/cancelled", { requestId: id });
+      pending.reject(new Error("cancelled"));
+    },
     link(root: string) {
       const key = canonicalHome(root);
       let link = links.get(key);
@@ -177,8 +196,16 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
 
   const handleLine = createBridgeLineHandler({
     handleParsedMessage(message) {
+      const response = responseSchema.safeParse(message);
+      if (response.success) {
+        const pending = outbound.get(String(response.data.id));
+        outbound.delete(String(response.data.id));
+        if (response.data.error) pending?.reject(new Error(response.data.error.message ?? "request failed"));
+        else pending?.resolve(response.data.result);
+        return;
+      }
       const parsed = requestSchema.safeParse(message);
-      if (!parsed.success) return; // responses and notifications: nothing to answer
+      if (!parsed.success) return; // notifications: nothing to answer
       const { id, method: name, params } = parsed.data;
       runBridgeRequest({
         request: { id },
@@ -216,6 +243,13 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
     },
   };
 }
+
+const responseSchema = z.object({
+  id: z.union([z.string(), z.number()]),
+  method: z.never().optional(),
+  result: z.unknown().optional(),
+  error: z.object({ message: z.string().optional() }).passthrough().optional(),
+});
 
 const requestSchema = z.object({
   id: z.union([z.string(), z.number()]),

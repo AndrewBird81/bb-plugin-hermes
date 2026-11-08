@@ -7,7 +7,7 @@ import { homedir } from "node:os";
 import type { PromptInput, ThreadDelta } from "@get-bb/plugin-sdk/provider-bridge";
 import { HermesDisconnectedError, HermesRpcError, type HermesClient } from "../hermes/client.js";
 import type { RestMessage } from "../hermes/history.js";
-import type { AdmissionStatus, GatewayEvent, Snapshot } from "../hermes/types.js";
+import type { AdmissionStatus, GatewayEvent, PendingPrompt, Snapshot } from "../hermes/types.js";
 import { EXTENSION_KINDS, PERSISTED_TURNS_KEPT, type PersistedTurnState, type StatusState } from "../shared/extension-state.js";
 import { type Marker, segmentInput } from "../shared/marker.js";
 import type { SourceTag } from "../shared/sources.js";
@@ -15,6 +15,7 @@ import { BOT_CHAT_TITLE } from "../shared/sources.js";
 import { botIdentity, chatIdentity, isPending, resolveContext, type ThreadContext, UserFacingError } from "./context.js";
 import { readThreads, updateThread } from "./files.js";
 import { findTurn, type History, type HermesLink } from "./hermes.js";
+import { ANSWERED_ELSEWHERE_TEXT, answerFor, type PromptCard, promptCard, TIMED_OUT_TEXT } from "./interactions.js";
 import { renderRows, StreamRenderer, textItem } from "./render.js";
 
 export const DELETED_TEXT = "Deleted in Hermes.";
@@ -34,7 +35,12 @@ export interface ThreadHost {
   readonly dataDir: string;
   readonly pluginId: string;
   readonly holdRetryMs: readonly number[];
+  /** One Hermes second, for prompt deadlines (tests shorten it with the fake's). */
+  readonly secondMs: number;
   emit(threadId: string, deltas: ThreadDelta[]): void;
+  /** A request to the runtime (`interaction/request`); `cancel` withdraws it (`notifications/cancelled`, A3). */
+  request(method: string, params: unknown): { id: string; result: Promise<unknown> };
+  cancel(id: string): void;
   announce(threadId: string, providerThreadId: string): void;
   link(root: string): HermesLink;
   history(root: string): History;
@@ -110,6 +116,13 @@ class BbTurn {
 
 class Stopped extends Error {}
 
+interface PromptEntry {
+  card: PromptCard;
+  prompt: PendingPrompt & Record<string, unknown>;
+  requestId: string | null;
+  answered: boolean;
+}
+
 interface SessionState {
   root: string;
   profile: string;
@@ -135,6 +148,8 @@ export class HostedThread {
   session: SessionState | null = null;
   turn: BbTurn | null = null;
   private readonly logs = new Map<string, AdmissionLog>();
+  /** Hermes prompts on this session, whichever admission raised them (R1 S1). */
+  private readonly prompts = new Map<string, PromptEntry>();
   private persisted: PersistedTurnState["turns"];
   private mirrored: PersistedTurnState["mirrored"];
   private banner: StatusState["banner"] = null;
@@ -170,6 +185,7 @@ export class HostedThread {
     this.turn = turn;
     this.emit([{ kind: "input.accepted", clientRequestId: params.clientRequestId }, { kind: "turn.open" }]);
     if (this.banner?.kind === "running_elsewhere") this.setBanner(null);
+    for (const entry of this.prompts.values()) this.raise(entry);
     let outcome: Outcome = { status: "completed" };
     try {
       for (const segment of segmentInput(params.input)) {
@@ -210,6 +226,11 @@ export class HostedThread {
     if (persisted) closing.push(this.state(EXTENSION_KINDS.persistedTurn, persisted));
     if (clearHeld) closing.push(this.state(EXTENSION_KINDS.status, { banner: null, since: null } satisfies StatusState));
     if (this.turn === turn) this.turn = null;
+    // bb drops a turn's open requests when it settles: withdraw ours, and raise them again next turn.
+    for (const entry of this.prompts.values()) {
+      if (entry.requestId && !entry.answered) this.host.cancel(entry.requestId);
+      entry.requestId = null;
+    }
     this.emit(closing);
     // Identity changes only right after a boundary, never mid-turn (S1-S3 fact 1).
     const identity = this.wantedIdentity();
@@ -295,7 +316,7 @@ export class HostedThread {
       }
       throw error;
     }
-    this.attach(unit, status.admission_id);
+    if (unit.admissionId !== status.admission_id) this.attach(unit, status.admission_id);
     if (turn.stopped) await this.stopUnit(unit);
   }
 
@@ -376,6 +397,8 @@ export class HostedThread {
     ctx.lineageRoot = lineageRoot;
     ctx.sessionId = snap.stored_session_id;
     this.notePending(snap.pending);
+    // Every attach re-raises the snapshot's open prompts (02 §Protocol mapping).
+    for (const prompt of snap.prompts ?? []) this.addPrompt(prompt as PendingPrompt & Record<string, unknown>, null);
     return session;
   }
 
@@ -488,6 +511,9 @@ export class HostedThread {
       log.text = p.text ?? log.text;
       if (p.status === "started") log.started = true;
       if (typeof p.execution_generation === "number") log.generation = p.execution_generation;
+      // Our submit is pending here before its reply may come back: route its events from now on.
+      const unit = this.turn?.units.find((u) => u.own && !u.admissionId && u.submissionId === p.input_id);
+      if (unit) this.attach(unit, p.admission_id);
     }
   }
 
@@ -512,6 +538,9 @@ export class HostedThread {
         if (this.turn) this.emit([{ kind: "context.compacted" }]);
       }
     }
+    if (ev.type === "approval.request" || ev.type === "clarify.request") this.addPrompt(ev.payload as PendingPrompt & Record<string, unknown>, ev.admission_id ?? null);
+    else if (ev.type === "approval.settled" || ev.type === "clarify.settled") this.settlePrompt(String(ev.payload?.prompt_id ?? ""), false);
+    else if (ev.type === "approval.cancelled") for (const id of (ev.payload?.request_ids as unknown[] | undefined) ?? []) this.settlePrompt(String(id), true);
     const id = ev.admission_id;
     if (!id) return;
     const log = this.log(id);
@@ -558,6 +587,66 @@ export class HostedThread {
     unit.done = true;
     unit.settled.resolve({ ...outcome, persisted });
     return unit.renderer.finish(outcome.status === "completed");
+  }
+
+  // ---- approvals and clarify (T1.2) ----------------------------------------------------------------------
+
+  private addPrompt(prompt: PendingPrompt & Record<string, unknown>, admissionId: string | null): void {
+    if (!prompt?.prompt_id || this.prompts.has(prompt.prompt_id)) return;
+    const unit = admissionId ? this.turn?.units.find((u) => u.admissionId === admissionId) : undefined;
+    const entry: PromptEntry = { card: this.card(prompt, unit), prompt, requestId: null, answered: false };
+    this.prompts.set(prompt.prompt_id, entry);
+    this.raise(entry);
+  }
+
+  private card(prompt: PendingPrompt & Record<string, unknown>, unit: Unit | undefined): PromptCard {
+    return promptCard(prompt, unit?.renderer.runningToolKey() ?? null, Date.now(), this.host.secondMs);
+  }
+
+  /** bb routes a request only into an open turn: raise now if one is open, else when the next one opens. */
+  private raise(entry: PromptEntry): void {
+    if (!this.turn || entry.requestId || entry.answered) return;
+    const { id, result } = this.host.request("interaction/request", { threadId: this.threadId, providerThreadId: this.providerThreadId, turnId: null, payload: entry.card.payload });
+    entry.requestId = id;
+    result.then(
+      (resolution) => this.answer(entry, id, resolution),
+      () => {
+        if (entry.requestId === id) entry.requestId = null;
+      },
+    );
+  }
+
+  /** Only bb's user answers: the bridge never answers for them (A2), and sends only a choice Hermes offered. */
+  private async answer(entry: PromptEntry, id: string, resolution: unknown): Promise<void> {
+    if (entry.requestId !== id || !this.prompts.has(entry.card.promptId)) return;
+    const answer = answerFor(entry.card, resolution);
+    const session = this.session;
+    if (answer === null || !session) {
+      entry.requestId = null;
+      return;
+    }
+    entry.answered = true;
+    const base = { profile: session.profile, session_id: session.id, execution_generation: entry.card.generation, prompt_id: entry.card.promptId };
+    try {
+      if (entry.card.kind === "approval") await session.client.approvalRespond({ ...base, choice: answer });
+      else await session.client.clarifyRespond({ ...base, answer });
+    } catch (error) {
+      // Settled meanwhile (another app, the deadline, Stop): nothing to say (02 §Protocol mapping).
+      if (reasonOf(error) === "stale_generation" || reasonOf(error) === "not_found") return;
+      if (this.turn) this.emit([{ kind: "provider.warning", summary: `Hermes didn't take the answer (${errorText(error)})` }]);
+    }
+  }
+
+  /** Hermes settled a prompt: ours closes silently; one bb didn't answer closes with why. */
+  private settlePrompt(promptId: string, dropped: boolean): void {
+    const entry = this.prompts.get(promptId);
+    if (!entry) return;
+    this.prompts.delete(promptId);
+    if (entry.answered) return;
+    if (entry.requestId) this.host.cancel(entry.requestId);
+    if (dropped || !this.turn) return;
+    const timedOut = entry.card.deadline !== null && Date.now() >= entry.card.deadline - 1000;
+    this.emit([{ kind: "provider.warning", summary: timedOut ? TIMED_OUT_TEXT : ANSWERED_ELSEWHERE_TEXT }]);
   }
 
   // ---- Stop and steer ------------------------------------------------------------------------------------

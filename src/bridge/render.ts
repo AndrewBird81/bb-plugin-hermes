@@ -228,6 +228,12 @@ export class StreamRenderer {
     return out;
   }
 
+  /** The provider item id of the tool running now: the item an approval gates. */
+  runningToolKey(): string | null {
+    const id = [...this.tools.keys()].at(-1);
+    return id ? `${this.prefix}:tool:${id}` : null;
+  }
+
   /** Close every open item; a turn that didn't complete leaves its tools interrupted. */
   finish(completed: boolean): ThreadDelta[] {
     const out: ThreadDelta[] = [];
