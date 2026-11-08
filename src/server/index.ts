@@ -4,14 +4,16 @@ import pkg from "../../package.json" with { type: "json" };
 import { hostContract, hostSignals } from "../shared/host-contract.js";
 import { rpcContract, type Diagnostics } from "../shared/rpc-contract.js";
 import type { SettingsHandle } from "../shared/settings.js";
-import { createConnection, errorCode, KEEPALIVE_MS } from "./connection.js";
-import { bindingCounts, openMappingDb } from "./db.js";
+import { type ConnectionSource, createConnection, errorCode, KEEPALIVE_MS } from "./connection.js";
+import { bindingCounts, type Db, getKv, openMappingDb, setKv } from "./db.js";
 
 /** Worker `diagnostics` must not hold the RPC for the host's 30 s default. */
 const WORKER_DIAGNOSTICS_TIMEOUT_MS = 5_000;
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
+    // An abort during the check came before this listener: stop now, not after `ms`.
+    if (signal.aborted) return resolve();
     const done = () => {
       clearTimeout(timer);
       signal.removeEventListener("abort", done);
@@ -22,18 +24,26 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+const MACHINE_KEY = "machine";
+
+function savedMachine(db: Db): string {
+  const value = getKv(db, MACHINE_KEY);
+  return typeof value === "string" ? value : "";
+}
+
 export async function startServer(bb: BbPluginApi, settings: SettingsHandle): Promise<void> {
   const db = openMappingDb(bb);
   const host = bb.hosts.experimental_client({ contract: hostContract, experimental_signals: hostSignals });
-  const connection = createConnection(bb, settings, db, host);
+  const source: ConnectionSource = { get: async () => ({ machine: savedMachine(db), folder: (await settings.get()).folder }) };
+  const connection = createConnection(bb, source, db, host);
   await connection.init();
 
-  const isTarget = async (hostId: string) => (await settings.get()).machine === hostId;
+  const isTarget = (hostId: string) => savedMachine(db) === hostId;
   host.experimental_onSignal("watch", async ({ hostId }) => {
-    if (await isTarget(hostId)) await connection.ensureNow();
+    if (isTarget(hostId)) await connection.ensureNow();
   });
   host.experimental_onWorkerExit(async ({ hostId }) => {
-    if (!(await isTarget(hostId))) return;
+    if (!isTarget(hostId)) return;
     connection.recordError("worker_exit");
     // The next call starts a fresh worker, which re-arms the watch.
     await connection.ensureNow();
@@ -75,7 +85,9 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle): Pr
       };
     },
     async setConnection({ machine, folder }) {
-      await settings.experimental_set(folder === undefined ? { machine } : { machine, folder });
+      setKv(db, MACHINE_KEY, machine);
+      // A folder change also fires `onChange`; both share one check.
+      if (folder !== undefined) await settings.experimental_set({ folder });
       return connection.ensureNow();
     },
   });

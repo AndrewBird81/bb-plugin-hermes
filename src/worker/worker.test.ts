@@ -170,7 +170,7 @@ describe("diagnostics", () => {
 
     await h.experimental_call("ensureWatch", { root: "~/.bb-hermes-test-absent", enabled_bots: [] });
     const out = await h.experimental_call("diagnostics", null);
-    expect(out).toMatchObject({ pid: process.pid, build: "dev", worker_boot_id: before.worker_boot_id, version: { supported: null } });
+    expect(out).toMatchObject({ pid: process.pid, build: expect.stringMatching(/\+dev$/), worker_boot_id: before.worker_boot_id, version: { supported: null } });
     expect(out.watch).toMatchObject({ root: "~/.bb-hermes-test-absent", last_error: "no_gateway", state: expect.stringMatching(/^(connecting|disconnected)$/) });
     expect(out.bridges).toEqual([
       { pid: process.pid, build: "aaa", thread_id: null, started_at: 1, alive: true },

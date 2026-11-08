@@ -1,5 +1,5 @@
-// Settings section (01 §1, T0.10): the Hermes machine picker, the folder, and the health line.
-// The only machine picker in the plugin (01 §1).
+// Settings section (01 §1, T0.10): the Hermes machine picker and the health line. The folder is bb's own
+// settings field above this section. The only machine picker in the plugin (01 §1).
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
@@ -8,16 +8,13 @@ import {
   useRealtimeConnectionState,
   useRpc,
   useSdk,
-  useSettings,
 } from "@get-bb/plugin-sdk/app";
 import type { PluginBrowserBbSdk } from "@get-bb/plugin-sdk/app";
 import type { HEALTH_CHANNEL as HealthChannel, Health, RpcContract } from "../shared/rpc-contract.js";
-import type { DEFAULT_FOLDER as DefaultFolder } from "../shared/settings.js";
 import { healthText, workerSeenText } from "./health-text.js";
 
-// Values, not imports: the shared modules load zod and the SDK at runtime. The types keep them in step.
+// A value, not an import: the shared module loads zod and the SDK at runtime. The type keeps it in step.
 const HEALTH: typeof HealthChannel = "health";
-const DEFAULT_FOLDER: typeof DefaultFolder = "~/.hermes";
 
 type Host = Awaited<ReturnType<PluginBrowserBbSdk["hosts"]["list"]>>[number];
 
@@ -74,26 +71,21 @@ function useHosts() {
 
 export function ConnectionSection() {
   const rpc = useRpc<RpcContract>();
-  const settings = useSettings();
   const { health, error: healthError, show } = useHealth();
   const { hosts, error: hostsError } = useHosts();
   const [machine, setMachine] = useState<string | null>(null);
-  const [folder, setFolder] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const id = useId();
 
-  // The form starts from the saved settings; edits are kept until saved.
-  const savedMachine = typeof settings.values?.machine === "string" ? settings.values.machine : "";
-  const savedFolder = typeof settings.values?.folder === "string" ? settings.values.folder : DEFAULT_FOLDER;
-  const machineValue = machine ?? savedMachine;
-  const folderValue = folder ?? savedFolder;
+  // The picker starts from the saved machine (health's target); an edit is kept until saved.
+  const machineValue = machine ?? health?.machine?.id ?? "";
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
     setSaveError(null);
-    show(rpc.call("setConnection", { machine: machineValue, folder: folderValue }))
+    show(rpc.call("setConnection", { machine: machineValue }))
       .catch((cause: unknown) => setSaveError(errorText(cause)))
       .finally(() => setSaving(false));
   };
@@ -114,7 +106,7 @@ export function ConnectionSection() {
             aria-describedby={`${id}-machine-hint`}
             className={FIELD}
             value={machineValue}
-            disabled={settings.isLoading || hosts === null}
+            disabled={health === null || hosts === null}
             onChange={(event) => setMachine(event.target.value)}
           >
             <option value="">Not connected</option>
@@ -130,31 +122,13 @@ export function ConnectionSection() {
           </p>
           {hostsError !== null && <p className="text-destructive">Can't list machines: {hostsError}</p>}
         </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor={`${id}-folder`} className="font-medium text-foreground">
-            Hermes folder
-          </label>
-          <input
-            id={`${id}-folder`}
-            aria-describedby={`${id}-folder-hint`}
-            className={`${FIELD} font-mono`}
-            value={folderValue}
-            disabled={settings.isLoading}
-            spellCheck={false}
-            autoComplete="off"
-            onChange={(event) => setFolder(event.target.value)}
-          />
-          <p id={`${id}-folder-hint`} className="text-muted-foreground">
-            Hermes' home on that machine. Default: {DEFAULT_FOLDER}
-          </p>
-        </div>
         {saveError !== null && (
           <p role="alert" className="text-destructive">
             {saveError}
           </p>
         )}
         <div>
-          <button type="submit" className={BUTTON} disabled={saving || settings.isLoading}>
+          <button type="submit" className={BUTTON} disabled={saving || health === null}>
             {saving ? "Saving…" : "Save"}
           </button>
         </div>

@@ -34,10 +34,10 @@ describe("registerProvider", () => {
     });
   });
 
-  it("passes the machine and folder settings to the bridge", () => {
+  it("passes the folder setting to the bridge", () => {
     const derive = register().deriveProviderOptions!;
     const context = { threadId: "t", projectId: "p", model: "m", permissionMode: "auto" } as const;
-    expect(derive({ ...context, settings: { machine: "host_1", folder: "/srv/hermes" } })).toEqual({ machine: "host_1", folder: "/srv/hermes" });
-    expect(derive({ ...context, settings: {} })).toEqual({ machine: "", folder: DEFAULT_FOLDER });
+    expect(derive({ ...context, settings: { folder: "/srv/hermes" } })).toEqual({ folder: "/srv/hermes" });
+    expect(derive({ ...context, settings: {} })).toEqual({ folder: DEFAULT_FOLDER });
   });
 });

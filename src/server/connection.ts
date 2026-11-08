@@ -3,7 +3,7 @@
 import type { BbPluginApi, ExperimentalHostClient } from "@get-bb/plugin-sdk";
 import type { EnsureWatchOutput, HostContract, hostSignals } from "../shared/host-contract.js";
 import { HEALTH_CHANNEL, type Health, type HealthState } from "../shared/rpc-contract.js";
-import type { ConnectionSettings, SettingsHandle } from "../shared/settings.js";
+import type { ConnectionSettings } from "../shared/settings.js";
 import { getKv, setKv, type Db } from "./db.js";
 
 export const KEEPALIVE_MS = 60_000;
@@ -35,7 +35,12 @@ function healthFrom(settings: ConnectionSettings, patch: Partial<Health> & { sta
 /** Change detection ignores `worker_last_seen_at`: it moves every keep-alive; the app reads it on refetch. */
 const sameHealth = (a: Health, b: Health): boolean => JSON.stringify({ ...a, worker_last_seen_at: 0 }) === JSON.stringify({ ...b, worker_last_seen_at: 0 });
 
-export function createConnection(bb: BbPluginApi, settings: SettingsHandle, db: Db, host: HostClient) {
+/** The machine (mapping db `kv`) and the folder (`bb.settings`), read at each check. */
+export interface ConnectionSource {
+  get(): Promise<ConnectionSettings>;
+}
+
+export function createConnection(bb: BbPluginApi, settings: ConnectionSource, db: Db, host: HostClient) {
   let health: Health = healthFrom({ machine: "", folder: "" }, { state: "not_configured" });
   /** The worker's last answer, for the current target only. */
   let answer: EnsureWatchOutput | null = null;

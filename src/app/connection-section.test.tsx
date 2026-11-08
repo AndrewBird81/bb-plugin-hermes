@@ -40,14 +40,11 @@ function health(state: HealthState, extra: Partial<Health> = {}): Health {
   };
 }
 
-function render<M extends keyof RpcContract>(
-  rpc: PluginRpcTestHandlers<Pick<RpcContract, M>>,
-  settings = { machine: "", folder: DEFAULT_FOLDER },
-) {
+function render<M extends keyof RpcContract>(rpc: PluginRpcTestHandlers<Pick<RpcContract, M>>) {
   return renderSlot<object, Pick<RpcContract, M>>(section, {}, {
     rpc,
     experimental_rpcContract: rpcContract,
-    settings,
+    settings: { folder: DEFAULT_FOLDER },
     sdk: { hosts: { list: async () => hosts } },
   });
 }
@@ -93,35 +90,25 @@ describe("settings section", () => {
     ]);
   });
 
-  it("Save calls setConnection with the picked machine and folder", async () => {
+  it("Save calls setConnection with the picked machine", async () => {
     const slot = render({
       health: () => health("not_configured"),
       setConnection: () => health("connected", { version: "0.9.1", supported: true }),
     });
     await slot.findByRole("option", { name: "studio" });
     fireEvent.change(slot.getByLabelText("Hermes machine"), { target: { value: "host_a" } });
-    fireEvent.change(slot.getByLabelText("Hermes folder"), { target: { value: "/opt/hermes" } });
     fireEvent.click(slot.getByRole("button", { name: "Save" }));
     expect(await slot.findByText("Connected to Hermes 0.9.1 on studio: supported.")).toBeTruthy();
     expect(slot.inspection.rpcCalls.filter((c) => c.method === "setConnection")).toEqual([
-      { method: "setConnection", input: { machine: "host_a", folder: "/opt/hermes" } },
+      { method: "setConnection", input: { machine: "host_a" } },
     ]);
   });
 
-  it("starts from the saved settings", async () => {
-    const slot = render({ health: () => health("connecting") }, { machine: "host_b", folder: "~/hermes-test" });
+  it("starts from the saved machine and has no folder field (bb's settings form holds it)", async () => {
+    const slot = render({ health: () => health("connecting", { machine: { id: "host_b", name: "laptop", online: true } }) });
     await slot.findByRole("option", { name: "studio" });
-    expect((slot.getByLabelText("Hermes machine") as HTMLSelectElement).value).toBe("host_b");
-    expect((slot.getByLabelText("Hermes folder") as HTMLInputElement).value).toBe("~/hermes-test");
-  });
-
-  it("shows a validation error and keeps the health line", async () => {
-    const slot = render({ health: () => health("not_configured"), setConnection: () => health("connected") });
-    await slot.findByText("Not connected: pick the Hermes machine.");
-    fireEvent.change(slot.getByLabelText("Hermes folder"), { target: { value: "hermes" } });
-    fireEvent.click(slot.getByRole("button", { name: "Save" }));
-    expect((await slot.findByRole("alert")).textContent).toBe("Use an absolute path or one starting with ~/.");
-    expect(slot.getByText("Not connected: pick the Hermes machine.")).toBeTruthy();
+    await waitFor(() => expect((slot.getByLabelText("Hermes machine") as HTMLSelectElement).value).toBe("host_b"));
+    expect(slot.queryByLabelText("Hermes folder")).toBeNull();
   });
 
   it("shows a server error from setConnection", async () => {

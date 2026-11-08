@@ -5,7 +5,7 @@ import type { EnsureWatchOutput, WorkerDiagnostics } from "../shared/host-contra
 import { HEALTH_CHANNEL, type Diagnostics, type Health } from "../shared/rpc-contract.js";
 import { settingsDescriptors } from "../shared/settings.js";
 import { KEEPALIVE_MS } from "./connection.js";
-import { getKv, insertBinding, openMappingDb } from "./db.js";
+import { getKv, insertBinding, openMappingDb, setKv } from "./db.js";
 import { startServer } from "./index.js";
 
 const MACHINE = "host_hermes";
@@ -31,6 +31,7 @@ const workerDiagnostics: WorkerDiagnostics = {
 };
 
 interface Setup {
+  /** The saved machine (`kv`). */
   machine?: string;
   online?: boolean;
   host?: (call: ExperimentalFakeHostRpcCall) => unknown;
@@ -40,10 +41,10 @@ async function setup({ machine = MACHINE, online = true, host = () => answer() }
   const hosts = { online };
   const fake = createFakePluginHost({
     pluginId: "hermes",
-    settings: { machine },
     sdk: { hosts: { list: async () => [makeHostResponse({ id: MACHINE, name: "hermes-mac", status: hosts.online ? "connected" : "disconnected" })] } },
     experimental_callHostRpc: (call) => host(call),
   });
+  if (machine) setKv(openMappingDb(fake.bb), "machine", machine);
   const settings = fake.bb.settings.define(settingsDescriptors);
   await startServer(fake.bb, settings);
   const { harness } = fake;
@@ -175,10 +176,30 @@ describe("keep-alive and health", () => {
     await expect(t.rpc("setConnection", { machine: "a b" })).rejects.toThrow();
   });
 
-  it("a settings save re-checks at once", async () => {
+  it("a folder save in bb's settings form re-checks at once", async () => {
+    const t = await setup();
+    await t.rpc("setConnection", { machine: MACHINE });
+    await t.harness.behavior.setSettings({ folder: "/private/tmp/bb-hermes-test/other" });
+    await vi.waitFor(() => expect(t.ensureCalls().at(-1)?.input).toEqual({ root: "/private/tmp/bb-hermes-test/other", enabled_bots: [] }));
+  });
+
+  it("the machine is saved in kv, not in bb's settings", async () => {
     const t = await setup({ machine: "" });
-    await t.harness.behavior.setSettings({ machine: MACHINE });
-    await vi.waitFor(() => expect(t.healthSignals()).toEqual(["connecting", "connected"]));
+    await t.rpc("setConnection", { machine: MACHINE });
+    expect(getKv(openMappingDb(t.bb), "machine")).toBe(MACHINE);
+    expect((await t.rpc<Health>("setConnection", { machine: "" })).state).toBe("not_configured");
+    expect(getKv(openMappingDb(t.bb), "machine")).toBe("");
+  });
+
+  it("an abort during a check stops the keep-alive at once, not after 60 s", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => (release = resolve));
+    const t = await setup({ host: async () => (await pending, answer()) });
+    const svc = t.harness.behavior.runService("keepalive");
+    await vi.waitFor(() => expect(t.ensureCalls()).toHaveLength(1));
+    svc.controller.abort();
+    release();
+    await svc.done;
   });
 
   it("publishes health on every change", async () => {

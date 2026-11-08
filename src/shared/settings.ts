@@ -1,5 +1,6 @@
-// Plugin settings (01 §1, 02 §Placement): the Hermes machine and folder. Server-side `bb.settings.define`;
-// the app reads them with `useSettings()` and writes them through the `setConnection` RPC.
+// Connection settings (01 §1, 02 §Placement). The folder is a `bb.settings` field, so bridges get it
+// through `deriveProviderOptions`. The machine lives in the mapping db's `kv`, set by `setConnection`:
+// the app's Connection section picks it by name, and bb's settings form never shows a host id.
 import type { PluginSettingDescriptors, PluginSettingsHandle } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
@@ -15,17 +16,10 @@ export const folderSchema = z
   .regex(/^(~|~\/.+|\/.+)$/, "Use an absolute path or one starting with ~/.");
 
 export const settingsDescriptors = {
-  machine: {
-    type: "string",
-    label: "Hermes machine",
-    description: "The bb machine that runs Hermes. Empty: not connected.",
-    default: "",
-    experimental_schema: machineSchema,
-  },
   folder: {
     type: "string",
     label: "Hermes folder",
-    description: "Hermes' home on that machine.",
+    description: "Hermes' home on the Hermes machine.",
     default: DEFAULT_FOLDER,
     experimental_schema: folderSchema,
   },

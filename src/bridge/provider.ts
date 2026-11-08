@@ -9,15 +9,12 @@ export const PROVIDER_ID = "hermes";
 /** The Hermes efforts bb's ladder also has, lowest to highest (r11 §1; Hermes' `minimal` has no bb rung). */
 export const REASONING_LEVELS = ["none", "low", "medium", "high", "xhigh", "max", "ultra"] as const;
 
-/** What `deriveProviderOptions` sends every bridge command (02 §Placement). */
-export type BridgeProviderOptions = { machine: string; folder: string };
+/** What `deriveProviderOptions` sends every bridge command (02 §Placement). The machine isn't a setting (kv). */
+export type BridgeProviderOptions = { folder: string };
 
 export function deriveProviderOptions({ settings }: Pick<PluginProviderOptionsContext, "settings">): BridgeProviderOptions {
-  const { machine, folder } = settings;
-  return {
-    machine: typeof machine === "string" ? machine : "",
-    folder: typeof folder === "string" && folder !== "" ? folder : DEFAULT_FOLDER,
-  };
+  const { folder } = settings;
+  return { folder: typeof folder === "string" && folder !== "" ? folder : DEFAULT_FOLDER };
 }
 
 export function registerProvider(bb: BbPluginApi): void {

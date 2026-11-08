@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
+import pkg from "../../package.json" with { type: "json" };
 import { buildFromModuleUrl } from "./bridge-registry.js";
 import { hostContract } from "./host-contract.js";
 import { rpcContract } from "./rpc-contract.js";
-import { folderSchema, machineSchema } from "./settings.js";
+import { folderSchema, machineSchema, settingsDescriptors } from "./settings.js";
 
 describe("settings", () => {
+  it("bb's settings form holds only the folder: the machine is picked by name in the app", () => {
+    expect(Object.keys(settingsDescriptors)).toEqual(["folder"]);
+  });
+
   it("validates machine and folder", () => {
     expect(machineSchema.safeParse("").success).toBe(true);
     expect(machineSchema.safeParse("host_abc123").success).toBe(true);
@@ -29,8 +34,8 @@ describe("contracts", () => {
 });
 
 describe("buildFromModuleUrl", () => {
-  it("reads the artifact digest, else dev", () => {
-    expect(buildFromModuleUrl("file:///x/plugin-host-artifacts/hermes/5d4a4f78f9046d7b2570e59aab07cb85/host.mjs")).toBe("5d4a4f78f904");
-    expect(buildFromModuleUrl("file:///repo/src/bridge/entry.ts")).toBe("dev");
+  it("is the plugin version and the artifact digest, else dev", () => {
+    expect(buildFromModuleUrl("file:///x/plugin-host-artifacts/hermes/5d4a4f78f9046d7b2570e59aab07cb85/host.mjs")).toBe(`${pkg.version}+5d4a4f78f904`);
+    expect(buildFromModuleUrl("file:///repo/src/bridge/entry.ts")).toBe(`${pkg.version}+dev`);
   });
 });
