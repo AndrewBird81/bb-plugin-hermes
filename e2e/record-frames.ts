@@ -511,6 +511,43 @@ async function main() {
     viewer.c.close();
   }
 
+  // ---- A rotated Bot Chat (dave, in_place false): what each title lookup returns before and after the compress.
+  {
+    const bb = await canonical("bb");
+    const d = await dashboard();
+    const root = (await bb.c.create({ profile: "dave", title: "Bot Chat", hidden: true, follow_profile_config: true, request_id: "bb:botchat:dave" })).session_id;
+    for (let i = 1; i <= 6; i++) await bb.turn("dave", root, `bot chat turn ${i} ` + "lorem ipsum ".repeat(30), `bb:thr_rec_rotbot:${i}`);
+    const lookups = async () => ({
+      canonical: await bb.c.sessionList({ profile: "dave", title: "Bot Chat", include_hidden: true }),
+      dashboard: (await d.rpc("session.list", { profile: "dave", title: "Bot Chat" })).sessions,
+      profiles_list: (await bb.c.profilesList({ include_sessions: true })).profiles.find((p) => p.name === "dave")?.canonical_session ?? null,
+    });
+    const before = await lookups();
+    const s1 = await bb.c.resume({ profile: "dave", session_id: root, omit_messages: true });
+    const compress = (await bb.c.mutate({ profile: "dave", session_id: root, request_id: "bb:compress:rotbot", expected_revision: s1.revision, expected_generation: s1.execution_generation, operation: "compress", payload: {} })) as unknown as { target_session_id: string };
+    await sleep(1000);
+    const after = await lookups();
+    await bb.turn("dave", root, "bot chat after rotation", "bb:thr_rec_rotbot:7");
+    const afterTurn = await lookups();
+    await listSessions(H, "dave", ALL);
+    const tip = compress.target_session_id;
+    const name = (id: unknown) => (id === root ? "root" : id === tip ? "tip" : id ?? null);
+    const named = (l: Awaited<ReturnType<typeof lookups>>) => ({
+      canonical: l.canonical.sessions.map((r) => ({ ...r, session_id: name(r.session_id), resolved_id: name(r.resolved_id) })),
+      dashboard: (l.dashboard as Record<string, unknown>[]).map((r) => ({ session_id: name(r.session_id), resolved_id: name(r.resolved_id), title: r.title })),
+      profiles_list: l.profiles_list && { ...l.profiles_list, id: name(l.profiles_list.id), resolved_id: name(l.profiles_list.resolved_id) },
+    });
+    save("rotated-bot-chat", "A Bot Chat in a rotating profile (dave, in_place false): session.list{title, include_hidden} (canonical), the dashboard's title lookup and profiles.list canonical_session, before and after a compress, and after a turn by the root id. Ids named root/tip.", {
+      root,
+      tip,
+      before: named(before),
+      after_compress: named(after),
+      after_turn: named(afterTurn),
+    });
+    bb.c.close();
+    d.close();
+  }
+
   // ---- reasoning: the stub streams reasoning_content before its reply; a cli session, then a gui one (bb's source, A20).
   {
     const bb = await canonical("bb");

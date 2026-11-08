@@ -23,7 +23,7 @@ describe("recorded frames (T1.0)", () => {
     expect(names.sort()).toEqual(
       [
         "adoption", "approvals", "attachments", "chat-continue", "conduit-coordination", "conduit-forward", "conduit-turn", "detach", "lease-wait",
-        "reasoning", "rest-midturn", "restart-unknown", "rotating-viewer", "slash-new", "viewer",
+        "reasoning", "rest-midturn", "restart-unknown", "rotated-bot-chat", "rotating-viewer", "slash-new", "viewer",
       ].sort(),
     );
     for (const n of names) expect(load(n).$comment, n).toBeTruthy();
@@ -91,6 +91,22 @@ describe("recorded frames (T1.0)", () => {
     expect(notes.viewer_during_compress.map((e: any) => e.type)).toContain("session.updated");
     expect(notes.viewer_during_next_turn.map((e: any) => e.type)).toEqual(expect.arrayContaining(["message.start", "message.delta", "message.complete"]));
     expect(notes.resume_root_after).toMatchObject({ session: "root", stored: "root", epoch: "same" });
+  });
+
+  it("a rotated Bot Chat: canonical session.list{title} keeps answering the root (title Bot Chat); the dashboard and profiles.list resolve the tip, whose own title Hermes may auto-set", () => {
+    const { notes } = load("rotated-bot-chat");
+    for (const k of ["before", "after_compress", "after_turn"]) {
+      expect(notes[k].canonical, k).toHaveLength(1);
+      expect(notes[k].canonical[0], k).toMatchObject({ session_id: "root", resolved_id: "root", title: "Bot Chat", root_title: "Bot Chat" });
+    }
+    expect(notes.before.dashboard[0].resolved_id).toBe("root");
+    for (const k of ["after_compress", "after_turn"]) {
+      expect(notes[k].dashboard[0], k).toMatchObject({ resolved_id: "tip", title: "Bot Chat" });
+      expect(notes[k].profiles_list, k).toMatchObject({ id: "root", resolved_id: "tip", root_title: "Bot Chat" });
+    }
+    // The tip's own title: "" right after the compress, then Hermes' auto-title, never "Bot Chat".
+    expect(notes.after_compress.profiles_list.title).toBe("");
+    expect(notes.after_turn.profiles_list.title).not.toBe("Bot Chat");
   });
 
   it("approvals: answered by another client or timed out → approval.settled on every subscriber, no cancelled event; a late answer is stale_generation", () => {
