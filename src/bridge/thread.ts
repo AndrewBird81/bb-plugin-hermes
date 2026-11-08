@@ -329,29 +329,25 @@ export class HostedThread {
   }
 
   private async ensureSession(turn: BbTurn, ctx: ThreadContext): Promise<SessionState> {
+    // A bot thread resolves its Bot Chat by title on every send (S8 step 1); other threads keep theirs.
+    if (ctx.kind === "bot") return this.withHold(turn, () => this.openBotChat(ctx));
     if (this.session && !this.session.client.closed) return this.session;
     this.dropSession();
     const client = await this.host.link(ctx.root).client();
-    let snap: Snapshot;
-    let lineageRoot: string;
-    if (ctx.kind === "bot") {
-      ({ snap, lineageRoot } = await this.withHold(turn, () => this.openBotChat(client, ctx)));
-    } else if (ctx.sessionId || ctx.lineageRoot) {
+    if (ctx.sessionId || ctx.lineageRoot) {
       // Resuming adopts a legacy row once, on this first bb send only (D16, A23).
       const id = (ctx.sessionId ?? ctx.lineageRoot)!;
-      snap = await this.withHold(turn, () => this.resume(client, ctx.profile, id));
-      lineageRoot = ctx.lineageRoot ?? snap.session_id;
-    } else {
-      snap = await client.create({
-        profile: ctx.profile,
-        request_id: `bb:${this.threadId}`,
-        // `gui`, as Desktop's side chats: `hermes chat -c` picks up `cli` chats (A20 failed, T1.0).
-        source: "gui",
-        cwd: ctx.cwd ?? homedir(),
-      });
-      lineageRoot = snap.session_id;
+      const snap = await this.withHold(turn, () => this.resume(client, ctx.profile, id));
+      return this.adopt(ctx, client, snap, ctx.lineageRoot ?? snap.session_id);
     }
-    return this.adopt(ctx, client, snap, lineageRoot);
+    const snap = await client.create({
+      profile: ctx.profile,
+      request_id: `bb:${this.threadId}`,
+      // `gui`, as Desktop's side chats: `hermes chat -c` picks up `cli` chats (A20 failed, T1.0).
+      source: "gui",
+      cwd: ctx.cwd ?? homedir(),
+    });
+    return this.adopt(ctx, client, snap, snap.session_id);
   }
 
   private async resume(client: HermesClient, profile: string, id: string): Promise<Snapshot> {
@@ -384,19 +380,24 @@ export class HostedThread {
   }
 
   /**
-   * Flow 3 steps 1–3 (S8 §Recommended protocol): the Bot Chat by title on every send, never by a stored id;
-   * none → re-check, then one lazy create (it returns any Bot Chat made meanwhile, E1); then resume.
+   * Flow 3 steps 1–3 (S8 §Recommended protocol): the Bot Chat by title, never by a stored id; none → re-check,
+   * then one lazy create (it returns any Bot Chat made meanwhile, E1); else resume. The same session as last
+   * time keeps its subscription; another one (re-minted, renamed, rotated) is followed (step 6).
    */
-  private async openBotChat(client: HermesClient, ctx: ThreadContext): Promise<{ snap: Snapshot; lineageRoot: string }> {
+  private async openBotChat(ctx: ThreadContext): Promise<SessionState> {
+    const client = await this.host.link(ctx.root).client();
     const lookup = async () => {
       const { sessions } = await client.sessionList({ profile: ctx.profile, title: BOT_CHAT_TITLE, include_hidden: true });
       return sessions.find((s) => s.title === BOT_CHAT_TITLE) ?? null;
     };
     const row = (await lookup()) ?? (await lookup());
+    const current = this.session;
+    if (row && current && !current.client.closed && current.client === client && (row.session_id === current.id || row.session_id === current.stored)) return current;
+    this.dropSession();
     if (row) {
       const snap = await this.resume(client, ctx.profile, row.session_id);
       // `id` is the chain's root: the title moves to a rotated tip, the root stays (S8 E8).
-      return { snap, lineageRoot: (row as { id?: string }).id ?? row.session_id };
+      return this.adopt(ctx, client, snap, (row as { id?: string }).id ?? row.session_id);
     }
     if (this.botChatCreated) throw new HermesRpcError({ message: "runtime_coordination_required" });
     this.botChatCreated = true;
@@ -407,7 +408,7 @@ export class HostedThread {
       follow_profile_config: true,
       request_id: `bb:botchat:${ctx.profileHome}`,
     });
-    return { snap, lineageRoot: snap.session_id };
+    return this.adopt(ctx, client, snap, snap.session_id);
   }
 
   /** One create per bot thread's wait: retries only look up (flow 3 step 4: never a second create). */
