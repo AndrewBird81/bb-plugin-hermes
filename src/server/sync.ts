@@ -110,8 +110,8 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
   const unfinished = new Set<string>();
   const persistedKind = `${bb.pluginId}/${EXTENSION_KINDS.persistedTurn}`;
   const statusKind = `${bb.pluginId}/${EXTENSION_KINDS.status}`;
-  /** `threadId \0 requestId` of dead cards already cancelled (memory: a repeat cancel is harmless). */
-  const cancelled = new Set<string>();
+  /** `threadId \0 requestId` of dead cards already handled (memory: one stop per dead card set). */
+  const handledDead = new Set<string>();
   const fail = (code: string) => connection.recordError(code);
   const paused = () => connection.health().state === "not_supported";
 
@@ -317,52 +317,63 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
     if (settle) settleMirrored(threadId, state);
   }
 
-  /**
-   * The latest `persisted-turn` and `status` states of a thread, read from its events (the event itself
-   * is debounced). `status.dead_requests`: cards the bridge can't withdraw (bb 0.49.0, A3) get cancelled.
-   */
-  async function ingestPersistedNow(threadId: string, options: { settle?: boolean } = {}): Promise<void> {
+  /** The latest `persisted-turn` and `status` payloads of a thread, from its events (the event itself is debounced). */
+  async function latestStates(threadId: string): Promise<{ persisted: unknown; status: unknown }> {
     const rows = await bb.sdk.threads.events.list({ threadId, types: ["thread/extensionState/updated"], order: "desc", limit: "50" });
-    let persisted = false;
-    let status = false;
+    const out: { persisted: unknown; status: unknown } = { persisted: undefined, status: undefined };
     for (const row of rows) {
       if (row.type !== "thread/extensionState/updated") continue;
-      if (!persisted && row.data.kind === persistedKind) {
-        persisted = true;
-        const parsed = persistedTurnStateSchema.safeParse(row.data.payload);
-        if (parsed.success) applyPersisted(threadId, parsed.data, options);
-        else fail("persisted_turn_invalid");
-      } else if (!status && row.data.kind === statusKind) {
-        status = true;
-        const parsed = statusStateSchema.safeParse(row.data.payload);
-        if (parsed.success) await cancelDeadNow(threadId, parsed.data.dead_requests ?? []);
-        else fail("status_invalid");
-      }
-      if (persisted && status) return;
+      if (out.persisted === undefined && row.data.kind === persistedKind) out.persisted = row.data.payload;
+      if (out.status === undefined && row.data.kind === statusKind) out.status = row.data.payload;
+    }
+    return out;
+  }
+
+  /** `persisted-turn` (bb's own turns, A37), then `status.dead_requests` (dead cards, A3). */
+  async function ingestPersistedNow(threadId: string, options: { settle?: boolean } = {}): Promise<void> {
+    const states = await latestStates(threadId);
+    if (states.persisted !== undefined) {
+      const parsed = persistedTurnStateSchema.safeParse(states.persisted);
+      if (parsed.success) applyPersisted(threadId, parsed.data, options);
+      else fail("persisted_turn_invalid");
+    }
+    await deadCards(threadId, states.status);
+  }
+
+  /** Never throws: a dead-card failure must not stop the caller's own work. */
+  async function deadCards(threadId: string, status: unknown): Promise<void> {
+    if (status === undefined) return;
+    const parsed = statusStateSchema.safeParse(status);
+    if (!parsed.success) return fail("status_invalid");
+    try {
+      await stopForDeadNow(threadId, parsed.data.dead_requests ?? []);
+    } catch (error) {
+      fail(errorCode(error, "dead_card_failed"));
     }
   }
 
-  /** Cancel (never answer) each pending provider card whose Hermes prompt is gone. */
-  async function cancelDeadNow(threadId: string, dead: string[]): Promise<void> {
-    const todo = new Set(dead.filter((id) => !cancelled.has(`${threadId}\0${id}`)));
-    if (!todo.size) return;
+  /**
+   * bb's pending provider cards whose Hermes prompt is gone (A3). bb 0.49.0 refuses to cancel a provider's
+   * card ("stop the turn instead"); stopping the idle thread closes it (`interrupted`), and a message queued
+   * behind it then dispatches. Mid-turn: wait for `thread.idle` (its finalize reads again). Never an answer;
+   * one stop per dead card set, even if a card stays.
+   */
+  async function stopForDeadNow(threadId: string, dead: string[]): Promise<void> {
+    const todo = dead.filter((id) => !handledDead.has(`${threadId}\0${id}`));
+    if (!todo.length) return;
     const pending = await bb.sdk.threads.interactions.list({ threadId });
-    for (const interaction of pending) {
-      if (interaction.status !== "pending" || interaction.origin?.kind !== "provider") continue;
-      // bb's daemon stores `<per-process scope>:<JSON-RPC id>`; the bridge's ids are unique across processes.
-      const stored = interaction.origin.providerRequestId;
-      const request = todo.has(stored) ? stored : [...todo].find((id) => stored.endsWith(`:${id}`));
-      if (!request) continue;
-      try {
-        await bb.sdk.threads.interactions.cancel({ threadId, interactionId: interaction.id });
-      } catch (error) {
-        // Retried at the next state read.
-        fail(errorCode(error, "cancel_failed"));
-        todo.delete(request);
-      }
+    // bb's daemon stores `<per-process scope>:<JSON-RPC id>`; the bridge's ids are unique across processes.
+    const matches = (stored: string) => todo.filter((id) => stored === id || stored.endsWith(`:${id}`));
+    const live = new Set(
+      pending.flatMap((i) => (i.status === "pending" && i.origin?.kind === "provider" ? matches(i.origin.providerRequestId) : [])),
+    );
+    if (live.size) {
+      const thread = await bb.sdk.threads.get({ threadId });
+      if (thread.status !== "idle" && thread.status !== "error") return;
+      await bb.sdk.threads.stop({ threadId });
     }
-    // Handled: cancelled now, or no longer pending (closed already); either way never again.
-    for (const id of todo) cancelled.add(`${threadId}\0${id}`);
+    // Handled: stopped now, or no card pending (closed already); either way never again.
+    for (const id of todo) handledDead.add(`${threadId}\0${id}`);
   }
 
   /**
@@ -372,7 +383,9 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
    */
   async function finalizeNow(threadId: string, target: Target | null, enabled: (profileHome: string) => boolean): Promise<void> {
     const thread = await bb.sdk.threads.get({ threadId });
-    if ((thread.status !== "idle" && thread.status !== "error") || thread.queuedMessageCount > 0) return;
+    if (thread.status !== "idle" && thread.status !== "error") return;
+    // A message queued behind a dead card waits for it: the stop runs even with a queue.
+    if (thread.queuedMessageCount > 0) return deadCards(threadId, (await latestStates(threadId)).status);
     await ingestPersistedNow(threadId, { settle: true });
     const binding = bindingByThread(db, threadId);
     if (binding?.state === "replaying" && unfinished.has(threadId)) {

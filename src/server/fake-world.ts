@@ -52,7 +52,6 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
   const levelCalls: { threadId: string; level: string }[] = [];
   /** bb's pending interaction cards (provider ones carry `origin.providerRequestId`). */
   const cards: { threadId: string; id: string; status: string; origin: { kind: string; providerRequestId?: string } }[] = [];
-  const cancels: { threadId: string; interactionId: string }[] = [];
   /** Hermes chats by lineage root. */
   /** `pageSize`: an `after_uid` read returns at most this many turns, oldest first, `truncated` when more follow. */
   const history = new Map<string, { session_id: string; turns: HistoryTurn[]; truncated?: boolean; pageSize?: number }>();
@@ -190,13 +189,9 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
         },
         queuedMessages: { list: async () => ({ messages: [] }) },
         interactions: {
+          // No `cancel`: bb 0.49.0 refuses it for provider cards, and the server never calls it. A stop
+          // leaves the cards as they are here, so a repeat is visible.
           list: async ({ threadId }) => cards.filter((c) => c.threadId === threadId).map(({ threadId: _, ...c }) => c),
-          cancel: async ({ threadId, interactionId }) => {
-            cancels.push({ threadId, interactionId });
-            const card = cards.find((c) => c.id === interactionId)!;
-            card.status = "interrupted";
-            return card;
-          },
         },
       },
     },
@@ -238,7 +233,6 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
     levels,
     levelCalls,
     cards,
-    cancels,
     prompts,
     rpc,
     flush,

@@ -107,7 +107,17 @@ describe("switches (T1.9)", () => {
     expect(w.access.at(-1)).toEqual({ profile_home: NEO, on: false, enabled_bots: [] });
   });
 
-  it("switch-on: the worker learns the bot before the spawn; a failed spawn is retried at the next keep-alive", async () => {
+  it("switch-on: the worker learns the bot before the spawn, so the first spawn succeeds", async () => {
+    const w = await world();
+    await w.connect();
+    // The fake refuses a spawn for a bot not in the last ensureWatch (model_catalog_unavailable).
+    w.state.failSpawn = 0;
+    expect(await on(w)).toMatchObject({ enabled: true, thread_id: "thr_1" });
+    expect(w.harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(1);
+    expect(await errors(w)).toEqual([]);
+  });
+
+  it("switch-on: a failed spawn is retried at the next keep-alive", async () => {
     const w = await world();
     await w.connect();
     // The spawn at switch-on and the retry right after it fail.
@@ -639,7 +649,14 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
 });
 
 describe("dead cards (A3)", () => {
-  it("a dead request id → exactly one cancel of its pending card; none for others, none twice, never an answer", async () => {
+  /** bb's `thread.idle` with a message queued behind the card. */
+  const idleWithQueue = async (w: World, threadId: string) => {
+    Object.assign(w.thread(threadId), { status: "idle", queued: 1 });
+    await w.harness.behavior.emitThreadEvent("thread.idle", { thread: w.dto(threadId), lastAssistantText: null });
+    await w.flush();
+  };
+
+  it("a dead request's pending card: the idle thread is stopped once (mid-turn: at idle); none for others, never an answer", async () => {
     const w = await liveBotThread();
     // As bb's daemon stores it: `<random UUID per bridge process>:<JSON-RPC id>`.
     const scope = "3f2b6c1e-9a4d-4e7b-8c21-5d0f7a9e1b42";
@@ -650,16 +667,38 @@ describe("dead cards (A3)", () => {
       status: "pending",
       origin: { kind: "plugin" },
     });
+    const stops = () => calls(w, "threads.stop").length;
+    await w.active("thr_1");
     // `-7` must not match `…-17`.
     w.status("thr_1", { banner: null, since: null, dead_requests: ["hermes-0a1b2c3d-7", "hermes-0a1b2c3d-3"] });
     await w.emit("experimental_thread.events" as never, "thr_1");
-    expect(w.cancels).toEqual([{ threadId: "thr_1", interactionId: "int_1" }]);
-    // Read again by the next event and at idle: nothing more.
+    expect(stops()).toBe(0);
+    await idleWithQueue(w, "thr_1");
+    expect(calls(w, "threads.stop")).toEqual(["thr_1"]);
+    // The fake leaves int_1 pending: later reads must not stop again.
     await w.emit("experimental_thread.events" as never, "thr_1");
+    await idleWithQueue(w, "thr_1");
     await w.idle("thr_1");
-    expect(w.cancels).toHaveLength(1);
-    const answered = w.harness.inspection.sdk.calls.filter((c) => /interactions\.(respond|resolve)/.test(c.path));
-    expect(answered).toEqual([]);
+    expect(stops()).toBe(1);
+    const touched = w.harness.inspection.sdk.calls.filter((c) => /interactions\.(respond|resolve|cancel)/.test(c.path));
+    expect(touched).toEqual([]);
+  });
+
+  it("a dead id with no pending card stops nothing; a failing card check never blocks persisted-turn", async () => {
+    const w = await liveBotThread();
+    w.status("thr_1", { banner: null, since: null, dead_requests: ["hermes-0a1b2c3d-9"] });
+    await w.emit("experimental_thread.events" as never, "thr_1");
+    expect(calls(w, "threads.stop")).toEqual([]);
+
+    w.harness.inspection.sdk.stub("threads.interactions.list", async () => {
+      throw Object.assign(new Error("HTTP 503"), { code: "unavailable" });
+    });
+    w.status("thr_1", { banner: null, since: null, dead_requests: ["hermes-0a1b2c3d-10"] });
+    w.history.get("root_bc")!.turns.push(turn("b1", { submission_id: null }));
+    w.persisted("thr_1", { profile_home: NEO, lineage_root: "root_bc", session_id: "tip_bc", turns: [{ submission_id: "bb:thr_1:c1", anchor_uids: ["b1"], reply_uids: [], at: 1 }] });
+    await w.emit("experimental_thread.events" as never, "thr_1");
+    expect(turnRow(w.db, "thr_1", "b1")).toMatchObject({ kind: "bb" });
+    expect(await errors(w)).toContain("unavailable");
   });
 });
 
@@ -686,23 +725,25 @@ describe("folder guard (R8)", () => {
     expect((await w.rpc<{ state: string }>("health")).state).toBe("connected");
   });
 
-  it("after a folder change, pending access for another folder's profiles is dropped, and profile_outside_root is never retried", async () => {
+  it("after a folder change, another folder's pending off waits (skill_left_outside_root) and is retried when the folder comes back", async () => {
     const w = await world();
     await w.connect();
     await on(w);
     w.state.failAccess = true;
     await off(w);
     w.state.failAccess = false;
+    const calls = w.access.length;
     await w.harness.behavior.setSettings({ folder: "/private/tmp/bb-hermes-test/other" });
     await w.flush();
-    expect(await errors(w)).toContain("access_dropped_outside_root");
-    expect(getKv(w.db, "access_pending")).toEqual({});
-    const calls = w.access.length;
-    w.state.boot = "boot_2";
-    await w.connect();
+    expect(await errors(w)).toContain("skill_left_outside_root");
+    expect(getKv(w.db, "access_pending")).toEqual({ [NEO]: false });
     expect(w.access).toHaveLength(calls);
+    await w.harness.behavior.setSettings({ folder: "~/.hermes" });
+    await w.flush();
+    expect(w.access.at(-1)).toEqual({ profile_home: NEO, on: false, enabled_bots: [] });
+    expect(getKv(w.db, "access_pending")).toEqual({});
 
-    // The worker itself says the profile isn't under the root: dropped at once.
+    // The worker itself says the profile isn't under the root: kept, said, not cleared.
     const v = await world();
     await v.connect();
     await on(v);
@@ -712,8 +753,8 @@ describe("folder guard (R8)", () => {
     v.state.outside = true;
     v.state.boot = "boot_2";
     await v.connect();
-    expect(getKv(v.db, "access_pending")).toEqual({});
-    expect(await errors(v)).toContain("profile_outside_root");
+    expect(getKv(v.db, "access_pending")).toEqual({ [NEO]: false });
+    expect(await errors(v)).toEqual(expect.arrayContaining(["profile_outside_root", "skill_left_outside_root"]));
   });
 });
 

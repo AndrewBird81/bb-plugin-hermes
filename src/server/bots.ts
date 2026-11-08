@@ -96,19 +96,16 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
 
   const pendingAccess = () => (getKv(db, ACCESS_PENDING) as Record<string, boolean> | null) ?? {};
 
-  function dropAccess(homes: string[]): void {
-    const map = pendingAccess();
-    for (const home of homes) delete map[home];
-    setKv(db, ACCESS_PENDING, map);
-  }
-
   async function syncAccessNow(target: Target, profileHome: string, on: boolean): Promise<void> {
     const enabled = enabledBots(db).map((b) => b.profile_home);
     try {
       const result = await host.call("setBotAccess", { root: target.root, profile_home: profileHome, on, enabled_bots: enabled }, { hostId: target.machine });
       if (result.detail) fail(result.detail);
-      // Not a profile of this folder: no retry can ever reach it.
-      if (result.detail === "profile_outside_root") return dropAccess([profileHome]);
+      // Not a profile of this folder: kept for a switch back to its folder; an off one leaves its skill.
+      if (result.detail === "profile_outside_root") {
+        if (!on) fail("skill_left_outside_root");
+        return;
+      }
       // Done only once the sessions saw it (02 flow 1); else retried at the next connect.
       if (!result.refreshed || result.detail) throw Object.assign(new Error("not refreshed"), { code: "set_bot_access_incomplete" });
       const { [profileHome]: _, ...rest } = pendingAccess();
@@ -329,13 +326,12 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
       return;
     }
     const { profiles } = await describe(target);
-    // After a folder change, retries for profiles of another folder go (they'd fail `profile_outside_root` forever).
-    const outside = Object.keys(pendingAccess()).filter((home) => !profiles.some((p) => p.home === home));
-    if (outside.length) {
-      fail("access_dropped_outside_root");
-      dropAccess(outside);
+    // Retries for profiles of another folder wait (kept, so switching the folder back retries them): they'd
+    // fail `profile_outside_root` here. An off one leaves its skill installed: said in diagnostics.
+    for (const [home, on] of Object.entries(pendingAccess())) {
+      if (profiles.some((p) => p.home === home)) await syncAccessNow(target, home, on);
+      else if (!on) fail("skill_left_outside_root");
     }
-    for (const [home, on] of Object.entries(pendingAccess())) await syncAccessNow(target, home, on);
     if (newBoot || reconnected) await reconcileAllNow(enabledBots(db).map((b) => b.profile_home), target, { full: newBoot });
   }
 
