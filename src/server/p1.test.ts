@@ -221,6 +221,40 @@ describe("wakes (T1.11)", () => {
     expect(w.levels.get("thr_1")).toBe("inherit");
   });
 
+  it("the bridge's mirrored record decides rest: a streamed turn never rests; Conduit's own turn rests once", async () => {
+    const w = await liveBotThread();
+    const chat = w.history.get("root_bc")!;
+    // A CLI turn, running at the wake; the bridge streams it whole. Hermes' re-read at idle still lags.
+    chat.turns.push(turn("u2", { complete: false, reply_uids: [] }));
+    await w.changed(NEO);
+    const record = (anchor: string, reply_uids: string[], partial: boolean, at: number) => ({ anchor_uid: anchor, reply_uids, partial, at });
+    w.persisted("thr_1", { profile_home: NEO, lineage_root: "root_bc", session_id: "tip_bc", turns: [], mirrored: [record("u2", ["u2-a", "u2-b"], false, 1)] });
+    await w.idle("thr_1");
+    expect(turnRow(w.db, "thr_1", "u2")).toMatchObject({ state: "done", reply_uids: ["u2-a", "u2-b"] });
+    chat.turns[1] = turn("u2", { reply_uids: ["u2-a", "u2-b"] });
+    await w.changed(NEO);
+    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u2" }]);
+
+    // Conduit's own turn: the bridge shows the bubble only and closes partial; the reply rows come later.
+    chat.turns.push(turn("u3", { surface: null, reply_uids: [] }));
+    await w.changed(NEO);
+    expect(w.texts("thr_1").at(-1)).toBe("[Conduit] text u3");
+    const mirrored = [record("u2", ["u2-a", "u2-b"], false, 1), record("u3", [], true, 2)];
+    w.persisted("thr_1", { profile_home: NEO, lineage_root: "root_bc", session_id: "tip_bc", turns: [], mirrored });
+    await w.idle("thr_1");
+    expect(turnRow(w.db, "thr_1", "u3")).toMatchObject({ state: "partial", reply_uids: [] });
+    chat.turns[2] = turn("u3", { surface: null, reply_uids: ["u3-r"] });
+    await w.changed(NEO);
+    await w.changed(NEO);
+    expect(w.markers("thr_1").filter((m) => m.op === "mirror").at(-1)).toEqual({ op: "mirror", anchor_uid: "u3", rest: true });
+    w.persisted("thr_1", { profile_home: NEO, lineage_root: "root_bc", session_id: "tip_bc", turns: [], mirrored: [...mirrored, record("u3", ["u3-r"], false, 3)] });
+    await w.idle("thr_1");
+    expect(turnRow(w.db, "thr_1", "u3")).toMatchObject({ state: "done", reply_uids: ["u3-r"] });
+    await w.changed(NEO);
+    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toHaveLength(3);
+    expect(bindingByThread(w.db, "thr_1")?.cursor_uid).toBe("u3");
+  });
+
   it("a hidden user row wakes with the marker only; a later reply wakes once as rest", async () => {
     const w = await liveBotThread();
     w.history.get("root_bc")!.turns.push(turn("u2", { user_hidden: true, user_text: null, complete: false, reply_uids: [] }));

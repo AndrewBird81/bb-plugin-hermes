@@ -74,11 +74,14 @@ const text = (value: string): PromptInput => ({ type: "text", mentions: [], text
 const isBbSubmission = (turn: HistoryTurn) => turn.submission_id?.startsWith("bb:") === true;
 const asTag = (value: string | null): SourceTag | null => (SOURCE_TAGS as readonly string[]).includes(value ?? "") ? (value as SourceTag) : null;
 
-/** The tag an outside turn carries: the surface its user row records, else the chat's own. */
+/**
+ * The tag an outside turn carries: the surface its user row records, else the chat's own. The Bot Chat
+ * has none of its own: only dashboard clients write it, adopted or not, and UI text calls them all
+ * Conduit (S8 §Today, A5, 01 §6).
+ */
 export function turnTag(binding: Binding, turn: HistoryTurn): SourceTag {
   const fromSurface = turn.surface ? tagFor({ source: turn.surface, created_source: turn.surface, legacy: binding.legacy }) : null;
-  // The Bot Chat has no single source: Conduit while legacy, else Desktop.
-  return fromSurface ?? asTag(binding.tag) ?? (binding.legacy ? "Conduit" : "Desktop");
+  return fromSurface ?? asTag(binding.tag) ?? "Conduit";
 }
 
 /** The visible user bubble before a marker; none for a hidden user row (01 §7). bb's own turns are untagged. */
@@ -174,8 +177,8 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
 
   /**
    * Flow 6 for one `live` binding of an enabled bot: anchors not in `turns` and not bb's wake as
-   * `mirror`; a shown, now complete turn with new reply rows wakes as `mirror{rest:true}`. `settle` (the thread just
-   * went idle): queued turns take the state and reply rows Hermes now shows.
+   * `mirror`; a shown, now complete turn with new reply rows wakes as `mirror{rest:true}`. `settle` (the
+   * thread just went idle): queued turns no `mirrored` record settled take what Hermes now shows (fallback).
    */
   async function reconcileNow(binding: Binding, target: Target, { settle = false } = {}): Promise<void> {
     if (binding.state !== "live" || !binding.lineage_root) return;
@@ -224,10 +227,26 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
   }
 
   /**
+   * The bridge's `mirrored` records settle queued mirror turns with the reply rows it really showed, and
+   * `partial` when Conduit's reply comes later. Only at idle (queue empty), so every queued wake has run
+   * and the newest record per anchor is the last render. A rest claim keeps the rows shown before it.
+   */
+  function settleMirrored(threadId: string, state: PersistedTurnState): void {
+    const newest = new Map(state.mirrored.map((m) => [m.anchor_uid, m]));
+    for (const row of queuedTurnsOf(db, threadId)) {
+      const record = row.kind === "mirror" || row.prev_state ? newest.get(row.anchor_uid) : undefined;
+      if (!record) continue;
+      const shown = row.prev_state ? [...new Set([...row.reply_uids, ...record.reply_uids])] : record.reply_uids;
+      settleTurn(db, threadId, row.anchor_uid, record.partial ? "partial" : "done", shown);
+    }
+  }
+
+  /**
    * bb's own turns as Hermes stored them (A37): `bb` rows, and the session a `pending` binding now has.
    * A Hermes thread with no binding yet (a `bb thread spawn` whose profile wasn't on record) is bound here.
+   * `settle` (at idle): mirror records settle queued wakes too.
    */
-  function applyPersisted(threadId: string, state: PersistedTurnState): void {
+  function applyPersisted(threadId: string, state: PersistedTurnState, { settle = false } = {}): void {
     let binding = bindingByThread(db, threadId);
     if (!binding) {
       if (bindingByLineage(db, state.profile_home, state.lineage_root)) return fail("duplicate_binding");
@@ -265,15 +284,16 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
       updateBinding(db, threadId, { lineage_root: state.lineage_root, session_id: state.session_id, cursor_uid: last });
     }
     for (const record of state.turns) for (const anchor of record.anchor_uids) recordBbTurn(db, threadId, anchor, record.reply_uids, record.at);
+    if (settle) settleMirrored(threadId, state);
   }
 
   /** The latest `persisted-turn` state of a thread, read from its events (the event itself is debounced). */
-  async function ingestPersistedNow(threadId: string): Promise<void> {
+  async function ingestPersistedNow(threadId: string, options: { settle?: boolean } = {}): Promise<void> {
     const rows = await bb.sdk.threads.events.list({ threadId, types: ["thread/extensionState/updated"], order: "desc", limit: "50" });
     for (const row of rows) {
       if (row.type !== "thread/extensionState/updated" || row.data.kind !== persistedKind) continue;
       const parsed = persistedTurnStateSchema.safeParse(row.data.payload);
-      if (parsed.success) applyPersisted(threadId, parsed.data);
+      if (parsed.success) applyPersisted(threadId, parsed.data, options);
       else fail("persisted_turn_invalid");
       return;
     }
@@ -287,7 +307,7 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
   async function finalizeNow(threadId: string, target: Target | null, enabled: (profileHome: string) => boolean): Promise<void> {
     const thread = await bb.sdk.threads.get({ threadId });
     if ((thread.status !== "idle" && thread.status !== "error") || thread.queuedMessageCount > 0) return;
-    await ingestPersistedNow(threadId);
+    await ingestPersistedNow(threadId, { settle: true });
     const binding = bindingByThread(db, threadId);
     for (const row of binding ? queuedTurnsOf(db, threadId) : []) if (row.kind === "replay") settleTurn(db, threadId, row.anchor_uid, "done");
     if (binding?.state === "replaying" && !unfinished.has(threadId)) updateBinding(db, threadId, { state: "live" });

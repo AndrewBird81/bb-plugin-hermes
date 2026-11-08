@@ -186,16 +186,25 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
   }
 
   /**
+   * A `pending` bot thread looks for its Bot Chat again at every reconcile, beyond switch-on and bb's
+   * sends, so a Bot Chat Conduit makes later binds without a bb send. Held here alone: if `session.list`
+   * by title turns out to adopt a Conduit-made Bot Chat, this goes (a read must never adopt, A23).
+   */
+  async function relookBotChatNow(profileHome: string, target: Target): Promise<void> {
+    if (!held.has(profileHome)) await bindBotChatNow(profileHome, target);
+  }
+
+  /**
    * One enabled bot (flows 1, 6, 9, 10): its bot thread exists (re-created, pinned, if bb deleted it:
    * 01 §3), a `pending` one looks for its Bot Chat, an interrupted import resumes, live threads wake.
    */
-  async function reconcileProfileNow(profileHome: string, target: Target, { full = false } = {}): Promise<void> {
+  async function reconcileProfileNow(profileHome: string, target: Target, { full = false, relook = true } = {}): Promise<void> {
     const bot = botRecord(db, profileHome);
     if (!bot?.enabled) return;
     const binding = botBinding(db, profileHome);
     if (binding && full) await liveThread(binding.thread_id);
     if (!botBinding(db, profileHome)) await spawnBotThreadNow(bot, target);
-    if (!held.has(profileHome)) await bindBotChatNow(profileHome, target);
+    if (relook) await relookBotChatNow(profileHome, target);
     for (const b of bindingsOf(db, profileHome)) {
       if (b.state === "replaying") await sync.importNow(b, bot.enabled_at ?? Date.now(), target);
       else await sync.reconcileNow(b, target);
@@ -232,7 +241,8 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
     }
     for (const b of bindingsOf(db, profileHome)) if (b.archived_by_switch) updateBinding(db, b.thread_id, { archived_by_switch: false });
     if (!botBinding(db, profileHome)) await spawnBotThreadNow(bot, target);
-    await reconcileProfileNow(profileHome, target);
+    await bindBotChatNow(profileHome, target);
+    await reconcileProfileNow(profileHome, target, { relook: false });
   }
 
   async function switchOffNow(profileHome: string): Promise<void> {

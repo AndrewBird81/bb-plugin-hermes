@@ -2,7 +2,8 @@
 // findBotChat, readTurns, setBotAccess) around `createFakePluginHost`, for the server's P1 tests.
 import { createFakePluginHost, type ExperimentalFakeHostRpcCall, makeHostResponse, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import type { PromptInput } from "@get-bb/plugin-sdk/provider-bridge";
-import { EXTENSION_KINDS, type PersistedTurnState } from "../shared/extension-state.js";
+import type { z } from "zod";
+import { EXTENSION_KINDS, type persistedTurnStateSchema } from "../shared/extension-state.js";
 import type { BotChat, EnsureWatchOutput, HermesProfile, HistoryTurn } from "../shared/host-contract.js";
 import { decodeMarker, type Marker } from "../shared/marker.js";
 import { settingsDescriptors } from "../shared/settings.js";
@@ -232,7 +233,7 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
       await flush();
     },
     /** The bridge published `persisted-turn` for this thread. */
-    persisted(threadId: string, payload: PersistedTurnState) {
+    persisted(threadId: string, payload: z.input<typeof persistedTurnStateSchema>) {
       const list = events.get(threadId) ?? [];
       list.push({ type: "thread/extensionState/updated", seq: ++state.seq, data: { kind: `hermes/${EXTENSION_KINDS.persistedTurn}`, payload, providerThreadId: "p" } });
       events.set(threadId, list);
