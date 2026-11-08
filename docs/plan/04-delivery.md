@@ -17,7 +17,7 @@ src/app/              settings page, rail panel, row badge, banners             
 test/fake-hermes/     strict fake; vendored contract; recorded REST responses                 (client)
 test/fixtures/        recorded frames and REST responses, redacted                            (e2e)
 e2e/                  isolated-bb scripts, sbb, two-client harness, eligibility               (e2e)
-contract/             used-surface.json, contract:check                                       (client)
+contract/             used-surface.json (lead lands it; client keeps it current), contract:check (client)
 docs/                 plan, diagrams, guide.md, operations.md (existing docs stay)            (lead)
 scripts/              check-private.mjs (existing), bb.mjs (pinned bb CLI)
 ```
