@@ -3,7 +3,8 @@
 # ports 48886/48887, every BB_* unset, PATH without a `hermes` executable.
 #   e2e/bb-e2e.sh preflight          server only (no host daemon): provider-acp, keep-awake, connect must be disabled
 #   e2e/bb-e2e.sh start              preflight, then bb-app (server + host daemon); checks the three again
-#   e2e/bb-e2e.sh install <repo>     sbb plugin install <repo> --yes
+#   e2e/bb-e2e.sh install <repo>     with bb-app stopped: server only, sbb plugin install <repo> --yes, folder → the test root
+#                                    (a reinstall keeps the old machine in data.db: with a daemon up it would reach ~/.hermes)
 #   e2e/bb-e2e.sh dev <repo>         sbb plugin dev <repo>, in the background
 #   e2e/bb-e2e.sh fake <folder>      the strict fake (npm run fake-hermes) in <folder> under /private/tmp/bb-hermes-test/
 #   e2e/bb-e2e.sh hermes <folder>    or an isolated Hermes there (e2e/isolated-hermes.ts: stub model, dashboard for Conduit)
@@ -106,7 +107,21 @@ case "${1:-}" in
   preflight) preflight ;;
   start) start ;;
   stop) stop ;;
-  install) [ -n "${2:-}" ] || die "usage: install <repo>"; "$sbb" plugin install "$2" --yes ;;
+  install)
+    [ -n "${2:-}" ] || die "usage: install <repo>"
+    alive bb-app && die "stop bb-app first: install runs with the server only, before any host daemon connects"
+    up && die "something already serves :48886"
+    ( clean_env
+      BB_DATA_DIR="$data" BB_SERVER_PORT=48886 BB_SERVER_BIND_HOST=127.0.0.1 BB_HOST_DAEMON_PORT=48887 BB_SKIP_ONBOARDING=1 NODE_ENV=production \
+        nohup "$node" "$repo/node_modules/bb-app/server/dist/index.js" >"$run/server-only.log" 2>&1 &
+      echo $! >"$run/server-only.pid" )
+    wait_up
+    "$sbb" plugin install "$2" --yes
+    "$sbb" plugin config hermes set folder /private/tmp/bb-hermes-test/e2e-fake
+    "$sbb" plugin config hermes | grep '^folder = '
+    kill -INT "$(cat "$run/server-only.pid")"
+    wait_down "$(cat "$run/server-only.pid")"
+    rm -f "$run/server-only.pid" ;;
   dev)
     [ -n "${2:-}" ] || die "usage: dev <repo>"
     alive dev && die "dev already running"

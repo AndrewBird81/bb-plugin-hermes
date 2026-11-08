@@ -8,7 +8,7 @@
 // prints {home, instance_id, dashboard_port, dashboard_token_file}, appends model calls to <home>/stub-calls.jsonl,
 // serves until SIGINT/SIGTERM, then stops every process and removes the home unless --keep.
 import { spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -28,7 +28,8 @@ export type Tap = (client: string, dir: "in" | "out", raw: string) => void;
 
 // ---- stub model: echoes the last user message. "slow" → ~10 s stream; "very slow" → ~20 s; "think" → reasoning
 // chunks first; "use a tool" → one read_file call; "run a command" → one terminal `rm -rf` of a scratch dir under
-// the home (Hermes asks for approval; the recordings deny it or let it time out).
+// the home (Hermes asks for approval; the recordings deny it or let it time out); "run: <command>" → that
+// command in the terminal tool (e2e: the bot runs its bb wrapper, A44).
 export interface ModelCall {
   messages: number;
   user_texts: string[];
@@ -59,6 +60,7 @@ function stubModel(home: string, onCall: (c: ModelCall) => void) {
     if (!j.tools) reply = /summariz/i.test(JSON.stringify(msgs)) ? "Summary of the earlier turns." : "Stub chat";
     else {
       if (last?.role === "tool") reply = `tool result: ${text(last.content).slice(0, 120)}`;
+      else if (/^run: /m.test(lastUser)) tool = { name: "terminal", arguments: { command: /^run: (.*)$/m.exec(lastUser)![1] } };
       else if (/\brun a command\b/.test(lastUser)) tool = { name: "terminal", arguments: { command: `rm -rf "${home}/work/scratch"` } };
       else if (/\buse a tool\b/.test(lastUser)) tool = { name: "read_file", arguments: { path: `${home}/work/note.txt` } };
       onCall({
@@ -151,7 +153,7 @@ type Proc = ChildProcess & { lines: string[] };
 // ---- a legacy dashboard client (Conduit's path): `/api/ws?token=` on the dashboard, legacy methods.
 export type LegacyFrame = { id?: number; result?: Record<string, unknown>; error?: { code?: number; message?: string; data?: unknown } };
 export type Dashboard = Awaited<ReturnType<typeof dashboardClient>>;
-async function dashboardClient(port: number, token: string, name: string, tap?: Tap) {
+export async function dashboardClient(port: number, token: string, name: string, tap?: Tap) {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/api/ws?token=${token}`);
   let n = 0;
   const pending = new Map<number, (f: LegacyFrame) => void>();
@@ -224,6 +226,12 @@ export interface IsolatedOptions {
   onModelCall?: (c: ModelCall) => void;
   /** `approvals.timeout`, seconds (Hermes' default 300). */
   approvalTimeoutS?: number;
+  /**
+   * The installer's layout the worker's version check reads (A51): a copy of the live checkout's gateway
+   * contract under `<home>/hermes-agent/`. No CLI there: the worker's `refresh-prompts` would run it with
+   * the daemon's real HOME (its caches), so it reports `hermes_not_found` instead.
+   */
+  installerLayout?: boolean;
 }
 
 export async function startIsolatedHermes(opts: IsolatedOptions) {
@@ -253,6 +261,10 @@ export async function startIsolatedHermes(opts: IsolatedOptions) {
   rmSync(H, { recursive: true, force: true });
   for (const d of ["", "/locks", "/home", "/tmp", "/work", "/elsewhere", ...opts.profiles.map((p) => `/profiles/${p}`)]) mkdirSync(H + d, { recursive: true, mode: 0o700 });
   writeFileSync(`${H}/work/note.txt`, "a note for read_file\n");
+  if (opts.installerLayout) {
+    mkdirSync(`${H}/hermes-agent/apps/shared/src`, { recursive: true });
+    copyFileSync(path.join(HERMES, "hermes-agent/apps/shared/src/gateway-contract.openrpc.json"), `${H}/hermes-agent/apps/shared/src/gateway-contract.openrpc.json`);
+  }
   await new Promise<void>((r) => stub.listen(0, "127.0.0.1", () => r()));
   const stubPort = (stub.address() as { port: number }).port;
   for (const p of ["default", ...opts.profiles]) writeFileSync(`${profileHome(p)}/config.yaml`, config(stubPort, H, opts.approvalTimeoutS ?? 300, opts.extraConfig?.[p]), { mode: 0o600 });
@@ -360,7 +372,7 @@ if (import.meta.main) {
   }
   const i = args.indexOf("--profiles");
   const profiles = i >= 0 ? args[i + 1]!.split(",") : ["alex", "bob"];
-  const h = await startIsolatedHermes({ home, profiles, onModelCall: (c) => appendFileSync(`${home}/stub-calls.jsonl`, JSON.stringify(c) + "\n") });
+  const h = await startIsolatedHermes({ home, profiles, installerLayout: true, onModelCall: (c) => appendFileSync(`${home}/stub-calls.jsonl`, JSON.stringify(c) + "\n") });
   writeFileSync(`${home}/dashboard-token`, h.dashboardToken, { mode: 0o600 });
   console.log(JSON.stringify({ home, instance_id: h.endpoint.instanceId, dashboard_port: h.dashboardPort, dashboard_token_file: `${home}/dashboard-token` }));
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => void h.stop(args.includes("--keep")).then(() => process.exit(0), (e) => (console.error(e), process.exit(1))));
