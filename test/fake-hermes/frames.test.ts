@@ -8,32 +8,37 @@ import type { GatewayEvent } from "../../src/hermes/types.js";
 import { startFakeHermes, type FakeHermes } from "./index.js";
 
 type Frame = { jsonrpc: string; id?: number; method?: string; params?: Record<string, any>; result?: Record<string, any>; error?: unknown };
+type Recorded = { client?: string; dir: string; frame: Frame };
+// The T1.0 recordings (canonical clients only: `conduit` speaks the dashboard's legacy protocol) and the spike's.
 const dir = path.join(import.meta.dirname, "../fixtures/frames");
-const recorded = readdirSync(dir)
-  .filter((f) => f.endsWith(".json"))
-  .flatMap((f) => (JSON.parse(readFileSync(path.join(dir, f), "utf8")) as { frames: { dir: string; frame: Frame }[] }).frames);
+const files = [
+  ...readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => path.join(dir, f)),
+  ...readdirSync(path.join(dir, "spike")).filter((f) => f.endsWith(".json")).map((f) => path.join(dir, "spike", f)),
+];
 
 /** Per event type: top-level key sets, and the union of payload keys. Per method: result key unions. */
 const events = new Map<string, { tops: Set<string>; payload: Set<string> }>();
 const results = new Map<string, Set<string>>();
-const methodOf = new Map<number, string>();
-for (const { dir: d, frame } of recorded) {
-  if (d === "out" && frame.method && frame.id !== undefined) methodOf.set(frame.id, frame.method);
-  if (d === "in" && frame.method === "event") {
-    const e = events.get(frame.params!.type) ?? { tops: new Set(), payload: new Set() };
-    e.tops.add(Object.keys(frame.params!).sort().join());
-    for (const k of Object.keys(frame.params!.payload ?? {})) e.payload.add(k);
-    events.set(frame.params!.type, e);
-  }
-  if (d === "in" && frame.result && frame.id !== undefined) {
-    const m = methodOf.get(frame.id)!;
-    const set = results.get(m) ?? new Set();
-    for (const k of Object.keys(frame.result)) set.add(k);
-    results.set(m, set);
+for (const file of files) {
+  const methodOf = new Map<string, string>();
+  for (const { client = "spike", dir: d, frame } of (JSON.parse(readFileSync(file, "utf8")) as { frames: Recorded[] }).frames) {
+    if (client === "conduit") continue;
+    if (d === "out" && frame.method && frame.id !== undefined) methodOf.set(`${client}:${frame.id}`, frame.method);
+    if (d === "in" && frame.method === "event") {
+      const e = events.get(frame.params!.type) ?? { tops: new Set(), payload: new Set() };
+      e.tops.add(Object.keys(frame.params!).sort().join());
+      for (const k of Object.keys(frame.params!.payload ?? {})) e.payload.add(k);
+      events.set(frame.params!.type, e);
+    }
+    if (d === "in" && frame.result && frame.id !== undefined) {
+      // Request ids restart per socket: a result answers the latest request with its id on that client.
+      const m = methodOf.get(`${client}:${frame.id}`)!;
+      const set = results.get(m) ?? new Set();
+      for (const k of Object.keys(frame.result)) set.add(k);
+      results.set(m, set);
+    }
   }
 }
-// Spike frames come from several sockets in sequence: request ids repeat per file, so methods are matched per file
-// above in order; a result keeps the method of the latest request with its id.
 
 const cleanups: (() => unknown)[] = [];
 afterEach(async () => {

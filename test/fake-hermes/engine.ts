@@ -5,6 +5,9 @@
  * (`gateway/session_controls.py`, `gateway/session_authority.py`, `gateway/session_events.py`,
  * `gateway/session_pending_controls.py`, `hermes_state_runtime.py`, `gateway/session_mutations.py`).
  *
+ * Corrected by the T1.0 recordings (test/fixtures/frames/*.json): attachments, `/new` `/reset` `/approve` as text,
+ * the lost turn after a restart, forwarded dashboard sends, change signals.
+ *
  * Per profile: sessions (canonical and legacy rows), messages with `message_uid`s, a FIFO of admissions per
  * session, `revision`, `execution_generation`, a replay ring (512 frames) per session, subscriptions per socket.
  * REST rows are clones of a recorded row of the same kind with the values filled in (`restRow`, `restMessage`):
@@ -16,7 +19,7 @@
  * `#fail` fails the turn. `nextTurn(profile, script)` scripts the next turn of a profile instead.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { WebSocket } from "ws";
 import type { FakeProfile, Handler } from "./index.js";
@@ -29,7 +32,16 @@ const sleep = (ms: number) => new Promise<void>((r) => (ms > 0 ? setTimeout(r, m
 
 /** Hermes' per-session replay ring (`tui_gateway/event_replay.py` `_REPLAY_BUFFER_MAX`). */
 export const REPLAY_BUFFER_MAX = 512;
+/** `gateway/session_queued_controls.py`: queued-row verbs, for plain text rows of interactive-surface rows only. */
 const QUEUE_CONTROLS = ["steer", "replace"];
+const INTERACTIVE_SOURCES = new Set(["cli", "tui", "gui", "desktop", "acp"]);
+const IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+/** Text commands the gateway answers itself, not stored (T1.0 slash-new.json, A46). */
+const CONFIRM_NEW =
+  "⚠️ **Confirm /new**\n\nThis starts a fresh session and discards the current conversation history.\n\nChoose:\n• **Approve Once** — proceed this time only\n• **Always Approve** — proceed and silence this prompt permanently\n• **Cancel** — keep current conversation\n\n_Text fallback: reply `/approve`, `/always`, or `/cancel`._";
+const COMMAND_REPLIES: Record<string, string> = { "/new": CONFIRM_NEW, "/reset": CONFIRM_NEW, "/approve": "No pending command to approve." };
+/** The note Hermes stores for a turn `prompt.resolve_unknown` discards (T1.0 restart-unknown.json). */
+const LOST_TURN = "This turn did not complete. Some actions may already have run; verify their effects before resending.";
 const STEER_WRAP = (t: string) =>
   `[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]\n${t}\n[/OUT-OF-BAND USER MESSAGE]`;
 const WAITING = "⏳ Another Hermes process is using this session; waiting for it to finish before starting your turn...";
@@ -108,6 +120,7 @@ export interface Admission {
   submission_id: string | null;
   display_kind: string | null;
   attachments: Json[] | null;
+  turn_author: Json | null;
   script: TurnScript;
 }
 
@@ -242,9 +255,14 @@ export class Engine {
   private stamp(s: Session, a: Admission): Json {
     return { authority_epoch: this.hooks.authorityEpoch(), execution_generation: a.generation, admission_id: a.admission_id };
   }
-  /** `sessions.changed` to every socket and a `state.db-wal` touch under the profile home (r11 §8, 02 flow 6). */
-  changed(p: FakeProfile) {
+  /**
+   * A `state.db-wal` touch under the profile home (02 flow 6). `sessions.changed` reaches canonical sockets only
+   * for the root profile's gateway writes: the T1.0 recordings (secondary profiles) show none, not even for a
+   * dashboard turn (WAL only); the live spike S4 (root profile) shows it after each turn.
+   */
+  changed(p: FakeProfile, opts: { dashboard?: boolean } = {}) {
     appendFileSync(path.join(p.home, "state.db-wal"), "x");
+    if (p.name !== "default" || opts.dashboard) return;
     for (const sock of this.hooks.sockets()) this.send(sock, { type: "sessions.changed", session_id: "", payload: {} });
   }
   private pendingEntry(a: Admission): Json {
@@ -252,7 +270,8 @@ export class Engine {
       ...this.admissionStatus(a),
       input_id: a.request_id,
       text: a.text,
-      controls: a.status === "queued" ? QUEUE_CONTROLS : [],
+      controls:
+        a.status === "queued" && !a.turn_author && !a.attachments && a.display_kind !== "hidden" && a.text.trim() && INTERACTIVE_SOURCES.has(a.session.source) ? QUEUE_CONTROLS : [],
       steering: false,
     };
   }
@@ -480,7 +499,12 @@ export class Engine {
         if (a.status === "terminal" && a.outcome === "interrupted" && a.generation === params.execution_generation) return this.admissionStatus(a);
         if (a.status !== "unknown" || a.generation !== params.execution_generation) throw new Refusal("stale_generation");
         this.settle(s, a, "interrupted");
+        // The discarded turn keeps its user row, closed by a note (`close_discarded_turn`).
+        this.addRow(s, this.userRow(a));
+        this.addRow(s, { tpl: "assistant", role: "assistant", content: LOST_TURN, display_kind: "failed_turn", finish_reason: null });
+        s.revision++;
         this.publishInfo(s);
+        this.changed(profile);
         void this.drain(s);
         return this.admissionStatus(a);
       },
@@ -556,6 +580,11 @@ export class Engine {
     if (socket && !s.subscribers.has(socket)) throw new Refusal("permission_denied");
     const request = (params.submission_id ?? params.input_id) as string | undefined;
     if (typeof request !== "string" || !request) throw new Refusal("invalid_params");
+    // A50: images only, staged in the profile's cache/images (T1.0 attachments.json); anything else is refused.
+    const images = path.join(profile.home, "cache", "images") + path.sep;
+    for (const att of (params.attachments as { path: string; mime: string }[] | null | undefined) ?? []) {
+      if (!IMAGE_MIMES.has(att.mime) || !path.resolve(att.path).startsWith(images) || !existsSync(att.path)) throw new Refusal("invalid_params");
+    }
     const payload = { text: params.text, attachments: params.attachments ?? null, display_kind: params.display_kind ?? null, turn_author: params.turn_author ?? null };
     const digest = JSON.stringify(payload);
     // One run per request id: an exact repeat answers the same admission (`admit_session_input`).
@@ -577,6 +606,7 @@ export class Engine {
       submission_id: request,
       display_kind: (params.display_kind as string | null | undefined) ?? null,
       attachments: (params.attachments as Json[] | null | undefined) ?? null,
+      turn_author: (params.turn_author as Json | null | undefined) ?? null,
       script: opts.script ?? this.scriptFor(profile, params.text as string),
     };
     s.queue.push(a);
@@ -643,8 +673,19 @@ export class Engine {
     }
     if (a.script.holdMs) await pause(a.script.holdMs);
     if (turn.aborted) return;
+    const command = COMMAND_REPLIES[a.text.trim()];
+    if (command) {
+      // The gateway answers these itself: no model call, nothing stored, no reset (A46).
+      this.publish(s, "message.complete", { text: command, content: command, admission_id: a.admission_id, outcome: "completed", status: "complete" }, stamp);
+      this.settle(s, a, "completed");
+      s.running = null;
+      s.revision++;
+      this.publishInfo(s, stamp);
+      return;
+    }
     this.publish(s, "agent.step", { iteration: 1 }, stamp);
     const context = this.count(s) + 2;
+    const prompt = this.userRow(a).content as string;
     const replies: Partial<Row>[] = [];
     let error: string | null = null;
     if (a.script.reasoning && !stop()) this.publish(s, "reasoning.delta", { text: a.script.reasoning }, stamp);
@@ -708,7 +749,7 @@ export class Engine {
     let text = "";
     if (a.script.fail && !stop()) error = a.script.fail;
     else if (!stop()) {
-      const reply = a.script.reply ?? `echo(${context}): ${a.text.slice(-120)}`;
+      const reply = a.script.reply ?? `echo(${context}): ${prompt.slice(-120)}`;
       const turnId = hex();
       for (const chunk of reply.split(/(?<= )/)) {
         if (stop()) break;
@@ -722,7 +763,7 @@ export class Engine {
     const target = this.tipOf(s);
     const steerRows = turn.steers.map((t) => ({ tpl: "steer", role: "user", content: STEER_WRAP(t), display_kind: "steer", display_content: t }));
     if (text) replies.push({ tpl: "assistant", role: "assistant", content: text, finish_reason: "stop" });
-    const user = this.addRow(target, { tpl: "user", role: "user", content: a.text, display_kind: a.display_kind, display_metadata: { gateway_input_owner: "<redacted>", submission_id: a.submission_id } });
+    const user = this.addRow(target, this.userRow(a));
     const tools = replies.filter((r) => r.tpl !== "assistant").map((r) => this.addRow(target, r));
     const steers = steerRows.map((r) => this.addRow(target, r));
     const final = replies.filter((r) => r.tpl === "assistant").map((r) => this.addRow(target, r));
@@ -759,6 +800,17 @@ export class Engine {
     this.clearPrompts(s, gen);
     this.publishInfo(s, stamp);
     this.changed(s.profile);
+  }
+
+  /** A canonical turn's user row; an image rides as Hermes' vision note before the text (T1.0 attachments.json). */
+  private userRow(a: Admission): Partial<Row> & { tpl: string } {
+    const notes = (a.attachments ?? []).map((att) => {
+      const file = att.path as string;
+      const digest = createHash("sha256").update(readFileSync(file)).digest("hex");
+      const stored = path.join(a.session.profile.home, "cache", "documents", "native-inputs", digest, path.basename(file));
+      return `[The user sent an image~ Here's what I can see:\nStub chat]\n[If you need a closer look, use vision_analyze with image_url: ${stored} ~]\n\n`;
+    });
+    return { tpl: "user", role: "user", content: notes.join("") + a.text, display_kind: a.display_kind, display_metadata: { gateway_input_owner: "<redacted>", submission_id: a.submission_id } };
   }
 
   private addRow(s: Session, r: Partial<Row> & { tpl?: string }): Row {
@@ -835,8 +887,7 @@ export class Engine {
     const fences = { revision: s.revision, execution_generation: s.generation };
     if (params.expected_revision !== s.revision) throw new Refusal("revision_conflict", fences);
     if (params.expected_generation !== s.generation) throw new Refusal("stale_generation", fences);
-    // A mutation claims a legacy row (A23, `gateway/session_mutations.py:174-183`).
-    this.adopt(s);
+    // A mutation on a legacy row keeps it legacy: no `chat_id` (T1.0 adoption.json; A23's code read was wrong).
     let result: Json;
     if (operation === "compress") {
       if (s.running) throw new Refusal("session_busy");
@@ -1033,28 +1084,34 @@ export class Engine {
    * once, the reply rows at the end, no canonical events, the turn lease held meanwhile (E2, E3a). An `unknown`
    * admission refuses it (E11b).
    */
-  async conduitTurn(profile: FakeProfile, sessionId: string, text: string, opts: { durationMs?: number; reply?: string } = {}): Promise<{ forwarded: string | null }> {
+  async conduitTurn(profile: FakeProfile, sessionId: string, text: string, opts: { durationMs?: number; reply?: string } = {}): Promise<Json> {
     const s = this.require(profile, sessionId);
-    if (s.queue.some((a) => a.status === "unknown")) throw new Error("refused: outcome-unknown work in the gateway's queue; nothing was run here");
+    if (s.queue.some((a) => a.status === "unknown")) {
+      throw Object.assign(new Error(`Session ${s.id} has outcome-unknown work in the gateway's durable queue. Resume it through the gateway (hermes chat --resume, Desktop or the TUI) to resolve it; nothing was run here.`), {
+        code: 4090,
+        data: { reason: "SESSION_NOT_OWNED" },
+      });
+    }
     if (s.running || s.queue.length) {
-      const st = this.outsideTurn(profile, sessionId, text, { admissionId: `desktop-forward-${hex(8)}` });
-      return { forwarded: st.admission_id as string };
+      // Forwarded into the gateway's queue: an ordinary admission whose submission id names the dashboard (E3b).
+      const st = this.submit(profile, null, { session_id: sessionId, text, submission_id: `desktop-forward-${hex()}` });
+      return { status: "queued", admission_id: st.admission_id, forwarded: true };
     }
     const context = this.count(s) + 2;
     let release!: () => void;
     s.lease = new Promise<void>((r) => (release = r));
     const claimed = this.legacy(s) && !s.held;
     if (claimed) s.held = true;
-    this.addRow(s, { tpl: "user", role: "user", content: text, display_kind: null, display_metadata: null });
+    const user = this.addRow(s, { tpl: "user", role: "user", content: text, display_kind: null, display_metadata: null });
     s.last_activity_at = now();
-    this.changed(profile);
+    this.changed(profile, { dashboard: true });
     await sleep(opts.durationMs ?? 50);
     this.addRow(s, { tpl: "assistant", role: "assistant", content: opts.reply ?? `echo(${context}): ${text.slice(-120)}`, finish_reason: "stop" });
     s.last_activity_at = now();
     s.lease = null;
     release();
-    this.changed(profile);
-    return { forwarded: null };
+    this.changed(profile, { dashboard: true });
+    return { status: "streaming", user_row_id: user.id };
   }
 
   /** A dashboard (Conduit) chat the gateway doesn't own yet: `source: desktop`, no `chat_id` (D16, A48). */
@@ -1066,7 +1123,7 @@ export class Engine {
       this.addRow(s, { tpl: "user", role: "user", content: t, display_kind: null, display_metadata: null });
       this.addRow(s, { tpl: "assistant", role: "assistant", content: `echo(${2 * i + 2}): ${t}`, finish_reason: "stop" });
     }
-    this.changed(profile);
+    this.changed(profile, { dashboard: true });
     return id;
   }
 

@@ -141,8 +141,12 @@ export interface FakeHermes {
   nextTurn(profile: string, script: TurnScript): void;
   /** A turn by another canonical client (CLI, TUI, Desktop): live on every subscriber. Returns its AdmissionStatus. */
   outsideTurn(profile: string, sessionId: string, text: string, opts?: { admissionId?: string; script?: TurnScript }): Json;
-  /** A dashboard (Conduit) send: forwarded (`desktop-forward-…`) while gateway work is pending, else a legacy turn. */
-  conduitTurn(profile: string, sessionId: string, text: string, opts?: { durationMs?: number; reply?: string }): Promise<{ forwarded: string | null }>;
+  /**
+   * A dashboard (Conduit) send, answered as the dashboard answers it: `{status:"queued", admission_id, forwarded:true}`
+   * while gateway work is pending (submission id `desktop-forward-<hex>`), else `{status:"streaming", user_row_id}`
+   * for its own legacy turn. Rejects `{code:4090, data:{reason:"SESSION_NOT_OWNED"}}` behind an `unknown` admission.
+   */
+  conduitTurn(profile: string, sessionId: string, text: string, opts?: { durationMs?: number; reply?: string }): Promise<Json>;
   /** A dashboard chat the gateway doesn't own yet; `held`: the dashboard keeps its claim. Returns its id. */
   legacySession(profile: string, opts?: { title?: string; hidden?: boolean; turns?: string[]; held?: boolean }): string;
   /** The dashboard takes or drops its claim on a legacy row (`runtime_coordination_required` while held). */

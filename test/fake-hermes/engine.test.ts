@@ -1,7 +1,7 @@
 // The strict fake's session engine (03 §Strict fake Hermes): the Hermes behaviours bb relies on, driven through
 // bb's own canonical client and history reader. `fake.violations` stays empty in every test.
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { HermesClient, HermesRpcError, localDial } from "../../src/hermes/client.js";
@@ -50,13 +50,13 @@ async function client(f: FakeHermes) {
 let n = 0;
 const refusal = (p: Promise<unknown>) => p.then(() => null, (e: HermesRpcError) => ({ reason: e.reason, ...e.data }));
 
-/** Every recorded REST key set, by route (test/fixtures/rest/). */
+/** Every recorded REST key set, by route (test/fixtures/rest/, and the T1.0 frames' `exchanges`). */
 const recordedKeys = (() => {
-  const dir = path.join(import.meta.dirname, "../fixtures/rest");
+  const dirs = [path.join(import.meta.dirname, "../fixtures/rest"), path.join(import.meta.dirname, "../fixtures/frames")];
   const list = new Set<string>();
   const messages = new Set<string>();
-  for (const f of readdirSync(dir).filter((n) => n.endsWith(".json") && n !== "live-list-keys.json")) {
-    for (const x of JSON.parse(readFileSync(path.join(dir, f), "utf8")).exchanges as { path: string; body: { sessions?: object[]; messages?: object[] } }[]) {
+  for (const f of dirs.flatMap((d) => readdirSync(d).filter((n) => n.endsWith(".json") && n !== "live-list-keys.json").map((n) => path.join(d, n)))) {
+    for (const x of JSON.parse(readFileSync(f, "utf8")).exchanges as { path: string; body: { sessions?: object[]; messages?: object[] } }[]) {
       for (const r of x.body.sessions ?? []) list.add(Object.keys(r).sort().join());
       for (const r of x.body.messages ?? []) messages.add(Object.keys(r).sort().join());
     }
@@ -172,7 +172,7 @@ describe("engine: create, resume, submit, stream", () => {
     expect(f.session("alex", snap.session_id)).toMatchObject({ end_reason: "cli_close" });
   });
 
-  it("signals changes: sessions.changed on every socket and a state.db-wal touch in the profile home", async () => {
+  it("signals changes: a state.db-wal touch in the profile home; sessions.changed only for the root profile", async () => {
     const f = await fake();
     const k = await client(f);
     const watcher = await client(f);
@@ -181,8 +181,72 @@ describe("engine: create, resume, submit, stream", () => {
     const size = statSync(wal).size;
     await k.turn("alex", sid, "hi");
     expect(statSync(wal).size).toBeGreaterThan(size);
-    expect(watcher.of("sessions.changed").length).toBeGreaterThan(0);
+    // T1.0 (secondary profiles): no sessions.changed on canonical sockets.
+    expect(watcher.of("sessions.changed")).toEqual([]);
     expect(watcher.of("message.complete")).toEqual([]); // not subscribed: no session events
+    // The live spike S4 (root profile): sessions.changed after each turn.
+    const root = (await k.create("default", "bb:thr_root")).session_id;
+    await k.turn("default", root, "hi");
+    expect(watcher.of("sessions.changed").length).toBeGreaterThan(0);
+    expect(statSync(path.join(f.folder, "state.db-wal")).size).toBeGreaterThan(0);
+  });
+
+  it("A50: image attachments staged in the profile's cache/images; anything else is invalid_params (T1.0)", async () => {
+    const f = await fake();
+    const k = await client(f);
+    const { session_id: sid } = await k.create("alex", "bb:thr_att");
+    const images = path.join(f.folder, "profiles/alex/cache/images");
+    mkdirSync(images, { recursive: true });
+    const png = path.join(images, "pixel.png");
+    writeFileSync(png, Buffer.from("89504e470d0a1a0a", "hex"));
+    copyFileSync(png, path.join(f.folder, "pixel.png"));
+    writeFileSync(path.join(images, "note.txt"), "note");
+    for (const att of [
+      { path: path.join(f.folder, "pixel.png"), mime: "image/png" },
+      { path: path.join(images, "note.txt"), mime: "text/plain" },
+      { path: path.join(images, "missing.png"), mime: "image/png" },
+    ]) {
+      expect(await refusal(k.submit("alex", sid, "see it", { attachments: [att] }))).toMatchObject({ reason: "invalid_params" });
+    }
+    await k.submit("alex", sid, "see the attachment", { attachments: [{ path: png, mime: "image/png" }] });
+    await k.until(() => k.completes(sid).length === 1);
+    const [user] = (await readMessages(f.folder, "alex", sid, { order: "oldest", limit: 500 })).messages;
+    expect(user!.content).toMatch(/^\[The user sent an image~ Here's what I can see:\nStub chat\]\n\[If you need a closer look, use vision_analyze with image_url: .*\/cache\/documents\/native-inputs\/[0-9a-f]{64}\/pixel\.png ~\]\n\nsee the attachment$/);
+    expect(user!.display_metadata?.submission_id).toMatch(/^bb:/);
+  });
+
+  it("A46: /new and /reset as text get the gateway's confirm prompt, unstored, with no reset; /approve has nothing to approve", async () => {
+    const f = await fake();
+    const k = await client(f);
+    const { session_id: sid } = await k.create("alex", "bb:thr_new");
+    await k.turn("alex", sid, "one");
+    for (const cmd of ["/new", "/reset", "/approve"]) await k.turn("alex", sid, cmd);
+    const texts = k.completes(sid).slice(1).map((e) => e.payload!.text as string);
+    expect(texts[0]).toMatch(/^⚠️ \*\*Confirm \/new\*\*/);
+    expect(texts[1]).toBe(texts[0]);
+    expect(texts[2]).toBe("No pending command to approve.");
+    expect(k.completes(sid)[1]!.payload).not.toHaveProperty("persisted_turn");
+    const snap = await k.c.resume({ profile: "alex", session_id: sid, omit_messages: true });
+    expect(snap).toMatchObject({ session_id: sid, message_count: 2, revision: 4, execution_generation: 4 });
+    expect((await readChain(f.folder, "alex", sid)).messages.map((m) => m.content)).toEqual(["one", "echo(2): one"]);
+  });
+
+  it("queued rows offer steer/replace only for plain text on an interactive-surface row (session_queued_controls)", async () => {
+    const f = await fake();
+    const k = await client(f);
+    const { session_id: sid } = await k.create("alex", "bb:thr_ctl");
+    f.nextTurn("alex", { holdMs: 300 });
+    await k.submit("alex", sid, "first");
+    await k.submit("alex", sid, "queued with an author");
+    const legacy = f.legacySession("alex", { turns: ["hi"] });
+    await k.c.resume({ profile: "alex", session_id: legacy, omit_messages: true });
+    f.nextTurn("alex", { holdMs: 300 });
+    await k.c.submit({ profile: "alex", session_id: legacy, text: "first", submission_id: "bb:ctl:1" });
+    await k.c.submit({ profile: "alex", session_id: legacy, text: "plain queued", submission_id: "bb:ctl:2" });
+    const controls = async (id: string) => (await k.c.resume({ profile: "alex", session_id: id, omit_messages: true })).pending.map((p) => (p as unknown as { controls: string[] }).controls);
+    // A gateway row's DB source is `local`; an adopted dashboard row keeps `desktop`.
+    expect(await controls(sid)).toEqual([[], []]);
+    expect(await controls(legacy)).toEqual([[], ["steer", "replace"]]);
   });
 
   it("model.options answers after a configurable delay", async () => {
@@ -449,15 +513,25 @@ describe("engine: replay and restart", () => {
     expect(snap.pending).toEqual([expect.objectContaining({ admission_id: a.admission_id, status: "unknown", execution_generation: 1 })]);
     const b = await k.submit("alex", sid, "after restart");
     expect(b).toMatchObject({ status: "queued", authority_epoch: 2 });
-    await expect(f.conduitTurn("alex", sid, "from conduit")).rejects.toThrow(/outcome-unknown/);
+    await expect(f.conduitTurn("alex", sid, "from conduit")).rejects.toMatchObject({ code: 4090, data: { reason: "SESSION_NOT_OWNED" }, message: expect.stringContaining("outcome-unknown work") });
     await new Promise((r) => setTimeout(r, 50));
     expect(k.completes(sid)).toEqual([]);
     expect(await refusal(k.c.resolveUnknown({ profile: "alex", session_id: sid, admission_id: a.admission_id, execution_generation: 0 }))).toMatchObject({ reason: "stale_generation" });
     expect(await k.c.resolveUnknown({ profile: "alex", session_id: sid, admission_id: a.admission_id, execution_generation: 1 })).toMatchObject({ status: "terminal", outcome: "interrupted" });
     await k.until(() => k.completes(sid).length === 1);
     expect(k.completes(sid)[0]).toMatchObject({ admission_id: b.admission_id, execution_generation: 2 });
+    expect(await f.conduitTurn("alex", sid, "conduit after resolve")).toMatchObject({ status: "streaming" });
+    // The discarded turn keeps its user row with Hermes' note; the model sees both (T1.0 restart-unknown.json).
     const rows = (await readMessages(f.folder, "alex", sid, { order: "oldest", limit: 500 })).messages;
-    expect(rows.map((m) => m.content)).toEqual(["after restart", "echo(2): after restart"]);
+    expect(rows.map((m) => [m.content, m.display_kind ?? null])).toEqual([
+      ["lost", null],
+      ["This turn did not complete. Some actions may already have run; verify their effects before resending.", "failed_turn"],
+      ["after restart", null],
+      ["echo(4): after restart", null],
+      ["conduit after resolve", null],
+      ["echo(6): conduit after resolve", null],
+    ]);
+    expect(rows[0]!.display_metadata?.submission_id).toBe("bb:thr_t:1");
   });
 });
 
@@ -482,12 +556,12 @@ describe("engine: Conduit and other outside clients", () => {
     expect(groupTurns((await readChain(f.folder, "bob", id)).messages).map((t) => t.user!.content)).toEqual(["from conduit", "from bb"]);
   });
 
-  it("a session.mutate claims a legacy row (A23)", async () => {
+  it("a session.mutate leaves a legacy row legacy (T1.0 adoption.json: no chat_id after it)", async () => {
     const f = await fake();
     const k = await client(f);
     const id = f.legacySession("alex", { turns: ["hi"] });
-    await k.c.mutate({ profile: "alex", session_id: id, request_id: "bb:m", expected_revision: 0, expected_generation: 0, operation: "reasoning", payload: { effort: "low" } });
-    expect(f.session("alex", id)).toMatchObject({ chat_id: id });
+    expect(await k.c.mutate({ profile: "alex", session_id: id, request_id: "bb:m", expected_revision: 0, expected_generation: 0, operation: "reasoning", payload: { effort: "low" } })).toMatchObject({ revision: 1, execution_generation: 0 });
+    expect(f.session("alex", id)).toMatchObject({ chat_id: null, source: "desktop" });
   });
 
   it("a dashboard turn on an idle chat: the user row at once, the reply at the end, no canonical events; bb's send waits (E2, E3a)", async () => {
@@ -502,7 +576,7 @@ describe("engine: Conduit and other outside clients", () => {
     await k.submit("alex", sid, "from bb");
     await k.until(() => k.of("status.update", sid).length === 1);
     expect(k.of("status.update", sid)[0]!.payload).toMatchObject({ kind: "status", text: expect.stringContaining("Another Hermes process") });
-    expect(await conduit).toEqual({ forwarded: null });
+    expect(await conduit).toEqual({ status: "streaming", user_row_id: expect.any(Number) });
     await k.until(() => k.completes(sid).length === 1);
     // The model saw Conduit's turn (echo counts it).
     expect(k.completes(sid)[0]!.payload!.text).toBe("echo(4): from bb");
@@ -510,21 +584,24 @@ describe("engine: Conduit and other outside clients", () => {
       ["from conduit", null],
       ["from bb", "bb:thr_t:1"],
     ]);
-    expect(k.of("sessions.changed").length).toBeGreaterThanOrEqual(2);
+    // A dashboard turn signals through the WAL only (T1.0 conduit-turn.json).
+    expect(k.of("sessions.changed")).toEqual([]);
   });
 
-  it("a dashboard send during a bb turn is forwarded: a desktop-forward admission, live on bb's subscription (E3b)", async () => {
+  it("a dashboard send during a bb turn is forwarded: its own admission, submission id desktop-forward-…, live on bb's subscription (E3b)", async () => {
     const f = await fake();
     const k = await client(f);
     const { session_id: sid } = await k.create("alex", "bb:thr_fw");
     f.nextTurn("alex", { chunkMs: 20 });
     await k.submit("alex", sid, "bb first");
     await k.until(() => k.of("message.start", sid).length === 1);
-    const { forwarded } = await f.conduitTurn("alex", sid, "conduit second");
-    expect(forwarded).toMatch(/^desktop-forward-/);
+    const forwarded = await f.conduitTurn("alex", sid, "conduit second");
+    expect(forwarded).toEqual({ status: "queued", admission_id: expect.stringMatching(/^[0-9a-f]{32}$/), forwarded: true });
     await k.until(() => k.completes(sid).length === 2);
-    expect(k.of("message.start", sid).map((e) => e.admission_id)[1]).toBe(forwarded);
+    expect(k.of("message.start", sid).map((e) => e.admission_id)[1]).toBe(forwarded.admission_id);
     expect(k.completes(sid)[1]!.payload!.text).toBe("echo(4): conduit second");
+    const turns = groupTurns((await readChain(f.folder, "alex", sid)).messages);
+    expect(turns[1]!.submission_id).toMatch(/^desktop-forward-[0-9a-f]{32}$/);
   });
 
   it("another canonical client's turn (a CLI) streams live on bb's subscription with its own admission", async () => {
