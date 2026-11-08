@@ -173,14 +173,20 @@ describe("strict fake Hermes", () => {
 });
 
 describe("npm run fake-hermes", () => {
-  it("prints its folder and instance_id, serves another process, and removes its socket on SIGTERM", async () => {
+  it("prints its folder, instance_id and control endpoint, serves another process, restarts on request, removes its socket on SIGTERM", async () => {
     const folder = path.join(tempDir("runner-"), "hermes");
     cleanups.push(() => removeDir(path.dirname(folder)));
-    const child = spawn(process.execPath, ["--import", "tsx", path.join(import.meta.dirname, "run.ts"), folder], { stdio: ["ignore", "pipe", "inherit"] });
+    const child = spawn(process.execPath, ["--import", "tsx", path.join(import.meta.dirname, "run.ts"), folder, "--profiles", "alex,bob,neo"], { stdio: ["ignore", "pipe", "inherit"] });
     cleanups.push(() => child.kill("SIGKILL"));
-    const line = await new Promise<string>((resolve) => child.stdout.once("data", (d) => resolve(String(d))));
-    const info = JSON.parse(line) as { folder: string; instance_id: string; api_origin: string };
+    const lines: string[] = [];
+    child.stdout.on("data", (d) => lines.push(...String(d).split("\n").filter(Boolean)));
+    const nextLine = async (n: number) => {
+      for (let i = 0; i < 500 && lines.length < n; i++) await new Promise((r) => setTimeout(r, 20));
+      return JSON.parse(lines[n - 1]!) as { folder: string; instance_id: string; api_origin: string; control: string };
+    };
+    const info = await nextLine(1);
     expect(info.folder).toBe(folder);
+    expect(JSON.parse(readFileSync(path.join(folder, "fake-hermes.json"), "utf8"))).toEqual(info);
     const conn = new HermesConnection(folder);
     cleanups.push(() => conn.stop());
     conn.start();
@@ -189,6 +195,20 @@ describe("npm run fake-hermes", () => {
     expect((await conn.client!.describe()).instance_id).toBe(info.instance_id);
     const legacy = JSON.parse(readFileSync(path.join(import.meta.dirname, "../fixtures/rest/legacy.json"), "utf8"));
     expect(await listSessions(folder, "alex", { order: "recent", archived: "include", limit: 100 })).toEqual(legacy.exchanges[0].body);
+    // The control endpoint reaches the engine's knobs from outside the process.
+    const op = async (name: string, body: object) => {
+      const res = await fetch(`${info.control}/${name}`, { method: "POST", body: JSON.stringify(body) });
+      return [res.status, await res.json()] as const;
+    };
+    const [, made] = await op("legacySession", { profile: "neo", title: "Bot Chat", hidden: true, held: true, turns: ["hi"] });
+    expect(await op("session", { profile: "neo", session_id: made.session_id })).toEqual([200, expect.objectContaining({ source: "desktop", chat_id: null, held: true, rows: 2 })]);
+    expect(await op("session", { profile: "neo", session_id: "nope" })).toEqual([400, { error: "not_found" }]);
+    expect(await op("bogus", {})).toEqual([404, { error: "unknown op" }]);
+    const [, restarted] = await op("restart", {});
+    expect(restarted.instance_id).not.toBe(info.instance_id);
+    expect(await nextLine(2)).toEqual(restarted);
+    child.kill("SIGHUP");
+    expect((await nextLine(3)).instance_id).not.toBe(restarted.instance_id);
     child.kill("SIGTERM");
     await new Promise((r) => child.once("exit", r));
     expect(existsSync(path.join(folder, "gateway.sock"))).toBe(false);
