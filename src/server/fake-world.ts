@@ -50,6 +50,9 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
   const prompts = new Map<string, { createdAt: number; id: string; input: PromptInput[] }[]>();
   const levels = new Map<string, string>();
   const levelCalls: { threadId: string; level: string }[] = [];
+  /** bb's pending interaction cards (provider ones carry `origin.providerRequestId`). */
+  const cards: { threadId: string; id: string; status: string; origin: { kind: string; providerRequestId?: string } }[] = [];
+  const cancels: { threadId: string; interactionId: string }[] = [];
   /** Hermes chats by lineage root. */
   /** `pageSize`: an `after_uid` read returns at most this many turns, oldest first, `truncated` when more follow. */
   const history = new Map<string, { session_id: string; turns: HistoryTurn[]; truncated?: boolean; pageSize?: number }>();
@@ -186,6 +189,15 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
           },
         },
         queuedMessages: { list: async () => ({ messages: [] }) },
+        interactions: {
+          list: async ({ threadId }) => cards.filter((c) => c.threadId === threadId).map(({ threadId: _, ...c }) => c),
+          cancel: async ({ threadId, interactionId }) => {
+            cancels.push({ threadId, interactionId });
+            const card = cards.find((c) => c.id === interactionId)!;
+            card.status = "interrupted";
+            return card;
+          },
+        },
       },
     },
   });
@@ -225,6 +237,8 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
     access,
     levels,
     levelCalls,
+    cards,
+    cancels,
     prompts,
     rpc,
     flush,
@@ -255,6 +269,12 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
     persisted(threadId: string, payload: z.input<typeof persistedTurnStateSchema>) {
       const list = events.get(threadId) ?? [];
       list.push({ type: "thread/extensionState/updated", seq: ++state.seq, data: { kind: `hermes/${EXTENSION_KINDS.persistedTurn}`, payload, providerThreadId: "p" } });
+      events.set(threadId, list);
+    },
+    /** The bridge published `status` for this thread. */
+    status(threadId: string, payload: unknown) {
+      const list = events.get(threadId) ?? [];
+      list.push({ type: "thread/extensionState/updated", seq: ++state.seq, data: { kind: `hermes/${EXTENSION_KINDS.status}`, payload, providerThreadId: "p" } });
       events.set(threadId, list);
     },
     /** A recorded bb event of this thread (e.g. `client/thread/start`). */

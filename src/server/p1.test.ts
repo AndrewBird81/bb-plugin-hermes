@@ -638,6 +638,28 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
   });
 });
 
+describe("dead cards (A3)", () => {
+  it("a dead request id → exactly one cancel of its pending card; none for others, none twice, never an answer", async () => {
+    const w = await liveBotThread();
+    const card = (id: string, request: string, status = "pending") => ({ threadId: "thr_1", id, status, origin: { kind: "provider", providerRequestId: request } });
+    w.cards.push(card("int_1", "req_dead"), card("int_2", "req_live"), card("int_3", "req_old", "resolved"), {
+      threadId: "thr_1",
+      id: "int_4",
+      status: "pending",
+      origin: { kind: "plugin" },
+    });
+    w.status("thr_1", { banner: null, since: null, dead_requests: ["req_dead", "req_old"] });
+    await w.emit("experimental_thread.events" as never, "thr_1");
+    expect(w.cancels).toEqual([{ threadId: "thr_1", interactionId: "int_1" }]);
+    // Read again by the next event and at idle: nothing more.
+    await w.emit("experimental_thread.events" as never, "thr_1");
+    await w.idle("thr_1");
+    expect(w.cancels).toHaveLength(1);
+    const answered = w.harness.inspection.sdk.calls.filter((c) => /interactions\.(respond|resolve)/.test(c.path));
+    expect(answered).toEqual([]);
+  });
+});
+
 describe("folder guard (R8)", () => {
   it("a folder that moved without setConnection: not_configured, 0 Hermes I/O, no machine for bridges, until set again", async () => {
     // A reinstall reset the folder setting to its default; data.db kept the machine and its folder.

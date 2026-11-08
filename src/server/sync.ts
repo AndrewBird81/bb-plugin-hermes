@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { PromptInput } from "@get-bb/plugin-sdk/provider-bridge";
-import { EXTENSION_KINDS, persistedTurnStateSchema, type PersistedTurnState } from "../shared/extension-state.js";
+import { EXTENSION_KINDS, persistedTurnStateSchema, type PersistedTurnState, statusStateSchema } from "../shared/extension-state.js";
 import type { HistoryTurn } from "../shared/host-contract.js";
 import { encodeMarker, type Marker } from "../shared/marker.js";
 import { THREAD_INFO_TAG } from "../shared/rpc-contract.js";
@@ -109,6 +109,9 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
   /** Imports that haven't sent every turn yet: they stay `replaying` at idle and resume at the next reconcile. */
   const unfinished = new Set<string>();
   const persistedKind = `${bb.pluginId}/${EXTENSION_KINDS.persistedTurn}`;
+  const statusKind = `${bb.pluginId}/${EXTENSION_KINDS.status}`;
+  /** `threadId \0 requestId` of dead cards already cancelled (memory: a repeat cancel is harmless). */
+  const cancelled = new Set<string>();
   const fail = (code: string) => connection.recordError(code);
   const paused = () => connection.health().state === "not_supported";
 
@@ -314,16 +317,50 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
     if (settle) settleMirrored(threadId, state);
   }
 
-  /** The latest `persisted-turn` state of a thread, read from its events (the event itself is debounced). */
+  /**
+   * The latest `persisted-turn` and `status` states of a thread, read from its events (the event itself
+   * is debounced). `status.dead_requests`: cards the bridge can't withdraw (bb 0.49.0, A3) get cancelled.
+   */
   async function ingestPersistedNow(threadId: string, options: { settle?: boolean } = {}): Promise<void> {
     const rows = await bb.sdk.threads.events.list({ threadId, types: ["thread/extensionState/updated"], order: "desc", limit: "50" });
+    let persisted = false;
+    let status = false;
     for (const row of rows) {
-      if (row.type !== "thread/extensionState/updated" || row.data.kind !== persistedKind) continue;
-      const parsed = persistedTurnStateSchema.safeParse(row.data.payload);
-      if (parsed.success) applyPersisted(threadId, parsed.data, options);
-      else fail("persisted_turn_invalid");
-      return;
+      if (row.type !== "thread/extensionState/updated") continue;
+      if (!persisted && row.data.kind === persistedKind) {
+        persisted = true;
+        const parsed = persistedTurnStateSchema.safeParse(row.data.payload);
+        if (parsed.success) applyPersisted(threadId, parsed.data, options);
+        else fail("persisted_turn_invalid");
+      } else if (!status && row.data.kind === statusKind) {
+        status = true;
+        const parsed = statusStateSchema.safeParse(row.data.payload);
+        if (parsed.success) await cancelDeadNow(threadId, parsed.data.dead_requests ?? []);
+        else fail("status_invalid");
+      }
+      if (persisted && status) return;
     }
+  }
+
+  /** Cancel (never answer) each pending provider card whose Hermes prompt is gone. */
+  async function cancelDeadNow(threadId: string, dead: string[]): Promise<void> {
+    const todo = new Set(dead.filter((id) => !cancelled.has(`${threadId}\0${id}`)));
+    if (!todo.size) return;
+    const pending = await bb.sdk.threads.interactions.list({ threadId });
+    for (const interaction of pending) {
+      if (interaction.status !== "pending" || interaction.origin?.kind !== "provider") continue;
+      const request = interaction.origin.providerRequestId;
+      if (!todo.has(request)) continue;
+      try {
+        await bb.sdk.threads.interactions.cancel({ threadId, interactionId: interaction.id });
+      } catch (error) {
+        // Retried at the next state read.
+        fail(errorCode(error, "cancel_failed"));
+        todo.delete(request);
+      }
+    }
+    // Handled: cancelled now, or no longer pending (closed already); either way never again.
+    for (const id of todo) cancelled.add(`${threadId}\0${id}`);
   }
 
   /**
