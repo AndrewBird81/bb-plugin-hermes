@@ -13,7 +13,7 @@ const exitOn = (code: number) => () => {
 
 export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine: bridge.handleLine,
-  start: ({ dataDir }) => bridge.start(dataDir),
+  start: ({ dataDir, pluginId }) => bridge.start(dataDir, pluginId),
   onClose: () => bridge.close(),
   onSigterm: exitOn(143),
   onSigint: exitOn(130),

@@ -1,6 +1,7 @@
-// Provider bridge skeleton (T0.7; 02 §Protocol mapping). One process per hosted thread (S1-S3 fact 2),
-// but a process may host several threads, so state is keyed by threadId.
-// No Hermes I/O yet: turns fail with a clear `provider.error` until P1 (T1.1).
+// Provider bridge (02 §Protocol mapping). One process per hosted thread (S1-S3 fact 2), but a process may
+// host several threads, so state is keyed by threadId; one canonical connection per process and folder.
+// `createBridge` runs in-process against any Hermes folder the provider options name (tests, the e2e
+// seam's two-client harness).
 import {
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
@@ -20,11 +21,15 @@ import {
   threadStartParamsSchema,
   threadStopParamsSchema,
   turnStartParamsSchema,
+  turnSteerParamsSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
+import type { ConnectionOptions } from "../hermes/client.js";
+import { canonicalHome } from "../hermes/control.js";
+import { HermesLink, type History, restHistory } from "./hermes.js";
 import { type BuildRegistry, openRegistry } from "./registry.js";
-
-export const TURNS_NOT_READY = "Chatting with Hermes from bb isn't available in this version of the Hermes plugin yet.";
+import { HOLD_RETRY_MS, HostedThread, type ThreadHost, type TurnParams } from "./thread.js";
+import { PROVIDER_ID } from "./provider.js";
 
 /** Identity before a Hermes session exists (02 §Protocol mapping `thread/start`; A15). */
 export const pendingIdentity = (threadId: string) => `pending:${threadId}`;
@@ -47,11 +52,12 @@ const HEALTH: ProviderHealthResult = {
 
 type Notification = { jsonrpc: "2.0"; method: string; params: unknown };
 type Reply = (result: unknown) => void;
+type Fail = (code: number, message: string) => void;
 interface Method {
   schema: z.ZodType;
-  run(params: unknown, reply: Reply): void;
+  run(params: unknown, reply: Reply, fail: Fail): void | Promise<void>;
 }
-const method = <S extends z.ZodType>(schema: S, run: (params: z.infer<S>, reply: Reply) => void): Method => ({
+const method = <S extends z.ZodType>(schema: S, run: (params: z.infer<S>, reply: Reply, fail: Fail) => void | Promise<void>): Method => ({
   schema,
   run: run as Method["run"],
 });
@@ -59,22 +65,61 @@ const method = <S extends z.ZodType>(schema: S, run: (params: z.infer<S>, reply:
 export interface Bridge {
   handleLine(line: string): void;
   /** Opens the build registry in the plugin's bridge dataDir. */
-  start(dataDir: string): void;
-  /** Removes the build registry file. */
+  start(dataDir: string, pluginId?: string): void;
+  /** Removes the build registry file and closes Hermes connections. */
   close(): void;
 }
 
-export function createBridge(build: string): Bridge {
+export interface BridgeOptions {
+  /** The history reader per Hermes folder; default: Hermes' REST projection (02 §History reader). */
+  history?: (root: string) => History;
+  /** Flow 3 step 4's retry delays; tests shorten them. */
+  holdRetryMs?: readonly number[];
+  /** Canonical connection options (tests shorten the backoff). */
+  connection?: ConnectionOptions;
+}
+
+export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
   const io = createBridgeIo<Notification>();
   const notify = (method: string, params: unknown) => io.send({ jsonrpc: "2.0", method, params });
-  const emit = (threadId: string, deltas: ThreadDelta[]) => notify(THREAD_DELTA_NOTIFICATION_METHOD, { threadId, deltas });
-  /** threadId → providerThreadId. */
-  const hosted = new Map<string, string>();
+  const threads = new Map<string, HostedThread>();
+  const links = new Map<string, HermesLink>();
+  const histories = new Map<string, History>();
   let registry: BuildRegistry | null = null;
+  let dataDir: string | null = null;
+  let pluginId = PROVIDER_ID;
 
-  const host = (threadId: string, providerThreadId: string) => {
-    hosted.set(threadId, providerThreadId);
+  const host: ThreadHost = {
+    get dataDir() {
+      if (!dataDir) throw new Error("bridge not started");
+      return dataDir;
+    },
+    get pluginId() {
+      return pluginId;
+    },
+    holdRetryMs: opts.holdRetryMs ?? HOLD_RETRY_MS,
+    emit: (threadId: string, deltas: ThreadDelta[]) => notify(THREAD_DELTA_NOTIFICATION_METHOD, { threadId, deltas }),
+    announce: (threadId: string, providerThreadId: string) => notify(BRIDGE_NOTIFICATION_METHODS.threadIdentity, { threadId, providerThreadId }),
+    link(root: string) {
+      const key = canonicalHome(root);
+      let link = links.get(key);
+      if (!link) links.set(key, (link = new HermesLink(root, opts.connection)));
+      return link;
+    },
+    history(root: string) {
+      const key = canonicalHome(root);
+      let history = histories.get(key);
+      if (!history) histories.set(key, (history = (opts.history ?? restHistory)(root)));
+      return history;
+    },
+  };
+
+  const hostThread = (threadId: string, providerThreadId: string): HostedThread => {
+    let thread = threads.get(threadId);
+    if (!thread) threads.set(threadId, (thread = new HostedThread(threadId, providerThreadId, host)));
+    else if (providerThreadId && !providerThreadId.startsWith("pending:")) thread.providerThreadId = providerThreadId;
     registry?.setThread(threadId);
+    return thread;
   };
 
   const methods: Record<string, Method> = {
@@ -97,27 +142,36 @@ export function createBridge(build: string): Bridge {
     [BRIDGE_REQUEST_METHODS.modelList]: method(modelListParamsSchema, (_, reply) => reply({ models: [], selectedOnlyModels: [] })),
     [BRIDGE_REQUEST_METHODS.threadStart]: method(threadStartParamsSchema, ({ threadId }, reply) => {
       const providerThreadId = pendingIdentity(threadId);
-      host(threadId, providerThreadId);
+      threads.delete(threadId);
+      hostThread(threadId, providerThreadId);
       notify(BRIDGE_NOTIFICATION_METHODS.threadIdentity, { threadId, providerThreadId });
       reply({ providerThreadId, sessionRestorable: true });
     }),
     // Records the identity only; never touches Hermes (R4 M4).
     [BRIDGE_REQUEST_METHODS.threadResume]: method(threadResumeParamsSchema, ({ threadId, providerThreadId }, reply) => {
-      host(threadId, providerThreadId);
-      reply({ providerThreadId, sessionRestorable: true });
+      const thread = hostThread(threadId, providerThreadId);
+      reply({ providerThreadId: thread.providerThreadId, sessionRestorable: true });
     }),
-    // No turn ever runs yet, so `interrupt` has nothing to stop; `release` forgets the thread.
-    [BRIDGE_REQUEST_METHODS.threadStop]: method(threadStopParamsSchema, ({ threadId, intent }, reply) => {
-      if (intent === "release") hosted.delete(threadId);
+    [BRIDGE_REQUEST_METHODS.threadStop]: method(threadStopParamsSchema, async ({ threadId, intent }, reply) => {
+      const thread = threads.get(threadId);
+      if (intent === "release") {
+        threads.delete(threadId);
+        await thread?.release();
+      } else await thread?.stop();
       reply({});
     }),
-    [BRIDGE_REQUEST_METHODS.turnStart]: method(turnStartParamsSchema, ({ threadId, clientRequestId }, reply) => {
+    [BRIDGE_REQUEST_METHODS.turnStart]: method(turnStartParamsSchema, ({ threadId, providerThreadId, clientRequestId, input, options }, reply) => {
+      const thread = hostThread(threadId, providerThreadId);
       reply({});
-      emit(threadId, [
-        { kind: "input.accepted", clientRequestId },
-        { kind: "turn.open" },
-        { kind: "provider.error", message: TURNS_NOT_READY, settlesTurn: true },
-      ]);
+      void thread.runTurn({ clientRequestId, input, options: options as TurnParams["options"] }).catch((error) => {
+        process.stderr.write(`hermes bridge: turn failed: ${(error as Error).stack ?? error}\n`);
+      });
+    }),
+    [BRIDGE_REQUEST_METHODS.turnSteer]: method(turnSteerParamsSchema, async (params, reply, fail) => {
+      const thread = threads.get(params.threadId);
+      const accepted = await thread?.steer(params.clientRequestId, params.input, { clientRequestId: params.clientRequestId, input: params.input, options: (params as { options?: TurnParams["options"] }).options ?? {} });
+      if (accepted) reply({});
+      else fail(BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN, "no active turn");
     }),
   };
 
@@ -137,7 +191,11 @@ export function createBridge(build: string): Bridge {
             const issue = checked.error.issues[0];
             return io.sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, `Invalid params for ${name}: ${issue?.path.join(".")} ${issue?.message}`);
           }
-          handler.run(checked.data, (result) => io.sendResult(id, result));
+          await handler.run(
+            checked.data,
+            (result) => io.sendResult(id, result),
+            (code, text) => io.sendError(id, code, text),
+          );
         },
       });
     },
@@ -145,12 +203,16 @@ export function createBridge(build: string): Bridge {
 
   return {
     handleLine,
-    start(dataDir) {
-      registry = openRegistry(dataDir, build);
+    start(dir, id) {
+      dataDir = dir;
+      if (id) pluginId = id;
+      registry = openRegistry(dir, build);
     },
     close() {
       registry?.remove();
       registry = null;
+      for (const link of links.values()) link.stop();
+      links.clear();
     },
   };
 }

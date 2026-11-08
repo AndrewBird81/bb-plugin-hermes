@@ -1,31 +1,38 @@
-// Layer 2 (03): the SDK conformance kit, for the scenarios the skeleton supports. Turn scenarios
-// (zero-work, interrupt, threads-independent) need real turns and wait for P1 (T1.1).
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+// Layer 2 (03): the SDK conformance kit against the bridge driving the strict fake's engine, every scenario
+// 03 lists, the turn scenarios included. Placeholder identity at start (A15): `pending:<threadId>`.
 import {
   experimental_captureBridgeJsonRpcOutput as captureOutput,
   experimental_formatConformanceReport as formatReport,
   experimental_runBridgeConformance as runConformance,
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
-import { expect, it } from "vitest";
-import { createBridge } from "./bridge.js";
+import { afterEach, beforeEach, expect, it } from "vitest";
 import { PROVIDER_ID } from "./provider.js";
+import { AUTO, type Rig, startRig, text } from "./testing/harness.js";
 
-it("passes the conformance scenarios the skeleton supports", async () => {
-  const dataDir = mkdtempSync(join(tmpdir(), "bb-hermes-test-"));
-  const bridge = createBridge("dev");
-  bridge.start(dataDir);
+let rig: Rig;
+beforeEach(async () => {
+  rig = await startRig();
+  rig.rpc.restore(); // the kit captures stdout itself
+});
+afterEach(async () => {
+  await rig.close();
+});
+
+it("passes every conformance scenario on real turns", async () => {
   const output = captureOutput();
   try {
     const report = await runConformance({
       providerId: PROVIDER_ID,
-      transport: { send: bridge.handleLine, takeMessages: output.takeMessages },
+      transport: { send: rig.bridge.handleLine, takeMessages: output.takeMessages },
+      timeoutMs: 8000,
       session: {
-        cwd: dataDir,
-        promptInput: [{ type: "text", mentions: [], text: "hello" }],
-        // The only declared mode (A2, D17).
-        options: { permissionMode: "auto", permissionScope: "workspace", approvalReviewer: "automatic", permissionEscalation: "ask" },
+        cwd: rig.dataDir,
+        promptInput: [text("hello")],
+        // An empty prompt: nothing reaches Hermes and the turn settles with no activity.
+        zeroWorkPromptInput: [text(" ")],
+        interruptiblePromptInput: [text(`#slow ${"word ".repeat(40)}`)],
+        // The only declared mode (A2, D17), plus the server's provider options for this thread.
+        options: { ...AUTO, providerOptions: rig.options("alex") },
       },
     });
     const failed = report.results.filter((r) => r.status !== "pass");
@@ -37,15 +44,21 @@ it("passes the conformance scenarios the skeleton supports", async () => {
         "session/start-identity-announced",
         "session/resume-identity",
         "session/resume-id-uniqueness",
+        "session/threads-independent",
         "turn/lifecycle",
+        "turn/settles-without-activity",
+        "stop/interrupt-settles-before-result",
+        "stop/release-not-interrupted",
         "events/schema-valid",
         "item/opens-before-delta",
-        "stop/release-not-interrupted",
       ]),
     );
   } finally {
     output.restore();
-    bridge.close();
-    rmSync(dataDir, { recursive: true, force: true });
   }
-});
+  // Real turns ran: two lifecycle prompts and the interrupted one reached Hermes; the zero-work one didn't.
+  expect(rig.requests("prompt.submit").map((r) => r.params.text)).toEqual(expect.arrayContaining(["hello", expect.stringMatching(/^#slow/)]));
+  expect(rig.requests("prompt.submit").some((r) => String(r.params.text).trim() === "")).toBe(false);
+  expect(rig.requests("session.interrupt").length + rig.requests("prompt.cancel").length).toBeGreaterThan(0);
+  expect(rig.fake.violations).toEqual([]);
+}, 60_000);

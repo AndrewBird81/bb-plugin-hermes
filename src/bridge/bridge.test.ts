@@ -14,7 +14,8 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bridgeFileSchema } from "../shared/bridge-registry.js";
-import { type Bridge, createBridge, TURNS_NOT_READY } from "./bridge.js";
+import { type Bridge, createBridge } from "./bridge.js";
+import { NOT_CONNECTED_TEXT } from "./context.js";
 import { PROVIDER_ID } from "./provider.js";
 
 const cwd = "/work";
@@ -42,7 +43,7 @@ const call = async (id: number, method: string, params: Record<string, never> | 
   return rpc.waitForResponse(id);
 };
 
-describe("bridge skeleton", () => {
+describe("bridge handshake", () => {
   it("initialize declares the 02 handshake", async () => {
     const res = await call(1, "initialize", { protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION, client: { name: "t", version: "0" } });
     expect(res.result).toMatchObject({ protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION });
@@ -84,7 +85,7 @@ describe("bridge skeleton", () => {
     }
   });
 
-  it("turn/start fails the turn with a provider error", async () => {
+  it("turn/start without the server's options fails the turn before any Hermes call", async () => {
     await call(1, "thread/start", { threadId: "thr_a", cwd, options: autoMode, instructionMode: "append" });
     rpc.takeMessages();
     const input = [{ type: "text", mentions: [], text: "hi" }];
@@ -92,7 +93,7 @@ describe("bridge skeleton", () => {
     expect(res.result).toEqual({});
     const events = assemble(rpc.takeMessages(), PROVIDER_ID);
     expect(events.map((e) => e.type)).toEqual(expect.arrayContaining(["turn/started", "provider/error", "turn/completed"]));
-    expect(events.find((e) => e.type === "provider/error")).toMatchObject({ message: TURNS_NOT_READY });
+    expect(events.find((e) => e.type === "provider/error")).toMatchObject({ message: NOT_CONNECTED_TEXT });
     expect(events.find((e) => e.type === "turn/completed")).toMatchObject({ status: "failed" });
   });
 
