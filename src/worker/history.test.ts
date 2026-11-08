@@ -282,6 +282,24 @@ describe("readTurns", () => {
     expect(turns.length).toBeLessThan(5);
     expect(turns.at(-1)!.user_text).toMatch(/^after compaction/);
   });
+
+  it("with after_uid the cap keeps the oldest turns after the cursor, so paging on leaves no gap", async () => {
+    const { h, root, alex } = await setup({ rest: ["compaction-in-place"] }, { turnsMaxBytes: 1200 });
+    const all = (await h.experimental_call("readTurns", { root, profile_home: alex, lineage_root: LINEAGE, after_uid: "unknown-uid" }));
+    expect(all.truncated).toBe(true);
+    expect(all.turns[0]!.user_text).toMatch(/^in place turn 1/);
+    const seen = [...all.turns];
+    for (let page = all; page.truncated; ) {
+      page = await read(h, root, alex, { after_uid: seen.at(-1)!.anchor_uid });
+      expect(page.turns.length).toBeGreaterThan(0);
+      seen.push(...page.turns);
+    }
+    expect(seen.map((t) => t.user_text?.slice(0, 16))).toEqual(["in place turn 1 ", "in place turn 2 ", "in place turn 3 ", "in place turn 4 ", "after compaction"]);
+    expect(seen.every((t) => t.complete)).toBe(true);
+    // A since read (import) still keeps the newest.
+    const since = await read(h, root, alex, { since: 0 });
+    expect([since.truncated, since.turns.at(-1)!.user_text?.slice(0, 16)]).toEqual([true, "after compaction"]);
+  });
 });
 
 describe("readHistoryTurns", () => {
@@ -295,6 +313,13 @@ describe("readHistoryTurns", () => {
     expect(checks).toBe(1);
     expect((await readHistoryTurns(recorded("hidden-prompt"), { running, after_uid: turns.at(-1)!.anchor_uid })).turns).toEqual([]);
     expect(checks).toBe(1);
+  });
+
+  it("with after_uid a page holds one turn at least, even one over the cap", async () => {
+    const chain = recorded("steer");
+    const first = (await readHistoryTurns(chain, { running: async () => false })).turns[0]!;
+    const page = await readHistoryTurns(chain, { running: async () => false, after_uid: "unknown-uid", maxBytes: 1 });
+    expect([page.turns.map((t) => t.anchor_uid), page.truncated]).toEqual([[first.anchor_uid], true]);
   });
 
   it("a failed running check counts as running: the last turn stays open", async () => {

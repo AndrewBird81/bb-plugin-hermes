@@ -74,7 +74,8 @@ export async function findBotChat(client: HermesClient, profile: string): Promis
 
 /**
  * A16: host RPC output is capped at 8 MiB (bb's host limits). `readTurns` keeps its answer under half of
- * that, newest turns first, and says `truncated` when it leaves older ones out.
+ * that and says `truncated` when it leaves turns out: the newest with `after_uid` (the server pages on from
+ * the last turn returned), else the oldest.
  */
 export const TURNS_MAX_BYTES = 4 * 1024 * 1024;
 
@@ -89,8 +90,8 @@ export interface TurnsQuery {
 /**
  * A chat's turns, root to tip (02 §Contracts `readTurns`): every message of the chain grouped by the anchor
  * rules (`groupTurns`). `after_uid`: only turns after that anchor (unknown → every turn). `since` (Unix ms):
- * only turns from then on. `complete`: a later turn exists, or the chat isn't running. `truncated`: older
- * turns exist that the answer leaves out, by `since` or by the size cap.
+ * only turns from then on. `complete`: a later turn exists, or the chat isn't running. `truncated`: turns
+ * exist that the answer leaves out: older ones by `since` or the size cap, newer ones by the cap with `after_uid`.
  */
 export async function readHistoryTurns(chain: { session_id: string; messages: RestMessage[] }, q: TurnsQuery): Promise<{ session_id: string; turns: HistoryTurn[]; truncated: boolean }> {
   let turns = groupTurns(chain.messages).map(summarizeTurn);
@@ -105,14 +106,18 @@ export async function readHistoryTurns(chain: { session_id: string; messages: Re
   const running = turns.length ? await q.running().catch(() => true) : false;
   const out: HistoryTurn[] = turns.map((t, i) => ({ ...t, complete: i < turns.length - 1 || !running }));
   const max = q.maxBytes ?? TURNS_MAX_BYTES;
+  const size = (t: HistoryTurn) => Buffer.byteLength(JSON.stringify(t)) + 1;
+  if (q.after_uid !== undefined && q.since === undefined) {
+    // Paging forward from a cursor: oldest first, so the next page starts right after the last turn kept.
+    // At least one turn, so a page always moves on.
+    let bytes = 0;
+    let end = 0;
+    while (end < out.length && (end === 0 || bytes + size(out[end]!) <= max)) bytes += size(out[end++]!);
+    return { session_id: chain.session_id, turns: out.slice(0, end), truncated: truncated || end < out.length };
+  }
   let bytes = 0;
   let first = out.length;
-  while (first > 0) {
-    const size = Buffer.byteLength(JSON.stringify(out[first - 1])) + 1;
-    if (bytes + size > max) break;
-    bytes += size;
-    first--;
-  }
+  while (first > 0 && bytes + size(out[first - 1]!) <= max) bytes += size(out[--first]!);
   return { session_id: chain.session_id, turns: out.slice(first), truncated: truncated || first > 0 };
 }
 
