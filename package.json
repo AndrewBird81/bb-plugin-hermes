@@ -25,7 +25,9 @@
     "types:check": "node scripts/bb.mjs plugin types --check .",
     "build": "node scripts/bb.mjs plugin build .",
     "check": "npm run test && npm run typecheck && npm run types:check && npm run build",
-    "check:private": "node scripts/check-private.mjs"
+    "check:private": "node scripts/check-private.mjs",
+    "contract:check": "tsx contract/check.ts",
+    "fake-hermes": "tsx test/fake-hermes/run.ts"
   },
   "dependencies": {
     "@get-bb/plugin-sdk": "0.6.132",
@@ -45,6 +47,7 @@
     "jsdom": "^31.0.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.0",
     "vitest": "^5.1.0",
     "ws": "^8.22.2"

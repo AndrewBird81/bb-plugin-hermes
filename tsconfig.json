@@ -12,5 +12,5 @@
     "resolveJsonModule": true,
     "skipLibCheck": true
   },
-  "include": ["server.ts", "host.ts", "app.tsx", "src", "test", "e2e", "vitest.config.ts"]
+  "include": ["server.ts", "host.ts", "app.tsx", "src", "test", "e2e", "contract", "vitest.config.ts"]
 }
