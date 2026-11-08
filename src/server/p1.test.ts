@@ -398,6 +398,36 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     expect(w.markers("thr_1").map((m) => m.op)).toEqual(["init"]);
   });
 
+  it("bot thread: bb's first send adopts a legacy Bot Chat → bound from its record, then older turns import once", async () => {
+    const w = await world();
+    await w.connect();
+    await on(w);
+    await w.idle("thr_1");
+    // findBotChat is read-only: an unadopted Bot Chat reads as none, so the bot thread stays pending.
+    expect(bindingByThread(w.db, "thr_1")?.state).toBe("pending");
+    const ts = Date.now() - 86_400_000;
+    w.history.set("root_conduit", {
+      session_id: "root_conduit",
+      turns: [turn("c1", { surface: null, ts }), turn("c2", { surface: "desktop", ts }), turn("b1", { submission_id: null, user_text: "hi", ts: ts + 1 })],
+    });
+    await w.active("thr_1");
+    w.persisted("thr_1", { profile_home: NEO, lineage_root: "root_conduit", session_id: "root_conduit", turns: [{ submission_id: "bb:thr_1:c1", anchor_uids: ["b1"], reply_uids: ["b1-r"], at: 1 }] });
+    await w.idle("thr_1");
+    expect(bindingByThread(w.db, "thr_1")).toMatchObject({ state: "replaying", lineage_root: "root_conduit", legacy: false });
+    expect(w.markers("thr_1")).toEqual([
+      { op: "init", profile: "neo", bot: true },
+      { op: "bind", profile_home: NEO, lineage_root: "root_conduit", legacy: false, anchor_uid: "c1" },
+      { op: "replay", anchor_uid: "c2" },
+    ]);
+    // bb's own turn is already in the thread: never imported, never woken.
+    expect(turnRow(w.db, "thr_1", "b1")).toMatchObject({ kind: "bb" });
+    expect(w.texts("thr_1")).toEqual([`${formatTag("Conduit", new Date(ts))}text c1`, `${formatTag("Desktop", new Date(ts))}text c2`]);
+    await w.idle("thr_1");
+    expect(bindingByThread(w.db, "thr_1")).toMatchObject({ state: "live", cursor_uid: "b1" });
+    await w.changed(NEO);
+    expect(w.markers("thr_1")).toHaveLength(3);
+  });
+
   it("the first visible message becomes the title, cut to 60 characters", async () => {
     const w = await world();
     await w.connect();

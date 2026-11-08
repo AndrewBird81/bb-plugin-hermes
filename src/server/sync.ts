@@ -14,6 +14,7 @@ import {
   bindingByLineage,
   bindingByThread,
   type Binding,
+  botRecord,
   claimRest,
   claimTurn,
   type Db,
@@ -272,9 +273,15 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
     if (!binding.lineage_root) {
       const other = bindingByLineage(db, state.profile_home, state.lineage_root);
       if (other) return fail("duplicate_binding");
-      // Turns before bb's first are history, not news: wakes start after it.
-      const last = state.turns.at(-1)?.anchor_uids.at(-1) ?? null;
-      updateBinding(db, threadId, { lineage_root: state.lineage_root, session_id: state.session_id, state: "live", cursor_uid: last });
+      if (binding.kind === "bot") {
+        // bb's first send found (and adopted) the Bot Chat: its older turns import after that turn (flow 5).
+        updateBinding(db, threadId, { lineage_root: state.lineage_root, session_id: state.session_id, legacy: false, state: "replaying" });
+        unfinished.add(threadId);
+      } else {
+        // A side chat's turns before bb's first are history, not news: wakes start after it.
+        const last = state.turns.at(-1)?.anchor_uids.at(-1) ?? null;
+        updateBinding(db, threadId, { lineage_root: state.lineage_root, session_id: state.session_id, state: "live", cursor_uid: last });
+      }
     } else if (binding.lineage_root === state.lineage_root) {
       if (binding.session_id !== state.session_id) updateBinding(db, threadId, { session_id: state.session_id });
     } else if (binding.kind === "bot") {
@@ -309,6 +316,12 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
     if ((thread.status !== "idle" && thread.status !== "error") || thread.queuedMessageCount > 0) return;
     await ingestPersistedNow(threadId, { settle: true });
     const binding = bindingByThread(db, threadId);
+    if (binding?.state === "replaying" && unfinished.has(threadId)) {
+      // An import still to send (a bot thread bound by bb's own first send): send it; its idle finalizes.
+      const enabledAt = botRecord(db, binding.profile_home)?.enabled_at;
+      if (target && enabledAt != null && enabled(binding.profile_home)) await importNow(binding, enabledAt, target);
+      if (bindingByThread(db, threadId)?.state === "replaying") return;
+    }
     for (const row of binding ? queuedTurnsOf(db, threadId) : []) if (row.kind === "replay") settleTurn(db, threadId, row.anchor_uid, "done");
     if (binding?.state === "replaying" && !unfinished.has(threadId)) updateBinding(db, threadId, { state: "live" });
     if (readAtIdle.delete(threadId)) await bb.sdk.threads.markRead({ threadId });
