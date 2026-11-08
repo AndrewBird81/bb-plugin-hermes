@@ -1,63 +1,15 @@
 // Settings section (01 §1, T0.10): the Hermes machine picker and the health line. The folder is bb's own
 // settings field above this section. The only machine picker in the plugin (01 §1).
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { FormEvent } from "react";
-import {
-  experimental_PluginRpcCallError,
-  useRealtime,
-  useRealtimeConnectionState,
-  useRpc,
-  useSdk,
-} from "@get-bb/plugin-sdk/app";
+import { useRpc, useSdk } from "@get-bb/plugin-sdk/app";
 import type { PluginBrowserBbSdk } from "@get-bb/plugin-sdk/app";
-import type { HEALTH_CHANNEL as HealthChannel, Health, RpcContract } from "../shared/rpc-contract.js";
+import { HEALTH_CHANNEL, type RpcContract } from "../shared/rpc-contract.js";
 import { healthText, workerSeenText } from "./health-text.js";
-
-// A value, not an import: the shared module loads zod and the SDK at runtime. The type keeps it in step.
-const HEALTH: typeof HealthChannel = "health";
+import { errorText, useLive } from "./live.js";
+import { BUTTON, FIELD } from "./styles.js";
 
 type Host = Awaited<ReturnType<PluginBrowserBbSdk["hosts"]["list"]>>[number];
-
-const FIELD = "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
-const BUTTON = "inline-flex h-9 cursor-pointer items-center justify-center rounded-md bg-foreground px-4 text-sm font-medium text-background hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
-
-function errorText(cause: unknown): string {
-  const error = experimental_PluginRpcCallError.from(cause);
-  return error.issues?.length ? error.issues.map((issue) => issue.message).join(" ") : error.message;
-}
-
-/** `health`, refetched on the server's signal and when the realtime connection comes back. */
-function useHealth() {
-  const rpc = useRpc<RpcContract>();
-  const [health, setHealth] = useState<Health | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  // Shows only the newest answer (a refetch racing a save).
-  const latest = useRef(0);
-  const show = useCallback((request: Promise<Health>) => {
-    const seq = ++latest.current;
-    return request.then((next) => {
-      if (seq !== latest.current) return;
-      setHealth(next);
-      setError(null);
-    });
-  }, []);
-  const refetch = useCallback(() => {
-    show(rpc.call("health", null)).catch((cause: unknown) => setError(errorText(cause)));
-  }, [show, rpc]);
-  useEffect(refetch, [refetch]);
-  useRealtime(HEALTH, refetch);
-  // Signals aren't replayed: reconcile on every return to "connected" after the first.
-  const connection = useRealtimeConnectionState();
-  const wasConnected = useRef(connection === "connected");
-  useEffect(() => {
-    if (connection !== "connected") wasConnected.current = false;
-    else if (!wasConnected.current) {
-      wasConnected.current = true;
-      refetch();
-    }
-  }, [connection, refetch]);
-  return { health, error, show };
-}
 
 function useHosts() {
   const sdk = useSdk();
@@ -71,7 +23,7 @@ function useHosts() {
 
 export function ConnectionSection() {
   const rpc = useRpc<RpcContract>();
-  const { health, error: healthError, show } = useHealth();
+  const { value: health, error: healthError, show } = useLive("health", HEALTH_CHANNEL);
   const { hosts, error: hostsError } = useHosts();
   const [machine, setMachine] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);

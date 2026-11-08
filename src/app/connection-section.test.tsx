@@ -6,7 +6,7 @@ import { HEALTH_CHANNEL, rpcContract, type Health, type HealthState, type RpcCon
 import { DEFAULT_FOLDER } from "../shared/settings.js";
 
 const app = await loadPluginApp(() => import("../../app.js"));
-const section = app.settingsSections[0]!;
+const section = app.settingsSections.find((s) => s.id === "connection")!;
 
 function host(id: string, name: string, status: "connected" | "disconnected") {
   return {
@@ -52,8 +52,8 @@ function render<M extends keyof RpcContract>(rpc: PluginRpcTestHandlers<Pick<Rpc
 describe("settings section", () => {
   afterEach(cleanup);
 
-  it("registers one settings section", () => {
-    expect(app.settingsSections.map((s) => s.id)).toEqual(["connection"]);
+  it("registers Connection, then Bots", () => {
+    expect(app.settingsSections.map((s) => s.id)).toEqual(["connection", "bots"]);
   });
 
   it.each<[HealthState, Partial<Health>, string]>([
