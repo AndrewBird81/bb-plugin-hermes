@@ -1,0 +1,8 @@
+#!/bin/sh
+# The bb CLI against the isolated bb (03 §E2E): every BB_* unset (BB_CLI would re-exec to the machine's bb,
+# the others point at the live server), BB_SERVER_URL pinned to the isolated server, and the bb bundled in
+# bb-app@0.49.0 (scripts/bb.mjs). Usage: e2e/sbb <bb args…>
+repo=$(cd "$(dirname "$0")/.." && pwd)
+for v in $(env | sed -n 's/^\(BB_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$v"; done
+export BB_SERVER_URL=http://127.0.0.1:48886
+exec node "$repo/node_modules/bb-app/dist/bb.js" "$@"
