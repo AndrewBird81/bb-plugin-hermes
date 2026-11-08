@@ -194,7 +194,14 @@ export class Watcher {
     this.models.prewarm(this.enabled);
     const key = this.checkedKey;
     if (key !== this.restKey && this.enabled.length) {
-      const missing = await checkRestKeys(this.rootHome!, this.enabled.map((h) => this.profileName(h))).catch(() => null);
+      const names = this.enabled.flatMap((h) => {
+        try {
+          return [this.profileName(h)];
+        } catch {
+          return [];
+        }
+      });
+      const missing = await checkRestKeys(this.rootHome!, names).catch(() => null);
       if (missing && this.checkedKey === key) {
         this.restMissing = missing;
         this.restKey = key;

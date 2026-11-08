@@ -228,3 +228,19 @@ describe("setBotAccess", () => {
     expect(readFileSync(log, "utf8")).toBe(`${root} -p alex sessions refresh-prompts --json\n`);
   });
 });
+
+describe("ensureWatch keeps the wrapper current", () => {
+  it("rewrites it when bb or its server moves, only while a bot is on", async () => {
+    const { root, alex, bb, dataDir } = setup();
+    const h = harness(dataDir, async () => ({ refreshed: true, detail: null }));
+    const wrapper = path.join(dataDir, WRAPPER_PATH);
+    withEnv({ BB_CLI: bb, BB_SERVER_URL: "https://bb.example.test", BB_HOST_DAEMON_PORT: undefined });
+    await h.experimental_call("ensureWatch", { root, enabled_bots: [] });
+    expect(existsSync(wrapper)).toBe(false);
+    await h.experimental_call("ensureWatch", { root, enabled_bots: [alex] });
+    expect(readFileSync(wrapper, "utf8")).toContain("BB_SERVER_URL=https://bb.example.test\n");
+    withEnv({ BB_SERVER_URL: "https://bb2.example.test" });
+    await h.experimental_call("ensureWatch", { root, enabled_bots: [alex] });
+    expect(readFileSync(wrapper, "utf8")).toContain("BB_SERVER_URL=https://bb2.example.test\n");
+  });
+});
