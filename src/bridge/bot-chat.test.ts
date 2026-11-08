@@ -88,13 +88,13 @@ describe("Conduit holds the chat (S8 step 3, E6)", () => {
     await startThread(rig, "thr_h", bot());
     await rig.call("turn/start", { threadId: "thr_h", providerThreadId: "x", input: [text("from bb")], clientRequestId: creq(), options: { ...AUTO, ...bot() } });
     await rig.waitFor(() => rig.requests("session.list").filter((r) => r.refused).length >= 3);
-    expect(banners("thr_h")).toEqual(["held"]);
+    expect(banners("thr_h")).toEqual([null, "held"]); // the turn-open clear, then held
     expect(statuses(rig, "thr_h")).toEqual([]);
     expect(rig.requests("session.create").length).toBeLessThanOrEqual(1);
     rig.fake.hold("bob", legacy, false);
     await rig.waitFor(() => statuses(rig, "thr_h").length === 1);
     expect(statuses(rig, "thr_h")).toEqual(["completed"]);
-    expect(banners("thr_h")).toEqual(["held", null]);
+    expect(banners("thr_h")).toEqual([null, "held", null]);
     expect(rig.requests("prompt.submit").map((r) => r.params.session_id)).toEqual([legacy]);
     expect(rig.fake.session("bob", legacy)!.chat_id).toBe(legacy); // adopted by bb's send (D16)
     expect(rig.requests("session.create")).toHaveLength(0);
@@ -104,10 +104,10 @@ describe("Conduit holds the chat (S8 step 3, E6)", () => {
     rig.fake.legacySession("bob", { title: BOT_CHAT_TITLE, hidden: true, held: true });
     await startThread(rig, "thr_hs", bot());
     await rig.call("turn/start", { threadId: "thr_hs", providerThreadId: "x", input: [text("from bb")], clientRequestId: creq(), options: { ...AUTO, ...bot() } });
-    await rig.waitFor(() => banners("thr_hs").length === 1);
+    await rig.waitFor(() => banners("thr_hs").includes("held"));
     await rig.call("thread/stop", { threadId: "thr_hs", providerThreadId: "x", intent: "interrupt", activeTurnId: null });
     expect(statuses(rig, "thr_hs")).toEqual(["interrupted"]);
-    expect(banners("thr_hs")).toEqual(["held", null]);
+    expect(banners("thr_hs")).toEqual([null, "held", null]);
     expect(rig.requests("prompt.submit")).toHaveLength(0);
   });
 

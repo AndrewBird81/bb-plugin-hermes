@@ -179,7 +179,7 @@ describe("Stop on outside turns (01 §5, D27 narrowed)", () => {
     await stop("thr_sc");
     expect(statuses(rig, "thr_sc")).toEqual(["interrupted"]);
     expect(rig.requests("session.interrupt")).toHaveLength(0);
-    expect(banners("thr_sc")).toEqual([{ kind: "running_elsewhere", app: "CLI" }]);
+    expect(banners("thr_sc")).toEqual([null, { kind: "running_elsewhere", app: "CLI" }]);
     expect(rig.fake.session("alex", chat.id)!.running).toBeTruthy();
   });
 

@@ -48,7 +48,7 @@ describe("a wake in a bot thread watches the bound session", () => {
     await rig.call("thread/stop", { threadId: "thr_bw", providerThreadId: "x", intent: "interrupt", activeTurnId: null });
     expect(statuses(rig, "thr_bw")).toEqual(["interrupted"]);
     const banners = deltas(rig, "thr_bw").filter((d) => d.extensionKind === "hermes/status").map((d) => d.payload);
-    expect(banners).toEqual([{ banner: { kind: "running_elsewhere", app: "Conduit" }, since: expect.any(Number) }]);
+    expect(banners).toEqual([{ banner: null, since: null }, { banner: { kind: "running_elsewhere", app: "Conduit" }, since: expect.any(Number) }]);
     expect(rig.requests("session.list")).toHaveLength(0);
     expect(rig.requests("session.create").filter((r) => r.params.request_id !== "desk-w")).toHaveLength(0);
   });
@@ -81,7 +81,7 @@ it("a Bot Chat create that fails for another reason doesn't leave later sends he
   await turn(rig, "thr_cf", [text("one")], opts("bob", view));
   await turn(rig, "thr_cf", [text("two")], opts("bob", view));
   expect(statuses(rig, "thr_cf")).toEqual(["failed", "completed"]);
-  expect(deltas(rig, "thr_cf").filter((d) => d.extensionKind === "hermes/status")).toEqual([]);
+  expect(deltas(rig, "thr_cf").filter((d) => d.extensionKind === "hermes/status" && (d.payload as { banner: unknown }).banner !== null)).toEqual([]);
   expect(rig.requests("session.create")).toHaveLength(2);
 });
 
@@ -192,5 +192,48 @@ describe("second review", () => {
     await rig.fake.restart();
     await new Promise((r) => setTimeout(r, 300));
     expect(rig.fake.requests.slice(before)).toEqual([]);
+  });
+});
+
+describe("T1.14 on the isolated bb", () => {
+  const stop = (threadId: string) => rig.call("thread/stop", { threadId, providerThreadId: "x", intent: "interrupt", activeTurnId: null });
+  const statusStates = (threadId: string) => deltas(rig, threadId).filter((d) => d.extensionKind === "hermes/status").map((d) => (d.payload as { banner: unknown }).banner);
+
+  it("Stop on a streaming CLI turn: the partial reply ends cut with a note; the rest wake brings the full reply once; the banner clears", async () => {
+    const cli = await rig.cli();
+    const snap = await cli.create({ profile: "alex", request_id: "cli-cut", source: "cli" });
+    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id, tag: "CLI" };
+    await startThread(rig, "thr_cut", opts("alex", view));
+    rig.fake.outsideTurn("alex", snap.session_id, "long ask", { script: { chunkMs: 40, reply: "one two three four five six seven eight" } });
+    const anchor = await userRow("alex", snap.session_id, "long ask");
+    const wake = (rest?: boolean) => (rest ? [encodeMarker({ op: "mirror", anchor_uid: anchor, rest: true })] : [text("[CLI] long ask"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })]);
+    await rig.call("turn/start", { threadId: "thr_cut", providerThreadId: "x", input: wake(), clientRequestId: creq(), options: { ...AUTO, ...opts("alex", view) } });
+    await rig.waitFor(() => events(rig, "thr_cut").filter((e) => e.type === "item/agentMessage/delta").length >= 2);
+    await stop("thr_cut");
+    const [partial, note] = agentTexts(rig, "thr_cut");
+    expect(partial).toMatch(/^one .*…$/);
+    expect(note).toMatch(/^Stopped watching in bb/);
+    expect(mirrored("thr_cut")).toEqual([expect.objectContaining({ anchor_uid: anchor, partial: true })]);
+    expect(statusStates("thr_cut").at(-1)).toEqual({ kind: "running_elsewhere", app: "CLI" });
+    // The reply lands; the server's rest wake renders it whole, once, and the banner clears.
+    await rig.waitFor(() => !rig.fake.session("alex", snap.session_id)!.running);
+    await turn(rig, "thr_cut", wake(true), opts("alex", view));
+    expect(agentTexts(rig, "thr_cut").slice(2)).toEqual(["one two three four five six seven eight"]);
+    expect(statusStates("thr_cut").at(-1)).toBeNull();
+  });
+
+  it("a timed-out approval: the card's request is withdrawn (bb 0.49 ignores it) and the text says the card is dead; Hermes gets no answer", async () => {
+    await rig.close();
+    rig = await startRig({ secondMs: 10 });
+    await startThread(rig, "thr_dead", opts("alex"));
+    rig.fake.nextTurn("alex", { tool: true, approval: { kind: "command", timeout_s: 5 } });
+    await turn(rig, "thr_dead", [text("run it")], opts("alex"));
+    const req = rig.rpc.messages.find((m) => m.method === "interaction/request")!;
+    expect(rig.rpc.messages.filter((m) => m.method === "notifications/cancelled").map((m) => (m.params as { requestId: string }).requestId)).toEqual([req.id]);
+    expect(deltas(rig, "thr_dead").filter((d) => d.kind === "provider.warning").map((d) => d.summary)).toEqual([expect.stringMatching(/^Timed out in Hermes\. .*dismiss it/)]);
+    // bb answers the dead card later (the user dismisses it): nothing reaches Hermes.
+    rig.bridge.handleLine(JSON.stringify({ jsonrpc: "2.0", id: req.id, result: { decision: "deny" } }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(rig.requests("approval.respond")).toHaveLength(0);
   });
 });

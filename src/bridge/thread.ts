@@ -24,6 +24,7 @@ export const DELETED_TEXT = "Deleted in Hermes.";
 export const RESTARTED_TEXT = "Hermes restarted: resend?";
 export const EARLIER_TEXT = "Earlier messages stay in Hermes.";
 export const invalidMarkerText = (error: string) => `The Hermes plugin sent a message this version can't read (${error}); nothing was sent to Hermes.`;
+export const STOPPED_WATCHING_TEXT = "Stopped watching in bb; the full reply shows below when it ends.";
 export const INIT_REFUSED_TEXT = "This chat is already set up.";
 /** Flow 3 step 4: 2, 5, 10, 30 s, then every 60 s. */
 export const HOLD_RETRY_MS = [2000, 5000, 10_000, 30_000, 60_000];
@@ -82,6 +83,8 @@ interface Unit {
   tag: SourceTag | null;
   /** Seqs already rendered: a re-attach never renders an event twice. */
   fed: Set<number>;
+  /** Stop cut its reply mid-stream: that reply row isn't recorded as shown, so `rest` brings it whole. */
+  cut?: boolean;
 }
 
 class BbTurn {
@@ -201,7 +204,12 @@ export class HostedThread {
     this.turn = turn;
     this.botChatCreated = false;
     this.emit([{ kind: "input.accepted", clientRequestId: params.clientRequestId }, { kind: "turn.open" }]);
-    if (this.banner?.kind === "running_elsewhere") this.setBanner(null);
+    // "Running in <app>" ends with the next turn here (the `rest` wake when the reply lands). A new bridge
+    // process doesn't know the banner an earlier one set, so the clear goes out whenever none is held.
+    if (this.banner?.kind !== "held") {
+      this.banner = null;
+      this.emit([this.state(EXTENSION_KINDS.status, { banner: null, since: null } satisfies StatusState)]);
+    }
     for (const entry of this.prompts.values()) this.raise(entry);
     let outcome: Outcome = { status: "completed" };
     try {
@@ -890,8 +898,12 @@ export class HostedThread {
       } else if ((unit.own || FORWARDED.test(log.inputId ?? "")) && log.generation !== null) {
         await session.client.interrupt({ profile: session.profile, session_id: session.id, execution_generation: log.generation });
       } else {
-        // Another app's turn: bb stops watching; the reply still shows when it ends (01 §5).
-        this.emit(this.closeUnit(unit, { status: "interrupted" }));
+        // Another app's turn: bb stops watching; the reply still shows when it ends (01 §5). A reply cut
+        // mid-stream says so, so the full copy the `rest` wake brings doesn't read as a repeat.
+        const cut = unit.renderer.cut();
+        unit.cut = cut.length > 0;
+        this.emit([...cut, ...this.closeUnit(unit, { status: "interrupted" })]);
+        if (unit.cut) this.emit(textItem({ providerItemId: `${unit.admissionId}:cut` }, STOPPED_WATCHING_TEXT));
         if (unit.tag) this.setBanner({ kind: "running_elsewhere", app: unit.tag });
       }
     } catch (error) {
@@ -1046,7 +1058,9 @@ export class HostedThread {
         if (admission.done && !unit.done) this.emit(this.closeUnit(unit, { status: "completed" }));
         const outcome = await unit.settled.promise;
         const after = findTurn(await this.chainRows(ctx), anchorUid);
-        return this.noteMirrored(turn, anchorUid, after?.turn.replies.map((r) => r.message_uid) ?? [], outcome.status !== "completed" || !after?.complete);
+        // A cut reply's text row was shown only in part: leave it to the `rest` wake.
+        const shown = (after?.turn.replies ?? []).filter((r) => !(unit.cut && r.role === "assistant" && rowText(r)));
+        return this.noteMirrored(turn, anchorUid, shown.map((r) => r.message_uid), outcome.status !== "completed" || !after?.complete);
       }
     }
     // Conduit's own turn (no canonical admission): its reply rows come by `mirror{rest:true}` (S8 step 6).

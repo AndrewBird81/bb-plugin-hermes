@@ -4,8 +4,13 @@
 import { USER_QUESTION_MAX_OPTIONS, type PendingInteractionApprovalDecision } from "@get-bb/plugin-sdk/provider-bridge";
 import type { PendingPrompt } from "../hermes/types.js";
 
-export const ANSWERED_ELSEWHERE_TEXT = "Answered elsewhere.";
-export const TIMED_OUT_TEXT = "Timed out in Hermes.";
+/**
+ * bb 0.49.0 can't withdraw a card the bridge raised (A3 failed: `notifications/cancelled` reaches only the
+ * daemon's tool-call tracker; the server ends provider interactions only on a thread stop, delete, host
+ * removal or provider exit). So the text tells the user the card is dead: any answer goes nowhere.
+ */
+export const ANSWERED_ELSEWHERE_TEXT = "Answered elsewhere. Its card here no longer does anything: dismiss it to continue.";
+export const TIMED_OUT_TEXT = "Timed out in Hermes. Its card here no longer does anything: dismiss it to continue.";
 
 /** Hermes' approval choices → bb's decisions. `always` (allow-list it forever) has no bb decision: left out, never widened. */
 const DECISIONS: Record<string, PendingInteractionApprovalDecision> = { once: "allow_once", session: "allow_for_session", deny: "deny" };

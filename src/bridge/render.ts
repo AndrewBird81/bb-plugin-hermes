@@ -228,6 +228,14 @@ export class StreamRenderer {
     return out;
   }
 
+  /** Stop watching mid-reply: an open reply ends visibly cut ("…"). True when there was one. */
+  cut(): ThreadDelta[] {
+    if (!this.message) return [];
+    const key = this.message;
+    this.text += "…";
+    return [{ kind: "item.textDelta", key, channel: "agentMessage", text: "…" }];
+  }
+
   /** The provider item id of the tool running now: the item an approval gates. */
   runningToolKey(): string | null {
     const id = [...this.tools.keys()].at(-1);
