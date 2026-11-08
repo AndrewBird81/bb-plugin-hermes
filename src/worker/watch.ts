@@ -1,16 +1,26 @@
 // The worker's one host-scoped canonical connection (02 §Placement) and its health: `ensureWatch` keeps
 // it open on the configured folder, the client redials after drops (02 flow 8), and every new gateway
-// instance or version is checked against the surface we use (flow 11). Never starts a gateway.
+// instance or version is checked against the surface we use (flow 11). P1: for the enabled bots it also
+// keeps `worker.json` current, prewarms their models and watches their chats (hint + WAL stat). Off bots
+// get no Hermes I/O (02 §Invariants). Never starts a gateway.
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import path from "node:path";
 import { HermesConnection, type ConnectionOptions } from "../hermes/client.js";
+import { canonicalHome } from "../hermes/control.js";
+import { bridgeDataDir, type EnabledBot } from "../shared/bridge-files.js";
+import { botLabel } from "../shared/bots.js";
 import type { EnsureWatchOutput, HermesProfile, VersionCheck, WatchState } from "../shared/host-contract.js";
+import { profileNameFromHome } from "./access.js";
+import { ChangeWatch, type ChangeWatchOptions } from "./changes.js";
 import { describeProfiles } from "./describe.js";
-import { checkVersion } from "./version.js";
+import { ModelCache } from "./models.js";
+import { checkRestKeys, checkVersion } from "./version.js";
+import { WorkerFileWriter } from "./worker-file.js";
 
 export type WatchSignal = { state: "connected" | "disconnected"; worker_boot_id: string; instance_id: string | null };
 export type Emit = (payload: WatchSignal) => Promise<void>;
+export type EmitChanged = (payload: { profile_homes: string[] }) => Promise<void>;
 
 /** How long a call waits for a connect attempt in flight; the next keep-alive sees the rest. */
 export const SETTLE_MS = 5000;
@@ -31,6 +41,22 @@ const UNCHECKED: VersionCheck = { version: null, supported: null, missing: [], c
 export interface WatcherOptions {
   connection?: ConnectionOptions;
   settleMs?: number;
+  changes?: ChangeWatchOptions;
+  /** How long `models` waits for a fetch before the last-known catalog (tests shorten it). */
+  modelsWaitMs?: number;
+}
+
+/** What one keep-alive tells the worker besides the folder. */
+export interface Reconcile {
+  enabledBots: readonly string[];
+  /** The worker's dataDir; bridges' files go to the sibling `bridge-data`. */
+  dataDir: string;
+}
+
+interface KnownProfile {
+  profile: HermesProfile;
+  /** The profile's folder on this machine. */
+  dir: string;
 }
 
 export class Watcher {
@@ -39,15 +65,64 @@ export class Watcher {
   root: string | null = null;
   state: WatchState = "idle";
   since: number | null = null;
-  version: VersionCheck = UNCHECKED;
   emit: Emit | null = null;
+  emitChanged: EmitChanged | null = null;
+  /** Enabled bots (profile homes) as of the last keep-alive. */
+  enabled: readonly string[] = [];
+  /** Every profile `profiles.list` named, by profile home. */
+  readonly profiles = new Map<string, KnownProfile>();
+  readonly models: ModelCache;
+  private readonly changes: ChangeWatch;
+  private readonly workerFile = new WorkerFileWriter();
+  private dataDir: string | null = null;
+  private rpcVersion: VersionCheck = UNCHECKED;
+  /** `rest:` keys the REST key check found missing (flow 11); null until it ran for this instance. */
+  private restMissing: string[] | null = null;
+  private restKey: string | null = null;
   private conn: HermesConnection | null = null;
   private connected = false;
   private checkedKey: string | null = null;
   private checking: Promise<void> = Promise.resolve();
   private closed = false;
 
-  constructor(private readonly opts: WatcherOptions = {}) {}
+  constructor(private readonly opts: WatcherOptions = {}) {
+    this.models = new ModelCache(
+      (home, timeoutMs) => {
+        const client = this.connected ? this.conn?.client : null;
+        if (!client) return Promise.reject(new Error("not_connected"));
+        return client.modelOptions(this.profileName(home), timeoutMs);
+      },
+      () => (this.dataDir ? bridgeDataDir(this.dataDir) : null),
+    );
+    this.changes = new ChangeWatch((profile_homes) => void this.emitChanged?.({ profile_homes }).catch(() => {}), opts.changes);
+  }
+
+  /** The RPC contract check merged with the REST key check: a missing REST key makes it unsupported. */
+  get version(): VersionCheck {
+    const v = this.rpcVersion;
+    if (!this.restMissing?.length) return v;
+    return { ...v, supported: false, missing: [...v.missing, ...this.restMissing] };
+  }
+
+  /** The expanded folder, once a call named it. */
+  get rootHome(): string | null {
+    return this.root === null ? null : expandRoot(this.root);
+  }
+
+  /** The name Hermes routes `profile_home` by: from `profiles.list`, else its folder (`default` = the root). */
+  profileName(profileHome: string): string {
+    const known = this.profiles.get(profileHome)?.profile.name;
+    const name = known ?? (this.rootHome ? profileNameFromHome(this.rootHome, profileHome) : null);
+    if (!name) throw new Error("unknown_profile");
+    return name;
+  }
+
+  /** The watch connection's client, or a bounded refusal. */
+  client() {
+    const client = this.connected ? this.conn?.client : null;
+    if (!client) throw new Error(`not_connected:${this.lastError ?? "connecting"}`);
+    return client;
+  }
 
   get instanceId(): string | null {
     return this.connected ? (this.conn?.endpoint?.instanceId ?? null) : null;
@@ -58,11 +133,12 @@ export class Watcher {
   }
 
   /** Idempotent. A new `root` drops the old connection first. */
-  async ensure(root: string, signal?: AbortSignal): Promise<EnsureWatchOutput> {
+  async ensure(root: string, signal?: AbortSignal, reconcile?: Reconcile): Promise<EnsureWatchOutput> {
     if (this.closed) throw new Error("worker_closed");
     if (root !== this.root || !this.conn) this.open(root);
     await this.settle(signal);
     await this.checking;
+    if (reconcile) await this.reconcile(reconcile);
     const supported = this.connected ? this.version.supported : null;
     return {
       worker_boot_id: this.bootId,
@@ -80,20 +156,60 @@ export class Watcher {
     const client = this.conn?.client;
     const endpoint = this.conn?.endpoint;
     if (!watch.connected || !client || !endpoint) throw new Error(`not_connected:${watch.detail}`);
-    return describeProfiles((await client.profilesList({ include_sessions: false })).profiles, endpoint);
+    const rows = (await client.profilesList({ include_sessions: false })).profiles;
+    const described = await describeProfiles(rows, endpoint);
+    this.profiles.clear();
+    described.forEach((profile, i) => this.profiles.set(profile.home, { profile, dir: canonicalHome(rows[i]!.path) }));
+    return described;
   }
 
   close(): void {
     this.closed = true;
     this.emit = null;
+    this.emitChanged = null;
+    this.changes.close();
     this.drop();
+  }
+
+  /**
+   * P1 keep-alive work for the enabled bots: refresh the profile map, write `worker.json`, watch their
+   * chats, prewarm their models, and key-check REST once per gateway instance. Best effort: a failure
+   * here never fails the keep-alive.
+   */
+  private async reconcile({ enabledBots, dataDir }: Reconcile): Promise<void> {
+    this.enabled = [...enabledBots];
+    this.dataDir = dataDir;
+    const root = this.root!;
+    if (this.connected) await this.describe(root).catch(() => {});
+    const enabled: EnabledBot[] = [];
+    const dirs = new Map<string, string>();
+    for (const home of this.enabled) {
+      const known = this.profiles.get(home);
+      if (known) enabled.push({ profile: known.profile.name, profile_home: home, bot_label: botLabel(known.profile.name, known.profile.handle), cwd: known.profile.terminal_cwd });
+      dirs.set(home, known?.dir ?? canonicalHome(home));
+    }
+    await this.workerFile.write(bridgeDataDir(dataDir), root, this.bootId, enabled).catch(() => {});
+    await this.changes.set(dirs);
+    if (!this.connected) return;
+    this.models.prewarm(this.enabled);
+    const key = this.checkedKey;
+    if (key !== this.restKey && this.enabled.length) {
+      const missing = await checkRestKeys(this.rootHome!, this.enabled.map((h) => this.profileName(h))).catch(() => null);
+      if (missing && this.checkedKey === key) {
+        this.restMissing = missing;
+        this.restKey = key;
+      }
+    }
   }
 
   private open(root: string): void {
     this.drop();
     this.root = root;
-    this.version = UNCHECKED;
+    this.rpcVersion = UNCHECKED;
+    this.restMissing = null;
+    this.restKey = null;
     this.checkedKey = null;
+    this.profiles.clear();
     const conn = new HermesConnection(expandRoot(root), this.opts.connection);
     this.conn = conn;
     conn.onState((s) => {
@@ -120,10 +236,15 @@ export class Watcher {
       const key = `${endpoint.instanceId}\n${endpoint.codeVersion}\n${endpoint.codeSha}`;
       if (key !== this.checkedKey) {
         this.checkedKey = key;
+        this.restMissing = null;
         this.checking = checkVersion(conn.rootHome, endpoint).then((v) => {
-          if (this.conn === conn) this.version = v;
+          if (this.conn === conn) this.rpcVersion = v;
         });
       }
+      // A hint only (r11 §8): every enabled bot may have changed.
+      conn.client?.onEvent((ev) => {
+        if (ev.type === "sessions.changed" && this.conn === conn) this.changes.hint();
+      });
       this.signal("connected", endpoint.instanceId);
       return;
     }

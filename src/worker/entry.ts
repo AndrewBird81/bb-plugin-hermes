@@ -1,10 +1,11 @@
-// Host worker (02 §Components, T0.8, T1.8): one per bb host daemon process. Kept alive only by the
+// Host worker (02 §Components, T0.8, T1.7, T1.8): one per bb host daemon process. Kept alive only by the
 // server's 60 s `ensureWatch` keep-alive, no lease: the daemon stops a worker after 5 idle minutes.
 import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
 import { buildFromModuleUrl } from "../shared/bridge-registry.js";
 import { hostContract, hostSignals } from "../shared/host-contract.js";
 import { bbTarget, setBotAccess, writeWrapper, type AccessInput } from "./access.js";
 import { readBridgeRecords } from "./bridges.js";
+import { findBotChat, listProfileSessions } from "./sessions.js";
 import { expandRoot, Watcher, type WatcherOptions } from "./watch.js";
 
 export interface HostEntryOptions extends WatcherOptions {
@@ -31,9 +32,11 @@ export function createHostEntry(opts: HostEntryOptions = {}) {
         // The daemon's environment for this call only (A44): read before any await.
         const target = bbTarget(process.env, opts.access?.exists);
         watcher.emit = (payload) => context.experimental_emitSignal("watch", payload);
+        watcher.emitChanged = (payload) => context.experimental_emitSignal("changed", payload);
+        const dataDir = context.experimental_paths.dataDir;
         // The wrapper follows bb when it moves (an update, a new server URL) while any bot is on.
-        if (enabled_bots.length && target) await writeWrapper(context.experimental_paths.dataDir, target).catch(() => {});
-        return watcher.ensure(root, context.signal);
+        if (enabled_bots.length && target) await writeWrapper(dataDir, target).catch(() => {});
+        return watcher.ensure(root, context.signal, { enabledBots: enabled_bots, dataDir });
       },
       describe: async ({ root }, context) => {
         bindLifecycle(context.lifecycle.signal);
@@ -48,11 +51,22 @@ export function createHostEntry(opts: HostEntryOptions = {}) {
         version: watcher.version,
         bridges: await readBridgeRecords(context.experimental_paths.dataDir),
       }),
-      // P1 seam stubs (lead): the worker seam replaces them (T1.7, T1.8).
-      models: () => notYet("T1.7"),
-      listSessions: () => notYet("T1.7"),
+      models: async ({ root, profile_home }, context) => {
+        bindLifecycle(context.lifecycle.signal);
+        await watcher.ensure(root, context.signal);
+        return watcher.models.get(profile_home, opts.modelsWaitMs);
+      },
+      listSessions: async ({ root, profile_home, since }, context) => {
+        bindLifecycle(context.lifecycle.signal);
+        await watcher.ensure(root, context.signal);
+        return { sessions: await listProfileSessions(expandRoot(root), watcher.profileName(profile_home), since) };
+      },
       readTurns: () => notYet("T1.7"),
-      findBotChat: () => notYet("T1.7"),
+      findBotChat: async ({ root, profile_home }, context) => {
+        bindLifecycle(context.lifecycle.signal);
+        await watcher.ensure(root, context.signal);
+        return findBotChat(watcher.client(), watcher.profileName(profile_home));
+      },
       setBotAccess: async ({ root, profile_home, on, enabled_bots }, context) => {
         const env = { ...process.env };
         return setBotAccess({ rootHome: expandRoot(root), profileHome: profile_home, on, enabledBots: enabled_bots, dataDir: context.experimental_paths.dataDir, env, ...opts.access });
