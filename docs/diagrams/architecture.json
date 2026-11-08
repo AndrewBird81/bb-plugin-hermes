@@ -2,13 +2,13 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "What runs where (proposed v1)",
+    "title": "What runs where",
     "output": "docs/diagrams/architecture.html",
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
       "url": "https://github.com/AndrewBird81/bb-plugin-hermes",
-      "revision": "3fd4f54e7921a0cd98246dde450cc08d1f7ed66a"
+      "revision": "a035e4cc67d1d611bb28f9bba4256cfb0b822cfa"
     }
   },
   "components": [
@@ -27,10 +27,10 @@
       "sublabel": "phone or desktop",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 30,
-          "end_line": 52,
-          "label": "Proposed v1"
+          "path": "docs/plan/README.md",
+          "line": 19,
+          "end_line": 28,
+          "label": "v1 scope"
         }
       ]
     },
@@ -49,9 +49,9 @@
       "sublabel": "threads, push",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 50,
-          "end_line": 52,
+          "path": "docs/plan/01-product.md",
+          "line": 155,
+          "end_line": 162,
           "label": "Notifications"
         }
       ]
@@ -78,15 +78,9 @@
         },
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 26,
-          "end_line": 31,
-          "label": "Placement rules"
-        },
-        {
-          "path": "docs/plan/scope-reset.md",
-          "line": 34,
-          "end_line": 37,
-          "label": "Connect, settings"
+          "line": 22,
+          "end_line": 23,
+          "label": "Placement"
         }
       ]
     },
@@ -112,9 +106,9 @@
         },
         {
           "path": "docs/plan/README.md",
-          "line": 42,
-          "end_line": 42,
-          "label": "D1 transport"
+          "line": 43,
+          "end_line": 43,
+          "label": "D1"
         }
       ]
     },
@@ -140,15 +134,15 @@
         },
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 32,
-          "end_line": 35,
+          "line": 24,
+          "end_line": 24,
           "label": "Canonical connection"
         },
         {
-          "path": "docs/plan/README.md",
-          "line": 71,
-          "end_line": 71,
-          "label": "D30"
+          "path": "docs/plan/02-architecture.md",
+          "line": 27,
+          "end_line": 36,
+          "label": "History reader"
         }
       ]
     },
@@ -190,8 +184,14 @@
       "sources": [
         {
           "path": "docs/plan/README.md",
-          "line": 84,
-          "end_line": 84,
+          "line": 94,
+          "end_line": 94,
+          "label": "bot"
+        },
+        {
+          "path": "docs/plan/README.md",
+          "line": 56,
+          "end_line": 56,
           "label": "D43"
         }
       ]
@@ -217,10 +217,10 @@
           "label": "When turns are saved"
         },
         {
-          "path": "docs/plan/README.md",
-          "line": 81,
-          "end_line": 81,
-          "label": "D40 read path"
+          "path": "docs/plan/02-architecture.md",
+          "line": 27,
+          "end_line": 33,
+          "label": "Read via REST"
         }
       ]
     }
@@ -293,7 +293,7 @@
       "id": "worker-gw",
       "from": "worker",
       "to": "gateway",
-      "label": "watches"
+      "label": "watch · REST"
     },
     {
       "id": "gw-bots",
@@ -322,17 +322,17 @@
       "dot": "cyan",
       "title": "Plugin parts",
       "items": [
-        "Server part (bb server): settings and one switch per bot. It never touches Hermes files.",
-        "Host worker: one per Hermes machine, with its own gateway.sock connection. It notices changes and runs the 30-day import.",
+        "Server part (bb server): settings, one switch per bot, the thread map and the import queue. It never touches Hermes files.",
+        "Host worker: one per Hermes machine, with its own gateway.sock connection. It watches for changes, reads chat history and writes each enabled bot's bb skill.",
         "Bridge: one process per open chat, started by bb's host daemon, with its own gateway.sock connection."
       ]
     },
     {
-      "dot": "amber",
-      "title": "Open item",
+      "dot": "violet",
+      "title": "Reading history",
       "items": [
-        "How the worker reads saved chats (for the import and Conduit's turns): to be decided in the plan rewrite. D40 predates full mirroring.",
-        "Everything here is proposed (Q22). The bb server and the Hermes machine can be one computer."
+        "The worker and bridges read saved chats through Hermes' REST projection on the gateway's own listener, with a native-http ticket from gateway.sock, as Hermes Desktop does. Read-only; no credential, config change or port (D1).",
+        "The bb server and the Hermes machine can be one computer."
       ]
     }
   ]

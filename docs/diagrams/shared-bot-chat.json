@@ -2,13 +2,13 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "bb and Conduit share one Bot Chat (proposed v1)",
+    "title": "bb and Conduit share one Bot Chat",
     "output": "docs/diagrams/shared-bot-chat.html",
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
       "url": "https://github.com/AndrewBird81/bb-plugin-hermes",
-      "revision": "3fd4f54e7921a0cd98246dde450cc08d1f7ed66a"
+      "revision": "a035e4cc67d1d611bb28f9bba4256cfb0b822cfa"
     }
   },
   "components": [
@@ -27,10 +27,16 @@
       "sublabel": "pinned bot thread",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 94,
-          "end_line": 102,
-          "label": "Bind by title"
+          "path": "docs/plan/02-architecture.md",
+          "line": 169,
+          "end_line": 172,
+          "label": "Bot thread send"
+        },
+        {
+          "path": "docs/plan/README.md",
+          "line": 57,
+          "end_line": 57,
+          "label": "D44"
         }
       ]
     },
@@ -99,9 +105,9 @@
           "label": "One queue"
         },
         {
-          "path": "docs/spikes/S8-conduit-shared-conversation.md",
-          "line": 112,
-          "end_line": 114,
+          "path": "docs/plan/02-architecture.md",
+          "line": 174,
+          "end_line": 174,
           "label": "Concurrent turns"
         }
       ]
@@ -143,10 +149,10 @@
       "sublabel": "live, in order",
       "sources": [
         {
-          "path": "docs/spikes/S8-conduit-shared-conversation.md",
-          "line": 112,
-          "end_line": 114,
-          "label": "Foreign turn live"
+          "path": "docs/plan/01-product.md",
+          "line": 109,
+          "end_line": 110,
+          "label": "Streams after bb's turn"
         }
       ]
     },
@@ -165,21 +171,20 @@
       "sublabel": "once it is saved",
       "sources": [
         {
-          "path": "docs/spikes/S8-conduit-shared-conversation.md",
-          "line": 115,
-          "end_line": 117,
-          "label": "Mirror from history"
+          "path": "docs/plan/01-product.md",
+          "line": 108,
+          "end_line": 108,
+          "label": "Two steps"
         },
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 103,
-          "end_line": 104,
-          "label": "Rule 5"
+          "path": "docs/plan/02-architecture.md",
+          "line": 27,
+          "end_line": 33,
+          "label": "REST read"
         }
       ]
     }
   ],
-  "boundaries": [],
   "connections": [
     {
       "id": "b-q",
@@ -219,7 +224,7 @@
       "id": "s-l",
       "from": "saved",
       "to": "later",
-      "label": "read (TBD)",
+      "label": "REST read",
       "variant": "dashed"
     }
   ],
@@ -236,16 +241,15 @@
       "dot": "cyan",
       "title": "How Conduit's turns show",
       "items": [
-        "Chat busy with a bb turn: the dashboard hands Conduit's message to the gateway queue. It runs after bb's turn and streams live in bb, tagged as outside.",
-        "Chat idle: the dashboard runs the turn and saves it. bb shows your message at once and the reply when the turn ends; neither streams.",
-        "How bb reads saved chats in v1 is to be decided in the plan rewrite."
+        "Chat busy with a bb turn: the dashboard hands Conduit's message to the gateway queue. It runs after bb's turn and streams live in bb, tagged [Conduit].",
+        "Chat idle: the dashboard runs the turn and saves it. bb reads it through Hermes' REST projection: your message at once, the reply when the turn ends; neither streams."
       ]
     },
     {
       "dot": "rose",
       "title": "Known rare Hermes bugs",
       "items": [
-        "Sends from both apps within about 50 ms, and a compaction that rotates the chat id. Neither lost a message. Accepted for v1; filing upstream is proposed (Q25)."
+        "Sends from both apps within about 50 ms, and a compaction that rotates the chat id, can confuse Hermes' order. No message is lost. Accepted for v1, and not filed upstream (D50)."
       ]
     }
   ]

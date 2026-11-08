@@ -2,20 +2,20 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "The per-bot switch (proposed v1)",
+    "title": "The per-bot switch",
     "output": "docs/diagrams/bot-switch.html",
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
       "url": "https://github.com/AndrewBird81/bb-plugin-hermes",
-      "revision": "3fd4f54e7921a0cd98246dde450cc08d1f7ed66a"
+      "revision": "a035e4cc67d1d611bb28f9bba4256cfb0b822cfa"
     }
   },
   "components": [
     {
-      "id": "switch",
-      "type": "backend",
-      "label": "Bot switch",
+      "id": "on",
+      "type": "frontend",
+      "label": "Switch on",
       "pos": [
         14,
         30
@@ -24,48 +24,26 @@
         104,
         50
       ],
-      "sublabel": "plugin settings",
+      "sublabel": "row shows count",
       "sources": [
         {
-          "path": "docs/plan/README.md",
-          "line": 84,
-          "end_line": 84,
-          "label": "D43"
+          "path": "docs/plan/01-product.md",
+          "line": 24,
+          "end_line": 26,
+          "label": "Row text"
         },
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 13,
-          "end_line": 17,
-          "label": "One switch per bot"
+          "path": "docs/plan/02-architecture.md",
+          "line": 156,
+          "end_line": 156,
+          "label": "Count before on"
         }
       ]
     },
     {
-      "id": "bb",
-      "type": "backend",
-      "label": "bb server",
-      "pos": [
-        144,
-        30
-      ],
-      "size": [
-        104,
-        50
-      ],
-      "sublabel": "chat + mirror",
-      "sources": [
-        {
-          "path": "docs/plan/scope-reset.md",
-          "line": 82,
-          "end_line": 85,
-          "label": "Defaults"
-        }
-      ]
-    },
-    {
-      "id": "worker",
-      "type": "backend",
-      "label": "Host worker",
+      "id": "skill",
+      "type": "security",
+      "label": "Skill written",
       "pos": [
         14,
         126
@@ -74,20 +52,26 @@
         104,
         50
       ],
-      "sublabel": "Hermes machine",
+      "sublabel": "calls bb-hermes",
       "sources": [
         {
-          "path": "docs/spikes/S8-conduit-shared-conversation.md",
-          "line": 208,
-          "end_line": 213,
-          "label": "Option 1"
+          "path": "docs/plan/02-architecture.md",
+          "line": 159,
+          "end_line": 159,
+          "label": "setBotAccess on"
+        },
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 210,
+          "end_line": 215,
+          "label": "What a bot gets"
         }
       ]
     },
     {
-      "id": "skill",
-      "type": "security",
-      "label": "bb skill",
+      "id": "refresh",
+      "type": "backend",
+      "label": "Prompt refresh",
       "pos": [
         14,
         222
@@ -96,42 +80,26 @@
         104,
         50
       ],
-      "sublabel": "per enabled bot",
+      "sublabel": "chats see skill",
       "sources": [
         {
-          "path": "docs/spikes/S8-conduit-shared-conversation.md",
-          "line": 208,
-          "end_line": 213,
-          "label": "Skill per profile"
+          "path": "docs/plan/README.md",
+          "line": 135,
+          "end_line": 135,
+          "label": "Confirm item 6"
+        },
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 159,
+          "end_line": 159,
+          "label": "refresh-prompts"
         }
       ]
     },
     {
-      "id": "wrapper",
-      "type": "backend",
-      "label": "bb-hermes",
-      "pos": [
-        144,
-        222
-      ],
-      "size": [
-        104,
-        50
-      ],
-      "sublabel": "one per machine",
-      "sources": [
-        {
-          "path": "docs/spikes/S8-conduit-shared-conversation.md",
-          "line": 208,
-          "end_line": 213,
-          "label": "Wrapper"
-        }
-      ]
-    },
-    {
-      "id": "bot",
-      "type": "backend",
-      "label": "Bot",
+      "id": "back",
+      "type": "frontend",
+      "label": "Threads back",
       "pos": [
         14,
         318
@@ -140,78 +108,229 @@
         104,
         50
       ],
-      "sublabel": "e.g. Neo",
+      "sublabel": "bot thread pinned",
+      "sources": [
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 160,
+          "end_line": 162,
+          "label": "Bot thread, unarchive"
+        },
+        {
+          "path": "docs/plan/README.md",
+          "line": 61,
+          "end_line": 61,
+          "label": "D48"
+        }
+      ]
+    },
+    {
+      "id": "import",
+      "type": "backend",
+      "label": "30-day import",
+      "pos": [
+        14,
+        414
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "silent",
+      "sources": [
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 163,
+          "end_line": 163,
+          "label": "Import"
+        },
+        {
+          "path": "docs/plan/README.md",
+          "line": 130,
+          "end_line": 131,
+          "label": "Confirm items 1-2"
+        }
+      ]
+    },
+    {
+      "id": "off",
+      "type": "frontend",
+      "label": "Switch off",
+      "pos": [
+        144,
+        30
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "any time",
+      "sources": [
+        {
+          "path": "docs/plan/01-product.md",
+          "line": 31,
+          "end_line": 34,
+          "label": "Off"
+        }
+      ]
+    },
+    {
+      "id": "archive",
+      "type": "frontend",
+      "label": "All archived",
+      "pos": [
+        144,
+        126
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "bot thread too",
+      "sources": [
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 164,
+          "end_line": 164,
+          "label": "Off flow"
+        },
+        {
+          "path": "docs/plan/README.md",
+          "line": 61,
+          "end_line": 61,
+          "label": "D48"
+        }
+      ]
+    },
+    {
+      "id": "delete",
+      "type": "security",
+      "label": "Skill deleted",
+      "pos": [
+        144,
+        222
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "wrapper if last",
+      "sources": [
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 164,
+          "end_line": 164,
+          "label": "Off flow"
+        },
+        {
+          "path": "docs/plan/01-product.md",
+          "line": 34,
+          "end_line": 34,
+          "label": "Skill deleted"
+        }
+      ]
+    },
+    {
+      "id": "refresh2",
+      "type": "backend",
+      "label": "Prompt refresh",
+      "pos": [
+        144,
+        318
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "skill gone",
+      "sources": [
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 164,
+          "end_line": 164,
+          "label": "refresh-prompts"
+        },
+        {
+          "path": "docs/plan/README.md",
+          "line": 135,
+          "end_line": 135,
+          "label": "Confirm item 6"
+        }
+      ]
+    },
+    {
+      "id": "absent",
+      "type": "external",
+      "label": "Absent from bb",
+      "pos": [
+        144,
+        414
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "no chat or access",
       "sources": [
         {
           "path": "docs/plan/README.md",
-          "line": 84,
-          "end_line": 84,
-          "label": "D43 full access"
+          "line": 56,
+          "end_line": 56,
+          "label": "D43"
+        },
+        {
+          "path": "docs/plan/01-product.md",
+          "line": 23,
+          "end_line": 23,
+          "label": "Off = absent"
         }
       ]
     }
   ],
-  "boundaries": [
-    {
-      "kind": "region",
-      "label": "bb server",
-      "wraps": [
-        "switch",
-        "bb"
-      ],
-      "pad": 10
-    },
-    {
-      "kind": "region",
-      "label": "Hermes machine",
-      "wraps": [
-        "worker",
-        "skill",
-        "wrapper",
-        "bot"
-      ],
-      "pad": 10
-    }
-  ],
   "connections": [
     {
-      "id": "sw-w",
-      "from": "switch",
-      "to": "worker",
-      "label": "on / off",
+      "id": "on-skill",
+      "from": "on",
+      "to": "skill",
       "variant": "emphasis"
     },
     {
-      "id": "w-s",
-      "from": "worker",
-      "to": "skill",
-      "label": "writes, deletes"
-    },
-    {
-      "id": "w-wr",
-      "from": "worker",
-      "to": "wrapper",
-      "variant": "dashed",
-      "fromSide": "right",
-      "toSide": "top"
-    },
-    {
-      "id": "b-s",
-      "from": "bot",
-      "to": "skill",
-      "label": "uses"
-    },
-    {
-      "id": "s-wr",
+      "id": "skill-refresh",
       "from": "skill",
-      "to": "wrapper"
+      "to": "refresh",
+      "variant": "emphasis"
     },
     {
-      "id": "wr-bb",
-      "from": "wrapper",
-      "to": "bb",
-      "label": "runs bb",
-      "variant": "security"
+      "id": "refresh-back",
+      "from": "refresh",
+      "to": "back",
+      "variant": "emphasis"
+    },
+    {
+      "id": "back-import",
+      "from": "back",
+      "to": "import",
+      "variant": "emphasis"
+    },
+    {
+      "id": "off-archive",
+      "from": "off",
+      "to": "archive"
+    },
+    {
+      "id": "archive-delete",
+      "from": "archive",
+      "to": "delete"
+    },
+    {
+      "id": "delete-refresh",
+      "from": "delete",
+      "to": "refresh2"
+    },
+    {
+      "id": "refresh-absent",
+      "from": "refresh2",
+      "to": "absent"
     }
   ],
   "cards": [
@@ -220,7 +339,8 @@
       "title": "On grants",
       "items": [
         "Chat with the bot in bb; its Bot Chat is a pinned bb thread. All its outside chats mirror into bb.",
-        "Full access to operate bb: the bot's plugin-owned bb skill calls the bb-hermes wrapper, which runs the bb CLI. Restrictions come later."
+        "Full access to operate bb: the bot's plugin-owned bb skill calls the bb-hermes wrapper, which runs the bb CLI. Hermes doesn't ask before running bb commands. Restrictions come later.",
+        "The switch row shows the import count before you turn it on (\"Imports 12 chats from the last 30 days\"). The switch is the consent; the import is silent."
       ]
     },
     {
@@ -228,22 +348,17 @@
       "title": "What the worker writes",
       "items": [
         "One wrapper per Hermes machine: <plugin data>/bin/bb-hermes. It sets BB_SERVER_URL only when the bb server is remote.",
-        "One bb skill per enabled bot: <profile>/skills/bb-plugin-hermes/, with a marker file. No config.yaml or .env edit, no Hermes restart."
+        "One bb skill per enabled bot: <profile>/skills/bb-plugin-hermes/, with a marker file. No config.yaml or .env edit, no Hermes restart.",
+        "After writing or deleting the skill it runs hermes -p <profile> sessions refresh-prompts, so continuing chats (the Bot Chat) see the change."
       ]
     },
     {
       "dot": "slate",
       "title": "Off means",
       "items": [
-        "No chat, no mirroring, no bb access. The worker deletes that bot's skill; the wrapper goes once no bot is on. A bot's own bb skills stay untouched.",
-        "Every bot starts off (proposed default, Q22)."
-      ]
-    },
-    {
-      "dot": "amber",
-      "title": "Open items",
-      "items": [
-        "To be decided in the plan rewrite: whether switching a bot on later imports its last 30 days, and what happens to its bb threads when switched off."
+        "Every bb thread of the bot is archived, the bot thread included (D48). Switching on again unarchives them and catches up turns made while off.",
+        "The worker deletes that bot's skill, and the wrapper once no bot is on. A bot's own bb skills stay untouched.",
+        "Every bot starts off."
       ]
     }
   ]

@@ -2,13 +2,13 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Outside chats appear in bb (proposed v1)",
+    "title": "Outside chats appear in bb",
     "output": "docs/diagrams/outside-sessions.html",
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
       "url": "https://github.com/AndrewBird81/bb-plugin-hermes",
-      "revision": "3fd4f54e7921a0cd98246dde450cc08d1f7ed66a"
+      "revision": "a035e4cc67d1d611bb28f9bba4256cfb0b822cfa"
     }
   },
   "components": [
@@ -27,10 +27,10 @@
       "sublabel": "and Desktop",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 44,
-          "end_line": 48,
-          "label": "Full mirroring"
+          "path": "docs/plan/README.md",
+          "line": 132,
+          "end_line": 132,
+          "label": "Through the gateway"
         }
       ]
     },
@@ -46,12 +46,18 @@
         104,
         50
       ],
-      "sublabel": "iPhone",
+      "sublabel": "via dashboard",
       "sources": [
         {
           "path": "docs/plan/README.md",
-          "line": 83,
-          "end_line": 83,
+          "line": 100,
+          "end_line": 100,
+          "label": "Conduit"
+        },
+        {
+          "path": "docs/plan/README.md",
+          "line": 55,
+          "end_line": 55,
           "label": "D42"
         }
       ]
@@ -68,19 +74,13 @@
         104,
         50
       ],
-      "sublabel": "proposed out",
+      "sublabel": "out (D49)",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 130,
-          "end_line": 130,
-          "label": "Q23"
-        },
-        {
-          "path": "docs/research/12-verification-log.md",
-          "line": 25,
-          "end_line": 42,
-          "label": "Discord sessions"
+          "path": "docs/plan/README.md",
+          "line": 62,
+          "end_line": 62,
+          "label": "D49"
         }
       ]
     },
@@ -99,17 +99,17 @@
       "sublabel": "always out",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 47,
-          "end_line": 47,
-          "label": "Cron and one-shot"
+          "path": "docs/plan/README.md",
+          "line": 134,
+          "end_line": 134,
+          "label": "Allow-list"
         }
       ]
     },
     {
       "id": "saved",
       "type": "database",
-      "label": "Saved chats",
+      "label": "Hermes chats",
       "pos": [
         144,
         30
@@ -118,7 +118,7 @@
         104,
         338
       ],
-      "sublabel": "every chat",
+      "sublabel": "all saved here",
       "sources": [
         {
           "path": "docs/spikes/S8-conduit-shared-conversation.md",
@@ -127,10 +127,10 @@
           "label": "When turns are saved"
         },
         {
-          "path": "docs/plan/README.md",
-          "line": 81,
-          "end_line": 81,
-          "label": "D40 read path"
+          "path": "docs/plan/02-architecture.md",
+          "line": 27,
+          "end_line": 36,
+          "label": "History reader"
         }
       ]
     },
@@ -149,10 +149,10 @@
       "sublabel": "stays in Hermes",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 47,
-          "end_line": 48,
-          "label": "Stays out"
+          "path": "docs/plan/02-architecture.md",
+          "line": 200,
+          "end_line": 200,
+          "label": "Allow-list fails closed"
         }
       ]
     },
@@ -168,19 +168,19 @@
         104,
         50
       ],
-      "sublabel": "enabled bots",
+      "sublabel": "allow-list",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 44,
-          "end_line": 48,
+          "path": "docs/plan/01-product.md",
+          "line": 131,
+          "end_line": 131,
           "label": "What mirrors"
         },
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 82,
-          "end_line": 85,
-          "label": "Off bots are absent"
+          "path": "docs/plan/02-architecture.md",
+          "line": 200,
+          "end_line": 200,
+          "label": "Allow-list"
         }
       ]
     },
@@ -196,13 +196,19 @@
         104,
         50
       ],
-      "sublabel": "runs once",
+      "sublabel": "each switch-on",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 46,
-          "end_line": 46,
-          "label": "Imported once"
+          "path": "docs/plan/README.md",
+          "line": 130,
+          "end_line": 131,
+          "label": "Import at switch-on"
+        },
+        {
+          "path": "docs/plan/01-product.md",
+          "line": 132,
+          "end_line": 136,
+          "label": "Import"
         }
       ]
     },
@@ -221,10 +227,16 @@
       "sublabel": "keeps updating",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 45,
-          "end_line": 45,
-          "label": "Keeps updating"
+          "path": "docs/plan/01-product.md",
+          "line": 137,
+          "end_line": 141,
+          "label": "Live"
+        },
+        {
+          "path": "docs/plan/02-architecture.md",
+          "line": 183,
+          "end_line": 188,
+          "label": "Wake and mirror"
         }
       ]
     },
@@ -244,8 +256,8 @@
       "sources": [
         {
           "path": "docs/plan/README.md",
-          "line": 83,
-          "end_line": 85,
+          "line": 55,
+          "end_line": 57,
           "label": "D42, D44"
         }
       ]
@@ -265,15 +277,14 @@
       "sublabel": "push: approvals",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 50,
-          "end_line": 51,
+          "path": "docs/plan/01-product.md",
+          "line": 155,
+          "end_line": 160,
           "label": "Notifications"
         }
       ]
     }
   ],
-  "boundaries": [],
   "connections": [
     {
       "id": "l-s",
@@ -301,7 +312,7 @@
       "id": "s-p",
       "from": "saved",
       "to": "plugin",
-      "label": "read (TBD)",
+      "label": "REST read",
       "variant": "emphasis"
     },
     {
@@ -350,24 +361,32 @@
       "dot": "emerald",
       "title": "What mirrors",
       "items": [
-        "Every chat of an enabled bot from CLI, TUI, Desktop and Conduit appears in bb by itself and keeps updating. No \"Continue in bb\" step (D42).",
-        "Each bot's Bot Chat goes to that bot's pinned bb thread, not a new one (D44)."
+        "Every visible chat of an enabled bot from CLI, TUI, Desktop and Conduit, plus its Bot Chat, appears in bb by itself and keeps updating. No \"Continue in bb\" step (D42).",
+        "Each bot's Bot Chat goes to that bot's pinned bb thread, not a new one (D44).",
+        "CLI, TUI and Desktop run their turns in the gateway, so they stream live in bb. Conduit's own turns arrive in two steps: your message, then the reply."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Import",
+      "items": [
+        "Runs at every switch-on: that bot's chats active in the last 30 days with no bb thread yet, oldest first. The switch row shows the count first.",
+        "Silent: no unread, no push. Older turns of a long chat stay in Hermes, with a note at the top of the thread."
       ]
     },
     {
       "dot": "slate",
       "title": "What stays out",
       "items": [
-        "Cron and one-shot runs; chats of bots that are switched off.",
-        "Discord, Telegram, Slack and other chat apps: proposed, pending Q23. A Discord DM is its own Hermes chat, not the Bot Chat."
+        "An allow-list that fails closed: cron, one-shot, ACP, API server, a2a, tool, subagent, hidden and empty sessions stay in Hermes, and chats of bots that are switched off.",
+        "Discord, Telegram, Slack and other chat apps, DMs included (D49)."
       ]
     },
     {
       "dot": "amber",
-      "title": "Notifications and open items",
+      "title": "Notifications",
       "items": [
-        "Outside activity marks the thread unread. Approvals and clarify questions send a push.",
-        "Open, to be decided in the plan rewrite: how v1 reads saved chats; when the import runs for a bot switched on later; whether you confirm import counts first."
+        "Outside activity marks the thread unread. Approvals and clarify questions send a push."
       ]
     }
   ]

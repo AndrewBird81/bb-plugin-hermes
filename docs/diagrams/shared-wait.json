@@ -2,13 +2,13 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "When Conduit holds the chat (proposed v1)",
+    "title": "When Conduit holds the chat",
     "output": "docs/diagrams/shared-wait.html",
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
       "url": "https://github.com/AndrewBird81/bb-plugin-hermes",
-      "revision": "3fd4f54e7921a0cd98246dde450cc08d1f7ed66a"
+      "revision": "a035e4cc67d1d611bb28f9bba4256cfb0b822cfa"
     }
   },
   "components": [
@@ -27,10 +27,10 @@
       "sublabel": "to a chat",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 96,
-          "end_line": 99,
-          "label": "Wait, never fork"
+          "path": "docs/plan/02-architecture.md",
+          "line": 169,
+          "end_line": 173,
+          "label": "Bot thread send"
         }
       ]
     },
@@ -71,10 +71,16 @@
       "sublabel": "banner, retries",
       "sources": [
         {
-          "path": "docs/spikes/S8-conduit-shared-conversation.md",
-          "line": 104,
-          "end_line": 108,
-          "label": "Retry schedule"
+          "path": "docs/plan/02-architecture.md",
+          "line": 173,
+          "end_line": 173,
+          "label": "Wait and retry"
+        },
+        {
+          "path": "docs/plan/01-product.md",
+          "line": 115,
+          "end_line": 115,
+          "label": "Banner"
         }
       ]
     },
@@ -115,16 +121,16 @@
       "sublabel": "adopts the chat",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 100,
-          "end_line": 102,
-          "label": "Adoption stays"
+          "path": "docs/plan/README.md",
+          "line": 49,
+          "end_line": 49,
+          "label": "D16"
         },
         {
-          "path": "docs/spikes/S8-conduit-shared-conversation.md",
-          "line": 109,
-          "end_line": 111,
-          "label": "Send"
+          "path": "docs/plan/02-architecture.md",
+          "line": 172,
+          "end_line": 172,
+          "label": "Resume adopts"
         }
       ]
     },
@@ -143,15 +149,14 @@
       "sublabel": "Conduit goes on",
       "sources": [
         {
-          "path": "docs/spikes/S8-conduit-shared-conversation.md",
-          "line": 10,
-          "end_line": 13,
-          "label": "No takeover"
+          "path": "docs/plan/01-product.md",
+          "line": 107,
+          "end_line": 107,
+          "label": "Conduit keeps working"
         }
       ]
     }
   ],
-  "boundaries": [],
   "connections": [
     {
       "id": "s-h",
@@ -195,7 +200,7 @@
       "title": "Wait, never fork",
       "items": [
         "\"Refused\" is runtime_coordination_required: Conduit holds a chat the gateway hasn't adopted yet.",
-        "bb keeps your message queued and shows \"Open in Conduit: sends when it's free\". It retries at 2, 5, 10 and 30 s, then every 60 s.",
+        "bb keeps your message queued and shows \"Open in Conduit: sends when it's free\". It retries at 2, 5, 10 and 30 s, then every 60 s. Stop drops the wait.",
         "Conduit lets go of a Bot Chat when it disconnects, and of other chats after 60 s idle.",
         "bb never creates a second chat and never takes over. After the gateway adopts the chat, Conduit keeps working."
       ]

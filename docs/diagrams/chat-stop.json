@@ -2,13 +2,13 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Stop (proposed v1)",
+    "title": "Stop",
     "output": "docs/diagrams/chat-stop.html",
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
       "url": "https://github.com/AndrewBird81/bb-plugin-hermes",
-      "revision": "3fd4f54e7921a0cd98246dde450cc08d1f7ed66a"
+      "revision": "a035e4cc67d1d611bb28f9bba4256cfb0b822cfa"
     }
   },
   "components": [
@@ -27,10 +27,10 @@
       "sublabel": "in bb",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 105,
-          "end_line": 107,
-          "label": "Stop rules"
+          "path": "docs/plan/01-product.md",
+          "line": 89,
+          "end_line": 99,
+          "label": "Stop table"
         }
       ]
     },
@@ -46,19 +46,19 @@
         104,
         50
       ],
-      "sublabel": "running or queued",
+      "sublabel": "or is dropped",
       "sources": [
         {
-          "path": "docs/spikes/S8-conduit-shared-conversation.md",
-          "line": 122,
-          "end_line": 126,
-          "label": "Stop rules"
+          "path": "docs/plan/02-architecture.md",
+          "line": 129,
+          "end_line": 129,
+          "label": "thread/stop"
         },
         {
-          "path": "docs/plan/02-architecture.md",
-          "line": 168,
-          "end_line": 168,
-          "label": "thread/stop"
+          "path": "docs/plan/README.md",
+          "line": 53,
+          "end_line": 53,
+          "label": "D27 narrowed"
         }
       ]
     },
@@ -67,7 +67,7 @@
       "type": "frontend",
       "label": "Shows stopped",
       "pos": [
-        14,
+        144,
         222
       ],
       "size": [
@@ -78,60 +78,106 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 195,
-          "end_line": 195,
+          "line": 150,
+          "end_line": 150,
           "label": "turn.boundary"
         }
       ]
     },
     {
-      "id": "conduit",
+      "id": "outside",
       "type": "external",
-      "label": "Conduit's turn",
+      "label": "Outside turn",
       "pos": [
         14,
-        318
+        126
       ],
       "size": [
         104,
         50
       ],
-      "sublabel": "no Stop from bb",
+      "sublabel": "Running in <app>",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 105,
-          "end_line": 107,
-          "label": "Running in Conduit"
+          "path": "docs/plan/01-product.md",
+          "line": 98,
+          "end_line": 99,
+          "label": "Banner"
+        },
+        {
+          "path": "docs/plan/README.md",
+          "line": 53,
+          "end_line": 53,
+          "label": "D27 narrowed"
+        }
+      ]
+    },
+    {
+      "id": "later",
+      "type": "frontend",
+      "label": "Reply shows",
+      "pos": [
+        14,
+        222
+      ],
+      "size": [
+        104,
+        50
+      ],
+      "sublabel": "when turn ends",
+      "sources": [
+        {
+          "path": "docs/plan/01-product.md",
+          "line": 99,
+          "end_line": 101,
+          "label": "Reply still shows"
         }
       ]
     }
   ],
-  "boundaries": [],
   "connections": [
     {
       "id": "t-s",
       "from": "tap",
       "to": "stop",
-      "label": "stop",
+      "label": "bb can stop",
       "variant": "emphasis"
     },
     {
       "id": "s-s",
       "from": "stop",
       "to": "shown",
-      "label": "ended",
       "variant": "emphasis"
+    },
+    {
+      "id": "t-o",
+      "from": "tap",
+      "to": "outside",
+      "label": "can't stop"
+    },
+    {
+      "id": "o-l",
+      "from": "outside",
+      "to": "later",
+      "label": "keeps running",
+      "variant": "dashed"
     }
   ],
   "cards": [
     {
       "dot": "orange",
-      "title": "Stop",
+      "title": "bb can stop",
       "items": [
-        "A running turn is interrupted (session.interrupt); a queued one is dropped (prompt.cancel).",
-        "Works on bb's own turns, and on Conduit messages handed into the gateway queue.",
-        "A turn Conduit's dashboard runs itself can't be stopped from bb: the button reads \"Running in Conduit\"."
+        "bb's own running turn: interrupted (session.interrupt). Queued, or waiting for Conduit: dropped before it reaches Hermes.",
+        "A Conduit message forwarded into the gateway queue: interrupted, fenced by its generation."
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "bb can't stop",
+      "items": [
+        "A turn Conduit's dashboard runs itself, and CLI, TUI or Desktop turns. bb stops watching and shows \"Running in <app>\", e.g. \"Running in Conduit\" or \"Running in CLI\" (D27 narrowed).",
+        "The turn keeps running in Hermes; its reply still shows in bb when it ends."
       ]
     }
   ]

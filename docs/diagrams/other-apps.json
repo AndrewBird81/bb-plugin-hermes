@@ -2,13 +2,13 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Other Hermes apps (proposed v1)",
+    "title": "Other Hermes apps",
     "output": "docs/diagrams/other-apps.html",
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
       "url": "https://github.com/AndrewBird81/bb-plugin-hermes",
-      "revision": "3fd4f54e7921a0cd98246dde450cc08d1f7ed66a"
+      "revision": "a035e4cc67d1d611bb28f9bba4256cfb0b822cfa"
     }
   },
   "components": [
@@ -26,6 +26,12 @@
       ],
       "sublabel": "iPhone app",
       "sources": [
+        {
+          "path": "docs/plan/README.md",
+          "line": 100,
+          "end_line": 100,
+          "label": "Conduit"
+        },
         {
           "path": "docs/spikes/S8-conduit-shared-conversation.md",
           "line": 36,
@@ -81,6 +87,12 @@
           "line": 36,
           "end_line": 41,
           "label": "Desktop, local"
+        },
+        {
+          "path": "docs/plan/README.md",
+          "line": 101,
+          "end_line": 101,
+          "label": "Canonical"
         }
       ]
     },
@@ -103,6 +115,12 @@
           "line": 52,
           "end_line": 52,
           "label": "When turns are saved"
+        },
+        {
+          "path": "docs/plan/README.md",
+          "line": 132,
+          "end_line": 132,
+          "label": "Only Conduit's own"
         }
       ]
     },
@@ -133,7 +151,7 @@
       "type": "external",
       "label": "CLI / TUI",
       "pos": [
-        14,
+        144,
         318
       ],
       "size": [
@@ -143,10 +161,10 @@
       "sublabel": "terminal",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 44,
-          "end_line": 48,
-          "label": "Full mirroring"
+          "path": "docs/plan/README.md",
+          "line": 132,
+          "end_line": 132,
+          "label": "CLI and TUI use the gateway"
         }
       ]
     }
@@ -207,10 +225,10 @@
       "to": "saved"
     },
     {
-      "id": "cli-s",
+      "id": "cli-g",
       "from": "cli",
-      "to": "saved",
-      "label": "saves"
+      "to": "gateway",
+      "label": "sends"
     }
   ],
   "cards": [
@@ -218,16 +236,16 @@
       "dot": "violet",
       "title": "Other Hermes apps",
       "items": [
-        "Conduit talks to the Hermes dashboard. The dashboard runs Conduit's turn itself and saves it, or hands it to the gateway queue when that chat is busy.",
-        "Hermes Desktop on the Hermes machine talks to the gateway directly. The gateway saves every turn it runs.",
-        "CLI and TUI chats land in saved chats. How they get there isn't in the docs; confirm in source."
+        "Conduit talks to the Hermes dashboard. The dashboard runs Conduit's turn itself and saves it, or hands it to the gateway queue when that chat is busy. Remote Desktop and dashboard chat use the same path.",
+        "Hermes Desktop on the Hermes machine, the CLI and the TUI run every turn in the gateway as canonical work. The gateway saves every turn it runs.",
+        "So CLI, TUI and Desktop turns can stream live in bb; Conduit's own turns appear in two steps."
       ]
     },
     {
-      "dot": "amber",
-      "title": "Open item",
+      "dot": "cyan",
+      "title": "How bb reads them",
       "items": [
-        "bb mirrors all of these from saved chats. How v1 reads them is to be decided in the plan rewrite."
+        "bb mirrors all of these. History comes from Hermes' REST projection on the gateway; live turns from the gateway's events."
       ]
     }
   ]

@@ -2,13 +2,13 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "A chat from bb (proposed v1)",
+    "title": "A chat from bb",
     "output": "docs/diagrams/chat-from-bb.html",
     "quality_profile": "showcase",
     "locale": "en",
     "repository": {
       "url": "https://github.com/AndrewBird81/bb-plugin-hermes",
-      "revision": "3fd4f54e7921a0cd98246dde450cc08d1f7ed66a"
+      "revision": "a035e4cc67d1d611bb28f9bba4256cfb0b822cfa"
     }
   },
   "components": [
@@ -27,10 +27,10 @@
       "sublabel": "bot, model, level",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 38,
-          "end_line": 43,
-          "label": "Chats from bb"
+          "path": "docs/plan/01-product.md",
+          "line": 66,
+          "end_line": 72,
+          "label": "Start, composer"
         }
       ]
     },
@@ -50,8 +50,8 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 160,
-          "end_line": 161,
+          "line": 119,
+          "end_line": 122,
           "label": "turn/start"
         },
         {
@@ -77,10 +77,10 @@
       "sublabel": "profile's bot",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 38,
-          "end_line": 43,
-          "label": "Chats from bb"
+          "path": "docs/plan/01-product.md",
+          "line": 81,
+          "end_line": 81,
+          "label": "Reply from that profile"
         }
       ]
     },
@@ -99,9 +99,15 @@
       "sublabel": "live, in bb",
       "sources": [
         {
+          "path": "docs/plan/01-product.md",
+          "line": 73,
+          "end_line": 73,
+          "label": "Replies stream"
+        },
+        {
           "path": "docs/plan/02-architecture.md",
-          "line": 185,
-          "end_line": 186,
+          "line": 141,
+          "end_line": 141,
           "label": "Events to bb"
         }
       ]
@@ -122,8 +128,8 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 189,
-          "end_line": 190,
+          "line": 145,
+          "end_line": 145,
           "label": "Approval, clarify"
         }
       ]
@@ -143,10 +149,10 @@
       "sublabel": "in bb",
       "sources": [
         {
-          "path": "docs/plan/scope-reset.md",
-          "line": 50,
-          "end_line": 51,
-          "label": "Push rule"
+          "path": "docs/plan/01-product.md",
+          "line": 74,
+          "end_line": 74,
+          "label": "Card and push"
         }
       ]
     },
@@ -166,9 +172,15 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 173,
-          "end_line": 173,
+          "line": 131,
+          "end_line": 131,
           "label": "Answer"
+        },
+        {
+          "path": "docs/plan/README.md",
+          "line": 46,
+          "end_line": 46,
+          "label": "D11"
         }
       ]
     },
@@ -188,14 +200,13 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 173,
-          "end_line": 173,
+          "line": 131,
+          "end_line": 131,
           "label": "Answer"
         }
       ]
     }
   ],
-  "boundaries": [],
   "connections": [
     {
       "id": "s-q",
@@ -250,7 +261,7 @@
       "title": "Send and stream",
       "items": [
         "Left column is bb (app and server); right column is the Hermes machine (plugin bridge, gateway, bot).",
-        "You pick a bot, a model and a reasoning level; the bot stays fixed for the chat. The first message creates the Hermes chat (session.create); each message is one prompt.submit with its own submission_id, never resent.",
+        "You pick a bot, a model and a reasoning level; the bot stays fixed for the chat. A side chat's first message creates its Hermes chat (session.create); a bot thread uses the bot's Bot Chat. Each message is one prompt.submit with its own submission_id, never resent.",
         "The reply arrives as message.delta and tool events. Steer and attachments also work."
       ]
     },
@@ -258,7 +269,7 @@
       "dot": "rose",
       "title": "Approvals and questions",
       "items": [
-        "approval.request and clarify.request become a bb card and send a push.",
+        "approval.request and clarify.request become a bb card with Hermes' choices and deadline, and send a push.",
         "Your choice goes back as approval.respond or clarify.respond. bb never approves for you."
       ]
     }
