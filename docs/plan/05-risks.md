@@ -1,0 +1,15 @@
+# 05 — Top risks
+
+L = likelihood, I = impact (H/M/L). Detection runs through health and `diagnostics` unless noted. Bare `R1`–`R9` are these risks; review citations carry a finding code (`R1 M1`).
+
+| # | Risk | L | I | Mitigation | Early detection |
+|---|---|---|---|---|---|
+| R1 | **Unguarded bb access.** An enabled bot can read, start, message, stop and archive any bb thread on any machine. Hermes' danger detector flags no `bb` command (r12 §4), so prompt injection in any chat of that bot can act without a prompt. Accepted for v1 (D43) | M | H | Every bot starts off; the switch row says what it grants; off deletes the skill; restrictions Later (`approvals.deny` globs or a hook, r12 §4) | None automated: the owner noticing |
+| R2 | **Fast-moving, partly private Hermes surfaces:** canonical methods weeks old, `model.options` legacy, the REST projection, closed-source Conduit (R5 C2; S8 Confidence) | H | H | Strict fake from the vendored contract; on-connect contract and REST key check; fail → health red, mirroring paused, chats from bb kept | Health after each `hermes update` |
+| R3 | **Duplicate or missing turns:** re-lists, compaction clones, `/retry`, merged sends, two clients writing one chat (R1 M1, M2, M6) | M | H | `turns` keyed by `message_uid`, `INSERT OR IGNORE` before the wake; Hermes' own projection; segmentation; two-client harness | Unit and harness tests; dogfood |
+| R4 | **Two-client edge cases:** S8's race bugs (sends within ~50 ms; rotating compaction, live in `default` per D50); Conduit's inferred behaviour (A-S8a–c); double-mint (S8 E12) | L | M | Accepted (D50); title binding, lazy create, wait-and-retry, never resend | Dogfood with the real app |
+| R5 | **Skill doesn't reach the Bot Chat:** continuing sessions keep their stored prompt (`hermes_state_prompt_refresh.py:1-8`); `refresh-prompts` is a Hermes write outside S8's verified path (A43, A45) | M | M | Run `refresh-prompts` on on and off; verify in P1 on isolated Hermes first | T1.8 test; dogfood "list my bb threads" from the bot thread |
+| R6 | **Privacy:** mirrored threads copy tool results, phone and home-automation data included, into the bb server's store (D36 Later) | M | M | Ids only in db, logs and `diagnostics`; `guide.md` states it; switch per bot | Log review per release |
+| R7 | **bb platform:** `experimental_*` SDK APIs; worker killed at 300 s idle with no exit event (S7 §6); one process per hosted thread (S1-S3 fact 2) | M | H | Pinned SDK; e2e on the live version; 60 s `ensureWatch`; boot id → reconcile; serial import; release idle bridges | `bb plugin types --check`; boot id changes; hosted count |
+| R8 | **Tests touch live Hermes:** the folder defaults to `~/.hermes` (R3 M3) | L | H | e2e sets the folder explicitly and aborts unless `instance_id` is the fake's; isolated `HERMES_HOME` under `/tmp`; read-only rules (03) | e2e step 6 |
+| R9 | **Unread noise:** every outside turn marks unread, hidden-prompt turns included (e.g. Pulse, ~7 a day, R6 C6); approvals from CLI turns push to the phone | M | L | Accepted for v1; finer rules Later (D26, D33) | Dogfood |

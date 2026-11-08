@@ -2,7 +2,7 @@
 
 **Interactive version:** [andrewbird81.github.io/bb-plugin-hermes](https://andrewbird81.github.io/bb-plugin-hermes/) has all 8 diagrams on one page, with detail cards. Tap any picture below to open its own interactive page.
 
-These pictures show the proposed lean v1 from [`../plan/scope-reset.md`](../plan/scope-reset.md).
+These pictures show the proposed lean v1 from [`../plan/archive/scope-reset.md`](../plan/archive/scope-reset.md). The plan built from it: [`../plan/README.md`](../plan/README.md).
 - Everything is proposed: the scope awaits the owner's OK (Q22–Q25).
 - Bot names are examples.
 - TBD marks items left for the plan rewrite.
@@ -66,12 +66,12 @@ Each chat with an enabled Hermes bot becomes a bb thread. bb sends through the H
 
 ## Still open
 
-These are for the plan rewrite:
+The plan settles these ([For the owner to confirm](../plan/README.md#for-the-owner-to-confirm)); the pictures still show them open:
 - How v1 reads Hermes history, for the 30-day import and for Conduit's turns. D40 predates full mirroring.
 - When the 30-day import runs for a bot switched on later.
 - What happens to a bot's bb threads when the bot is switched off.
 
-Questions Q22–Q25 are in [`scope-reset.md`](../plan/scope-reset.md#pending-user-answers).
+Questions Q22–Q25 are in [`scope-reset.md`](../plan/archive/scope-reset.md#user-answers-q22q25).
 
 ## Files
 
