@@ -15,7 +15,7 @@ How Hermes' other apps reach the same chats:
 
 ![Conduit reaches Hermes through the dashboard; Desktop, CLI and TUI through the gateway](../diagrams/other-apps.svg)
 
-- The picture shows CLI and TUI writing saved chats. At `c314285f07` they don't: both run each turn in the gateway (`hermes_cli/gateway_agent.py:1-8`, `ui-tui/CANONICAL_GATEWAY.md:1-9`). Only the dashboard (Conduit, remote Desktop, dashboard chat) runs turns outside the gateway, unless that chat's gateway queue is busy (S8, "How Hermes coordinates the two writers" 1).
+- CLI and TUI run each turn in the gateway (`hermes_cli/gateway_agent.py:1-8`, `ui-tui/CANONICAL_GATEWAY.md:1-9`). Only the dashboard (Conduit, remote Desktop, dashboard chat) runs turns outside the gateway, unless that chat's gateway queue is busy (S8, "How Hermes coordinates the two writers" 1).
 
 ## Placement
 

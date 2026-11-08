@@ -126,8 +126,6 @@ AC (two-client harness, then the real app):
 
 ![Which outside chats show up in bb](../diagrams/outside-sessions.svg)
 
-The picture predates two settled points: CLI and TUI chats go through the gateway, and the import runs at each switch-on (README confirm items 1, 3).
-
 - **What mirrors** (D42, D49): every visible chat of an enabled bot from CLI, TUI, Desktop and Conduit, plus its Bot Chat. Everything else stays in Hermes (README confirm item 5).
 - **Import** at switch-on (README confirm items 1–2):
   - chats active in the last 30 days with no bb thread, oldest first, each replayed hidden, then shown read: no unread, no push;
