@@ -1,5 +1,5 @@
 {
-  "$comment": "The Hermes surface bb-plugin-hermes uses (flow 11, A51). Method -> the params we may send. The worker checks each against <folder>/hermes-agent/apps/shared/src/gateway-contract.openrpc.json: canonical in x-canonical-methods, legacy in methods. rest: keys we read from the REST projection (T0.5 fills them). Checked against Hermes c314285f07.",
+  "$comment": "The Hermes surface bb-plugin-hermes uses (flow 11, A51). Method -> the params we may send. The worker checks each against <folder>/hermes-agent/apps/shared/src/gateway-contract.openrpc.json: canonical in x-canonical-methods, legacy in methods. rest: keys we read from the REST projection (T0.5 fills them). `profile` is the host socket's routing key on every method: Hermes strips it before validation (gateway/session_controls.py:96-100, 305-318), so the check accepts it even where the schema lacks it. Checked against Hermes c314285f07.",
   "canonical": {
     "runtime.describe": [],
     "profiles.list": ["profile"],
@@ -7,15 +7,15 @@
     "session.create": ["profile", "request_id", "source", "cwd", "model", "provider", "reasoning", "title", "hidden", "follow_profile_config"],
     "session.resume": ["profile", "session_id", "omit_messages"],
     "prompt.submit": ["profile", "session_id", "text", "attachments", "submission_id", "turn_author"],
-    "prompt.cancel": ["session_id", "admission_id"],
-    "prompt.resolve_unknown": ["session_id", "admission_id", "execution_generation"],
+    "prompt.cancel": ["profile", "session_id", "admission_id"],
+    "prompt.resolve_unknown": ["profile", "session_id", "admission_id", "execution_generation"],
     "session.interrupt": ["profile", "session_id", "execution_generation"],
     "session.steer": ["profile", "session_id", "execution_generation", "text"],
     "approval.respond": ["profile", "session_id", "execution_generation", "prompt_id", "choice"],
-    "clarify.respond": ["session_id", "execution_generation", "prompt_id", "answer"],
-    "session.mutate": ["session_id", "request_id", "expected_revision", "expected_generation", "operation", "payload"],
+    "clarify.respond": ["profile", "session_id", "execution_generation", "prompt_id", "answer"],
+    "session.mutate": ["profile", "session_id", "request_id", "expected_revision", "expected_generation", "operation", "payload"],
     "session.events.since": ["profile", "session_id", "last_sequence", "replay_epoch"],
-    "session.detach": ["session_id", "subscription_id", "end_reason"]
+    "session.detach": ["profile", "session_id", "subscription_id", "end_reason"]
   },
   "legacy": {
     "model.options": ["profile"]

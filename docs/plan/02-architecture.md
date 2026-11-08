@@ -127,7 +127,7 @@ bb → bridge → Hermes:
 | marker segment | none, or `session.resume` to watch a running canonical turn (never on a legacy row) | Never `prompt.submit` |
 | `turn/steer` | bb's own running → `session.steer{execution_generation, text}`; else a queued `prompt.submit` | Never another client's turn (R1 M4) |
 | `thread/stop{interrupt}` | bb's own running → `session.interrupt{execution_generation}`; bb's own queued → `prompt.cancel{session_id, admission_id}`; waiting on Conduit → drop locally; forwarded Conduit admission → `session.interrupt` fenced by its generation; other outside turns → stop watching + banner (A47) | S8 step 8; D27 narrowed |
-| `thread/stop{release}` | `session.detach{session_id, subscription_id, end_reason:null}` | No `profile` key (R1 S6); A24 |
+| `thread/stop{release}` | `session.detach{profile, session_id, subscription_id, end_reason:null}` | `profile` routes it on the host socket; without it a non-root profile's detach is a silent no-op (T0.3, isolated Hermes). A24 |
 | interaction answer | `approval.respond{session_id, execution_generation, prompt_id, choice}` / `clarify.respond{…, answer}` | `already_resolved` → close silently |
 | Hermes `not_found` | — | Bot thread: resolve by title again. Others: "Deleted in Hermes" |
 | reconnect | `prompt.resolve_unknown` for bb's own `unknown` admissions | Flow 8; in `contract/used-surface.json` |
