@@ -11,7 +11,7 @@ export const versionCheckSchema = z
     /** Hermes `code_version` from the gateway's `identify`, else its short `code_sha`. */
     version: z.string().nullable(),
     supported: z.boolean().nullable(),
-    /** Canonical methods or REST keys we use that this Hermes lacks (`method:prompt.submit`, `rest:sessions.title`). */
+    /** Canonical methods or REST keys we use that this Hermes lacks (`method:session.steer`, `param:prompt.submit.turn_author`, `rest:list.title`). */
     missing: z.array(z.string()),
     checked_at: z.number().nullable(),
   })
@@ -51,7 +51,7 @@ export const profileSchema = z
 export type HermesProfile = z.infer<typeof profileSchema>;
 
 export const bridgeRecordSchema = z
-  .object({ pid: z.number().int(), build: z.string(), thread_id: z.string(), started_at: z.number(), alive: z.boolean() })
+  .object({ pid: z.number().int(), build: z.string(), thread_id: z.string().nullable(), started_at: z.number(), alive: z.boolean() })
   .strict();
 
 export const workerDiagnosticsSchema = z
