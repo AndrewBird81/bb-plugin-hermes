@@ -1,0 +1,255 @@
+// Tests only: a fake bb (threads, projects, push-notifications) and a fake host worker (describe,
+// findBotChat, readTurns, setBotAccess) around `createFakePluginHost`, for the server's P1 tests.
+import { createFakePluginHost, type ExperimentalFakeHostRpcCall, makeHostResponse, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
+import type { PromptInput } from "@get-bb/plugin-sdk/provider-bridge";
+import { EXTENSION_KINDS, type PersistedTurnState } from "../shared/extension-state.js";
+import type { BotChat, EnsureWatchOutput, HermesProfile, HistoryTurn } from "../shared/host-contract.js";
+import { decodeMarker, type Marker } from "../shared/marker.js";
+import { settingsDescriptors } from "../shared/settings.js";
+import { openMappingDb, setKv } from "./db.js";
+import { startServer } from "./index.js";
+
+export const MACHINE = "host_hermes";
+export const NEO = "/h/profiles/neo";
+export const BOB = "/h/profiles/bob";
+export const UID = 501;
+
+type Status = "idle" | "active" | "error";
+
+export interface FakeThread {
+  id: string;
+  title: string | null;
+  status: Status;
+  archivedAt: number | null;
+  deletedAt: number | null;
+  pinned: boolean;
+  queued: number;
+  originPluginId: string | null;
+  spawn: Record<string, unknown> | null;
+  /** Every input bb got: the spawn's, then each send's. */
+  inputs: PromptInput[][];
+}
+
+export interface WorldOptions {
+  profiles?: HermesProfile[];
+  /** Seeds the mapping db before the server starts (a previous run). */
+  seed?: (db: ReturnType<typeof openMappingDb>) => void;
+}
+
+const neo: HermesProfile = { name: "neo", home: NEO, handle: null, terminal_cwd: "/w/neo", served: true };
+const bob: HermesProfile = { name: "bob", home: BOB, handle: null, terminal_cwd: null, served: false };
+
+export function turn(anchor: string, over: Partial<HistoryTurn> = {}): HistoryTurn {
+  return { anchor_uid: anchor, user_text: `text ${anchor}`, user_hidden: false, surface: "cli", submission_id: null, reply_uids: [`${anchor}-r`], ts: Date.now() - 86_400_000, complete: true, ...over };
+}
+
+export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) {
+  const threads = new Map<string, FakeThread>();
+  const events = new Map<string, { type: string; data: unknown; seq: number }[]>();
+  const prompts = new Map<string, { createdAt: number; id: string; input: PromptInput[] }[]>();
+  const levels = new Map<string, string>();
+  const levelCalls: { threadId: string; level: string }[] = [];
+  /** Hermes chats by lineage root. */
+  const history = new Map<string, { session_id: string; turns: HistoryTurn[]; truncated?: boolean }>();
+  const botChats = new Map<string, BotChat>();
+  const access: { profile_home: string; on: boolean; enabled_bots: string[] }[] = [];
+  const state = { failSend: 0, failAccess: false, boot: "boot_1", supported: true, seq: 0, ids: 0 };
+
+  const thread = (id: string) => {
+    const t = threads.get(id);
+    if (!t || t.deletedAt) throw new Error("HTTP 404: thread not found");
+    return t;
+  };
+  const dto = (t: FakeThread) =>
+    makeThreadResponse({
+      id: t.id,
+      providerId: "hermes",
+      title: t.title,
+      status: t.status,
+      archivedAt: t.archivedAt,
+      deletedAt: t.deletedAt,
+      pinnedAt: t.pinned ? 1 : null,
+      queuedMessageCount: t.queued,
+      originPluginId: t.originPluginId,
+    });
+
+  const answer = (): EnsureWatchOutput => ({ worker_boot_id: state.boot, connected: true, instance_id: "inst_fake", version: "0.9.0", supported: state.supported, detail: state.supported ? null : "missing:1" });
+
+  function hostCall(call: ExperimentalFakeHostRpcCall): unknown {
+    const input = call.input as { profile_home: string; on: boolean; enabled_bots: string[]; lineage_root: string; after_uid?: string; since?: number };
+    switch (call.method) {
+      case "ensureWatch":
+        return answer();
+      case "describe":
+        return { uid: UID, profiles };
+      case "setBotAccess":
+        if (state.failAccess) throw Object.assign(new Error("offline"), { code: "host_offline" });
+        access.push({ profile_home: input.profile_home, on: input.on, enabled_bots: input.enabled_bots });
+        return { skill: input.on ? "written" : "removed", wrapper: "written", refreshed: true, detail: null };
+      case "findBotChat":
+        return botChats.get(input.profile_home) ?? { state: "none" };
+      case "readTurns": {
+        const chat = history.get(input.lineage_root);
+        if (!chat) throw Object.assign(new Error("not found"), { code: "not_found" });
+        let turns = chat.turns;
+        const after = input.after_uid;
+        const at = after ? turns.findIndex((t) => t.anchor_uid === after) : -1;
+        if (at >= 0) turns = turns.slice(at + 1);
+        const since = input.since;
+        if (since !== undefined) turns = turns.filter((t) => t.ts >= since);
+        return { session_id: chat.session_id, turns, truncated: chat.truncated ?? false };
+      }
+      default:
+        throw new Error(`unexpected host call ${call.method}`);
+    }
+  }
+
+  const fake = createFakePluginHost({
+    pluginId: "hermes",
+    experimental_callHostRpc: hostCall,
+    sdk: {
+      hosts: { list: async () => [makeHostResponse({ id: MACHINE, name: "hermes-mac", status: "connected" })] },
+      projects: { list: async () => [{ id: "proj_personal", kind: "personal" }] },
+      plugins: {
+        callRpc: async ({ method, input }) => {
+          const { threadId, threadIds, level } = input as { threadId: string; threadIds: string[]; level: string };
+          if (method === "threadNotifications.list")
+            return { threads: Object.fromEntries(threadIds.map((id) => [id, { own: levels.get(id) ?? "inherit", ancestorCap: null }])) };
+          levels.set(threadId, level);
+          levelCalls.push({ threadId, level });
+          return { own: level, ancestorCap: null };
+        },
+      },
+      threads: {
+        spawn: async (args) => {
+          const id = `thr_${++state.ids}`;
+          const a = args as unknown as Record<string, unknown>;
+          threads.set(id, {
+            id,
+            title: (a.title as string) ?? null,
+            status: "idle",
+            archivedAt: null,
+            deletedAt: null,
+            pinned: a.pinned === true,
+            queued: 0,
+            originPluginId: "hermes",
+            spawn: a,
+            inputs: [a.input as PromptInput[]],
+          });
+          return dto(threads.get(id)!);
+        },
+        send: async ({ threadId, input }) => {
+          if (state.failSend > 0) {
+            state.failSend--;
+            throw Object.assign(new Error("HTTP 503"), { code: "unavailable" });
+          }
+          thread(threadId).inputs.push(input as PromptInput[]);
+          return { ok: true, delivery: "sent" };
+        },
+        get: async ({ threadId }) => dto(thread(threadId)),
+        list: async (args) => (args?.threadIds ?? []).flatMap((id: string) => (threads.get(id) ? [dto(threads.get(id)!)] : [])),
+        archive: async ({ threadId }) => ((thread(threadId).archivedAt = 1), dto(thread(threadId))),
+        unarchive: async ({ threadId }) => ((thread(threadId).archivedAt = null), dto(thread(threadId))),
+        stop: async ({ threadId }) => dto(thread(threadId)),
+        markRead: async ({ threadId }) => dto(thread(threadId)),
+        update: async ({ threadId, title }) => {
+          if (title !== undefined) thread(threadId).title = title ?? null;
+          return dto(thread(threadId));
+        },
+        promptHistory: async ({ threadId }) => prompts.get(threadId) ?? [],
+        getPluginMetadata: async () => ({ metadata: {} }),
+        events: {
+          list: async ({ threadId, types, order }) => {
+            const rows = (events.get(threadId) ?? []).filter((e) => !types || (types as readonly string[]).includes(e.type));
+            const out = rows.map((e) => ({ id: `ev_${e.seq}`, scope: { kind: "thread" }, threadId, seq: e.seq, createdAt: e.seq, type: e.type, data: e.data }));
+            return order === "desc" ? out.reverse() : out;
+          },
+        },
+        queuedMessages: { list: async () => ({ messages: [] }) },
+      },
+    },
+  });
+
+  seed?.(openMappingDb(fake.bb));
+  setKv(openMappingDb(fake.bb), "machine", MACHINE);
+  const settings = fake.bb.settings.define(settingsDescriptors);
+  await startServer(fake.bb, settings);
+  const { harness } = fake;
+  const db = openMappingDb(fake.bb);
+
+  /** Lets queued jobs and fire-and-forget handlers run (every fake answers at once). */
+  async function flush(rounds = 20) {
+    for (let i = 0; i < rounds; i++) await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  const rpc = async <T>(method: string, input: unknown = null) => {
+    const out = (await harness.behavior.callRpc(method, input)) as T;
+    await flush();
+    return out;
+  };
+
+  /** A thread's marker inputs, in order. */
+  const markers = (threadId: string): Marker[] =>
+    thread(threadId).inputs.flatMap((input) => input.flatMap((p) => (p.type === "text" && p.visibility === "agent-only" ? [decodeMarker(p.text)!] : [])));
+  /** A thread's visible text parts, in order. */
+  const texts = (threadId: string): string[] =>
+    thread(threadId).inputs.flatMap((input) => input.flatMap((p) => (p.type === "text" && p.visibility !== "agent-only" ? [p.text] : [])));
+
+  return {
+    ...fake,
+    db,
+    state,
+    threads,
+    history,
+    botChats,
+    access,
+    levels,
+    levelCalls,
+    prompts,
+    rpc,
+    flush,
+    markers,
+    texts,
+    hostCalls: (method: string) => harness.inspection.experimental_hostRpcCalls.filter((c) => c.method === method),
+    connect: () => rpc("setConnection", { machine: MACHINE }),
+    /** bb ran every queued turn of a thread: `thread.idle` with an empty queue. */
+    async idle(threadId: string) {
+      const t = thread(threadId);
+      t.status = "idle";
+      t.queued = 0;
+      await harness.behavior.emitThreadEvent("thread.idle", { thread: dto(t), lastAssistantText: null });
+      await flush();
+    },
+    async active(threadId: string) {
+      thread(threadId).status = "active";
+      await harness.behavior.emitThreadEvent("thread.active", { thread: dto(thread(threadId)) });
+      await flush();
+    },
+    /** The worker's `changed` signal, past the debounce. */
+    async changed(...homes: string[]) {
+      await harness.behavior.experimental_emitHostSignal(MACHINE, "changed", { profile_homes: homes });
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await flush();
+    },
+    /** The bridge published `persisted-turn` for this thread. */
+    persisted(threadId: string, payload: PersistedTurnState) {
+      const list = events.get(threadId) ?? [];
+      list.push({ type: "thread/extensionState/updated", seq: ++state.seq, data: { kind: `hermes/${EXTENSION_KINDS.persistedTurn}`, payload, providerThreadId: "p" } });
+      events.set(threadId, list);
+    },
+    /** A recorded bb event of this thread (e.g. `client/thread/start`). */
+    event(threadId: string, type: string, data: unknown) {
+      const list = events.get(threadId) ?? [];
+      list.push({ type, seq: ++state.seq, data });
+      events.set(threadId, list);
+    },
+    async emit<E extends Parameters<typeof harness.behavior.emitThreadEvent>[0]>(event: E, threadId: string) {
+      await harness.behavior.emitThreadEvent(event, { thread: dto(threads.get(threadId)!) } as never);
+      await flush();
+    },
+    dto: (id: string) => dto(thread(id)),
+    thread,
+  };
+}
+
+export type World = Awaited<ReturnType<typeof world>>;

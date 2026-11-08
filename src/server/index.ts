@@ -1,11 +1,20 @@
-// Server part (server seam): mapping db, keep-alive, health, diagnostics RPC (T0.6, T0.9).
+// Server part (server seam): mapping db, keep-alive, health, diagnostics RPC (T0.6, T0.9); switches,
+// bot threads, side chats, import and wakes (T1.9–T1.11).
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import pkg from "../../package.json" with { type: "json" };
 import { hostContract, hostSignals } from "../shared/host-contract.js";
-import { rpcContract, type Diagnostics } from "../shared/rpc-contract.js";
+import { BOTS_CHANNEL, rpcContract, type Diagnostics } from "../shared/rpc-contract.js";
 import type { SettingsHandle } from "../shared/settings.js";
-import { type ConnectionSource, createConnection, errorCode, KEEPALIVE_MS } from "./connection.js";
-import { bindingCounts, type Db, getKv, openMappingDb, setKv } from "./db.js";
+import { createBots } from "./bots.js";
+import { createChats } from "./chats.js";
+import { type ConnectionSource, createConnection, errorCode, KEEPALIVE_MS, type OnConnected } from "./connection.js";
+import { addTombstone, bindingByThread, bindingCounts, type Db, deleteBinding, getKv, openMappingDb, setKv } from "./db.js";
+import { createNotify } from "./notify.js";
+import { createQueue, createSync, invalidateThreadInfo, targetOf } from "./sync.js";
+
+/** `changed` signals are debounced again here: one re-list per burst (02 flow 6). */
+export const WAKE_DEBOUNCE_MS = 500;
+const PROVIDER_ID = "hermes";
 
 /** Worker `diagnostics` must not hold the RPC for the host's 30 s default. */
 const WORKER_DIAGNOSTICS_TIMEOUT_MS = 5_000;
@@ -34,10 +43,80 @@ function savedMachine(db: Db): string {
 export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db: Db = openMappingDb(bb)): Promise<void> {
   const host = bb.hosts.experimental_client({ contract: hostContract, experimental_signals: hostSignals });
   const source: ConnectionSource = { get: async () => ({ machine: savedMachine(db), folder: (await settings.get()).folder }) };
-  const connection = createConnection(bb, source, db, host);
+  let onConnected: OnConnected = () => {};
+  const connection = createConnection(bb, source, db, host, (event) => onConnected(event));
   await connection.init();
 
+  const fail = (code: string) => connection.recordError(code);
+  const enqueue = createQueue((error) => fail(errorCode(error, "job_failed")));
+  const notify = createNotify(bb, db, fail);
+  const deps = { bb, db, host, connection, notify };
+  const sync = createSync(deps);
+  const bots = createBots({ ...deps, sync, enqueue });
+  const chats = createChats({ ...deps, sync, enqueue, describe: bots.describe });
+  const run = (code: string, job: () => Promise<void>) => void enqueue(job).catch((error) => fail(errorCode(error, code)));
+  const isHermes = (thread: { providerId: string }) => thread.providerId === PROVIDER_ID;
+
+  /** A thread's turns may be over: settle them (sync), then a side chat's first title. */
+  const finalize = (threadId: string) =>
+    run("finalize_failed", async () => {
+      await sync.finalizeNow(threadId, targetOf(connection), bots.isEnabled);
+      await chats.retitleNow(threadId);
+    });
+
+  onConnected = ({ newBoot, reconnected }) =>
+    run("reconcile_failed", async () => {
+      const target = targetOf(connection);
+      if (!target) return;
+      if (newBoot) await sync.recoverQueuedNow(finalize);
+      await bots.onConnectedNow(target, { newBoot, reconnected });
+    });
+  void notify.restoreAll();
+
+  bb.events.on("thread.active", ({ thread }) => {
+    if (isHermes(thread)) sync.active.add(thread.id);
+  });
+  const settled = ({ thread }: { thread: { id: string; providerId: string } }) => {
+    if (!isHermes(thread)) return;
+    sync.active.delete(thread.id);
+    void chats.onIdle(thread.id);
+    finalize(thread.id);
+  };
+  bb.events.on("thread.idle", settled);
+  bb.events.on("thread.failed", settled);
+  // `persisted-turn` (A37); debounced and cumulative, so the latest state is enough.
+  bb.events.on("experimental_thread.events", ({ thread }) => {
+    if (isHermes(thread)) run("persisted_turn_failed", () => sync.ingestPersistedNow(thread.id));
+  });
+  bb.events.on("thread.created", ({ thread }) => run("bind_failed", () => chats.onCreatedNow(thread)));
+  bb.events.on("thread.deleted", ({ thread }) => {
+    const binding = bindingByThread(db, thread.id);
+    if (!binding) return;
+    // Q1: a mirrored chat bb deleted is never imported again. A deleted bot thread is re-created at the next reconcile.
+    if (binding.kind === "mirror" && binding.lineage_root) addTombstone(db, binding.profile_home, binding.lineage_root, Date.now());
+    deleteBinding(db, thread.id);
+    invalidateThreadInfo(bb);
+    if (binding.kind === "bot") bb.realtime.publish(BOTS_CHANNEL, null);
+  });
+
+  const changed = new Set<string>();
+  let changedTimer: ReturnType<typeof setTimeout> | undefined;
+  bb.onDispose(() => clearTimeout(changedTimer));
+
   const isTarget = (hostId: string) => savedMachine(db) === hostId;
+  host.experimental_onSignal("changed", ({ hostId, payload }) => {
+    if (!isTarget(hostId)) return;
+    for (const home of payload.profile_homes) changed.add(home);
+    clearTimeout(changedTimer);
+    changedTimer = setTimeout(() => {
+      const homes = [...changed].filter(bots.isEnabled);
+      changed.clear();
+      run("wake_failed", async () => {
+        const target = targetOf(connection);
+        if (target) await bots.reconcileAllNow(homes, target);
+      });
+    }, WAKE_DEBOUNCE_MS);
+  });
   host.experimental_onSignal("watch", async ({ hostId }) => {
     if (isTarget(hostId)) await connection.ensureNow();
   });
@@ -89,15 +168,10 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
       if (folder !== undefined) await settings.experimental_set({ folder });
       return connection.ensureNow();
     },
-    // P1 seam stubs (lead): the server seam replaces them (T1.9, T1.10, T1.12).
-    bots: () => notYet("T1.9"),
-    setBot: () => notYet("T1.9"),
-    newChat: () => notYet("T1.10"),
-    stopHosted: () => notYet("T1.10"),
-    threadInfo: ({ keys }) => Object.fromEntries(keys.map((key) => [key, null])),
+    bots: async () => ({ bots: await bots.rows() }),
+    setBot: ({ profile_home, on }) => bots.setBot(profile_home, on),
+    newChat: ({ profile }) => chats.newChat(profile),
+    stopHosted: () => chats.stopHosted(),
+    threadInfo: ({ keys }) => chats.threadInfo(keys),
   });
-}
-
-function notYet(task: string): never {
-  throw new Error(`not_implemented:${task}`);
 }

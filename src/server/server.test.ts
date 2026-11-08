@@ -37,7 +37,10 @@ interface Setup {
   host?: (call: ExperimentalFakeHostRpcCall) => unknown;
 }
 
-async function setup({ machine = MACHINE, online = true, host = () => answer() }: Setup = {}) {
+/** The worker's other calls on connect: `describe` with no profiles. */
+const worker = (call: ExperimentalFakeHostRpcCall) => (call.method === "describe" ? { uid: 501, profiles: [] } : answer());
+
+async function setup({ machine = MACHINE, online = true, host = worker }: Setup = {}) {
   const hosts = { online };
   const fake = createFakePluginHost({
     pluginId: "hermes",
@@ -232,7 +235,7 @@ describe("keep-alive and health", () => {
 
 describe("diagnostics", () => {
   it("reports version, instance, bindings, errors and the worker", async () => {
-    const t = await setup({ host: (call) => (call.method === "diagnostics" ? workerDiagnostics : answer()) });
+    const t = await setup({ host: (call) => (call.method === "diagnostics" ? workerDiagnostics : worker(call)) });
     insertBinding(openMappingDb(t.bb), {
       thread_id: "thr_1",
       profile_home: "/h",

@@ -7,6 +7,7 @@ import {
   claimTurn,
   getKv,
   insertBinding,
+  MIGRATIONS,
   openMappingDb,
   queuedTurns,
   releaseTurn,
@@ -27,6 +28,7 @@ const binding = (over: Partial<Binding>): Binding => ({
   legacy: false,
   archived_by_switch: false,
   title_set: null,
+  cursor_uid: null,
   ...over,
 });
 
@@ -45,7 +47,7 @@ describe("mapping db", () => {
 
     openMappingDb(bb);
     expect(tables(db)).toEqual(before);
-    expect(db.prepare(`SELECT COUNT(*) AS n FROM _bb_migrations`).get()).toEqual({ n: 1 });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM _bb_migrations`).get()).toEqual({ n: MIGRATIONS.length });
 
     const { bb: next } = await harness.lifecycle.reload(() => {});
     const reopened = openMappingDb(next);

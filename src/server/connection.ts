@@ -4,7 +4,7 @@ import type { BbPluginApi, ExperimentalHostClient } from "@get-bb/plugin-sdk";
 import type { EnsureWatchOutput, HostContract, hostSignals } from "../shared/host-contract.js";
 import { HEALTH_CHANNEL, type Health, type HealthState } from "../shared/rpc-contract.js";
 import type { ConnectionSettings } from "../shared/settings.js";
-import { getKv, setKv, type Db } from "./db.js";
+import { enabledBots, getKv, setKv, type Db } from "./db.js";
 
 export const KEEPALIVE_MS = 60_000;
 const ERROR_RING = 20;
@@ -40,7 +40,15 @@ export interface ConnectionSource {
   get(): Promise<ConnectionSettings>;
 }
 
-export function createConnection(bb: BbPluginApi, settings: ConnectionSource, db: Db, host: HostClient) {
+/**
+ * After each answer from a working gateway: `newBoot` (a new `worker_boot_id`, also the first one this
+ * server sees) → full reconcile (flow 9); `reconnected` (not connected before) → reconcile (flow 10).
+ */
+export type OnConnected = (event: { machine: string; folder: string; newBoot: boolean; reconnected: boolean }) => void;
+
+const working = (state: HealthState) => state === "connected" || state === "not_supported";
+
+export function createConnection(bb: BbPluginApi, settings: ConnectionSource, db: Db, host: HostClient, onConnected: OnConnected = () => {}) {
   let health: Health = healthFrom({ machine: "", folder: "" }, { state: "not_configured" });
   /** The worker's last answer, for the current target only. */
   let answer: EnsureWatchOutput | null = null;
@@ -62,12 +70,15 @@ export function createConnection(bb: BbPluginApi, settings: ConnectionSource, db
     return next;
   }
 
-  function noteBoot(output: EnsureWatchOutput): void {
-    if (getKv(db, "worker_boot_id") === output.worker_boot_id) return;
+  /** True for a boot id this server hasn't recorded. */
+  function noteBoot(output: EnsureWatchOutput): boolean {
+    if (getKv(db, "worker_boot_id") === output.worker_boot_id) return false;
     setKv(db, "worker_boot_id", output.worker_boot_id);
-    // The full reconcile on a new boot id is P1 (02 flow 9).
     bb.log.info(`worker boot ${output.worker_boot_id}`);
+    return true;
   }
+  /** Each server start reconciles once at its first working answer (boot recovery, flow 9). */
+  let seenBoot = false;
 
   /** No worker answer for this target: drop the old one, so `diagnostics` never shows a stale `instance_id`. */
   function unanswered(next: Health): Health {
@@ -95,11 +106,13 @@ export function createConnection(bb: BbPluginApi, settings: ConnectionSource, db
     const fresh = health.machine?.id !== current.machine || health.folder !== current.folder || health.state === "not_configured" || health.state === "machine_offline";
     if (fresh) unanswered(healthFrom(current, { state: "connecting", machine }));
     try {
-      const output = await host.call("ensureWatch", { root: current.folder, enabled_bots: [] }, { hostId: current.machine });
+      const enabled = enabledBots(db).map((b) => b.profile_home);
+      const output = await host.call("ensureWatch", { root: current.folder, enabled_bots: enabled }, { hostId: current.machine });
       answer = output;
-      noteBoot(output);
+      const newBoot = noteBoot(output);
       const state: HealthState = !output.connected ? "disconnected" : output.supported === false ? "not_supported" : "connected";
-      return publish(
+      const reconnected = !working(health.state) || health.machine?.id !== current.machine || health.folder !== current.folder;
+      const next = publish(
         healthFrom(current, {
           state,
           machine,
@@ -110,6 +123,11 @@ export function createConnection(bb: BbPluginApi, settings: ConnectionSource, db
           worker_last_seen_at: Date.now(),
         }),
       );
+      if (working(state)) {
+        onConnected({ machine: current.machine, folder: current.folder, newBoot: newBoot || !seenBoot, reconnected });
+        seenBoot = true;
+      }
+      return next;
     } catch (error) {
       const code = errorCode(error, "host_call_failed");
       recordError(code);
