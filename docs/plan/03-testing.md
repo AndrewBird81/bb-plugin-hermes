@@ -68,9 +68,9 @@ Conformance scenarios: `handshake/initialize`, `session/start-identity`, `sessio
 
 ## E2E on an isolated bb
 
-1. Fresh shell: `unset` every `BB_*`; `PATH` without `hermes` (S1-S3 Safety).
-2. `BB_SKIP_ONBOARDING=1 npx bb-app@<live version> --data-dir ~/.bb-hermes-e2e --server-port 48886 --host-daemon-port 48887 --no-in-app-updates` (R3 S9).
-3. Disable `provider-acp`, `keep-awake`, `connect`. Use `sbb` (`BB_*` unset, `BB_SERVER_URL=http://127.0.0.1:48886`).
+1. Fresh shell: `unset` every `BB_*`; `PATH` without `hermes` (S1-S3 Safety). Not enough on its own: the host daemon re-derives the user's `PATH`, and on 2026-11-08 provider-acp's first model probe of `acp-hermes-agent` created an empty `acp` session in live Hermes within 5 s of the first start.
+2. **Server only, first:** bb-app's server script alone (no host daemon) with `--data-dir ~/.bb-hermes-e2e --server-port 48886`, then `sbb plugin disable provider-acp keep-awake connect` (one per call) before any host daemon connects; stop it. Use `sbb` (`BB_*` unset, `BB_SERVER_URL=http://127.0.0.1:48886`).
+3. `BB_SKIP_ONBOARDING=1 npx bb-app@<live version> --data-dir ~/.bb-hermes-e2e --server-port 48886 --host-daemon-port 48887 --no-in-app-updates` (R3 S9). Check `sbb plugin list` shows the three disabled.
 4. `sbb plugin install <repo> --yes`; `sbb plugin dev <repo>`. Scripts pin the `bb` bundled in `bb-app@0.49.0` (S1-S3 gotchas; `scripts/bb.mjs` drops `BB_*`, since `BB_CLI` re-execs to the machine's `bb`).
 5. Set the machine to the local daemon and the folder to the fake (or isolated Hermes).
 6. **Before any check:** `diagnostics.instance_id` must equal the fake's; else abort (R3 M3).
