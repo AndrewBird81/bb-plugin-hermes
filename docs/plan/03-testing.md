@@ -21,7 +21,7 @@ Rules for every layer:
 ## Unit and bridge tests that guard known traps
 
 - 3 re-lists during one outside turn → 1 wake. A failed send deletes the `turns` row; orphaned `queued` rows recover on boot (R1 M1).
-- Compaction clone → 0 re-rendered turns; `/retry` → 1 new reply, no repeated bubble (R1 M2, R4 S1).
+- Compaction clone → 0 re-rendered turns (R1 M2); `/retry` → what Hermes' own view shows (a new turn, T0.5; R4 S1 to be re-settled in T1.6).
 - bb's own turn never mirrors, even when the `submission_id` read fails (`persisted_turn` record, R4 M3c).
 - A session created by a side chat, re-listed before its first boundary → no mirror thread (`expected_id`).
 - Source filter: `source=local, created_source=cron` → out; unknown label → out; hidden non-Bot-Chat session → out; a session titled `Bot Chat` → the bot thread only.

@@ -4,7 +4,7 @@ What the user sees, feature by feature. Each ends with acceptance criteria (AC);
 
 ## 1. Connect and health [P0]
 
-- Plugin settings page, top:
+- Plugin settings page (bb draws the plugin's own section below the raw setting fields, 02 §Placement):
   - **Hermes machine:** a picker of bb machines. Unset → "Not connected", no Hermes I/O.
   - **Hermes folder:** defaults to `~/.hermes`; editable for unusual installs and for tests (02 §Placement).
 - **Health line:** connected or not; Hermes version and "supported" or "not supported"; worker last seen.

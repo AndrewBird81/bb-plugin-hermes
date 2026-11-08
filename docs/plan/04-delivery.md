@@ -77,12 +77,12 @@ Critical path: T0.1 → T0.3 → T0.4 → T1.1 → T1.4 → T1.6 → T1.13 → T
 
 | ID | Assumption (ASSUMED unless marked) | Verify in |
 |---|---|---|
-| A1 | REST list and messages carry `title`, `source`, `created_source`, `hidden`, `archived`, `cwd`, `chat_id`, `message_uid`, `display_metadata`, active rows, and mean what we read | T0.5 |
+| A1 | VERIFIED (T0.5, isolated + live list keys): REST list and messages carry `title`, `source`, `created_source`, `hidden`, `archived`, `cwd`, `chat_id`, `message_uid`, `display_metadata`, active rows, and mean what we read. The list omits hidden rows | T0.5 |
 | A2 | With `approvalEnforcedBy:"provider"`, mode `auto` never answers a Hermes approval. If it does, try `accept-edits`, then `full`; if all answer, stop and ask | T1.2 |
 | A3 | The bridge can close a pending interaction | T1.2 |
-| A4 | bb's `bb:` `submission_id` persists on submits, steers and queued prompts and shows in REST `display_metadata.submission_id`; a repeated `submission_id` runs once | T0.5, T1.1 |
+| A4 | PARTLY (T0.5): bb's `bb:` `submission_id` persists on submits, queued and hidden prompts and shows in REST `display_metadata.submission_id`; a repeated one runs once. Not on steers or `/retry` rows | T0.5, T1.1 |
 | A5 | VERIFIED no (R5): Conduit isn't distinguishable from other dashboard clients; tags come from real source values | — |
-| A8 | `message_uid` + Hermes' projection render compaction clones and `/retry` once | T0.5, T1.6 |
+| A8 | VERIFIED for compaction (T0.5) with the 02 §History reader rules (`include_compacted`, uid dedupe, steer and hidden rows skipped). `/retry` adds a turn: T1.6 | T0.5, T1.6 |
 | A9 | Sends while the Hermes machine is offline wait or fail (sets the banner text) | T1.14 |
 | A13 | Outside start → visible in bb ≤ 3 s | T1.14 |
 | A15 | Conformance accepts a placeholder identity | T1.1 |
@@ -90,14 +90,14 @@ Critical path: T0.1 → T0.3 → T0.4 → T1.1 → T1.4 → T1.6 → T1.13 → T
 | A18 | `bb thread spawn --provider hermes` works on the Hermes machine and fails clearly elsewhere | T1.14 |
 | A19 | A canonical viewer gets live events of another client's turn (CLI, TUI, Desktop) | T1.0 |
 | A20 | `source:"cli"` bb sessions aren't picked by `hermes chat -c`; else use `gui` | T1.0 |
-| A22 | Bridges and worker share a `dataDir` | T0.8 |
+| A22 | FAILED (isolated bb 0.49.0): bridges get `bridge-data`, the worker `host-data`; the worker reads the sibling dir (02 §Bridge state) | T0.8 |
 | A23 | Resuming a gateway-owned row doesn't migrate it; a `session.mutate` on a legacy row claims it (code read, `gateway/session_mutations.py:174-183`), so none before adoption | T1.0 |
 | A24 | `session.detach{end_reason:null}` doesn't end the row | T1.0 |
 | A25 | How bb groups queued sends (what segmentation must handle) | T1.14 |
 | A26 | `bb plugin update` swaps the worker like `reload` | T0.11 |
 | A28 | A row-metadata item renders the Hermes SVG + text | T1.12 |
 | A30 | Plugin slots render on bb mobile | T1.14 |
-| A36 | The REST projection is reachable for every served profile through a ticket from the host socket | T0.5 |
+| A36 | VERIFIED (T0.5, isolated; live: 5 of 5 served profiles answered one read-only list) | T0.5 |
 | A37 | A custom `extension.state` (`hermes/persisted-turn`) reaches the server via `experimental_thread.events` | T1.1 |
 | A38 | Deleting a hidden import thread frees its `providerThreadId` (no 409, R4 S8) | T2.5 |
 | A-S8a | Conduit finds Bot Chats by exact title (S) | T1.14, real app |
@@ -109,10 +109,10 @@ Critical path: T0.1 → T0.3 → T0.4 → T1.1 → T1.4 → T1.6 → T1.13 → T
 | A45 | `hermes -p <profile> sessions refresh-prompts` is runnable from the worker and neither needs nor starts a gateway | T1.8 |
 | A46 | `prompt.submit` text `/new` or `/reset` would reset the chat (the gateway parses commands, `gateway/session_ingress.py`), so the bridge must intercept them; other `/` text runs as Hermes handles it | T1.0 |
 | A47 | A thread banner (`ComposerCustomization{scopes:["thread"], banners}`) can show "Open in Conduit…" and "Running in <app>" | T1.12 |
-| A48 | REST reads a chat Conduit holds before adoption, without adopting it | T0.5 |
+| A48 | VERIFIED (T0.5, isolated): the held row reads and stays `source: desktop`, `chat_id: null` | T0.5 |
 | A49 | What bb does with a wake into an archived thread (stays archived or unarchives); document it in `guide.md` | T2.5 |
 | A50 | Attachments go as `prompt.submit.attachments` `{path, mime}` with a file the gateway can read (`ui-tui/CANONICAL_GATEWAY.md:53-58`) | T1.0 |
-| A51 | Standard installs ship `<folder>/hermes-agent/apps/shared/src/gateway-contract.openrpc.json`; else health shows "version unknown" | T0.8 |
+| A51 | VERIFIED for the installer's default layout (`scripts/install.sh:97` clones into `$HERMES_HOME/hermes-agent`; the file is tracked). Other layouts → "version unknown" (tested) | T0.8 |
 | A52 | The composer can show the Hermes SVG while the provider is hidden (`not_installed` hides the provider glyph, S7 §4): via the chip value or `experimental_providerIcon`. Else the chip text alone | T1.12 |
 
 ## Dev loop
