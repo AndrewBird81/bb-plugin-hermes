@@ -4,7 +4,7 @@ What the user sees, feature by feature. Each ends with acceptance criteria (AC);
 
 ## 1. Connect and health [P0]
 
-- Plugin settings page (bb draws the plugin's own section below the raw setting fields, 02 §Placement):
+- Plugin settings page: **Hermes folder** in bb's settings form; below it the plugin's Connection section with the **Hermes machine** picker and the health line (02 §Placement). Each setting appears once:
   - **Hermes machine:** a picker of bb machines. Unset → "Not connected", no Hermes I/O.
   - **Hermes folder:** defaults to `~/.hermes`; editable for unusual installs and for tests (02 §Placement).
 - **Health line:** connected or not; Hermes version and "supported" or "not supported"; worker last seen.
@@ -135,7 +135,8 @@ AC (two-client harness, then the real app):
 - **Live:** new outside turns appear in their thread within ~3 s (A13); a new outside chat becomes a new thread.
   - CLI, TUI and Desktop turns stream (A19); Conduit's own turns arrive in two steps (§6).
   - A turn whose user message Hermes hides (e.g. a Conduit Pulse report) shows the reply only.
-  - Each turn shows once across re-lists, compaction and `/retry` (A8).
+  - Each turn shows once across re-lists and compaction (A8).
+  - A `/retry` shows as Hermes' own view does: the retried message again, then the new reply (owner default).
   - Images in outside messages: text only.
 - **Reply from bb** in any mirrored thread: continues that Hermes session (D44); a legacy Conduit chat is adopted on that first send (D16).
 - **Title** follows Hermes' title until you rename the thread in bb. bb renames, pins and archives stay in bb (D38 Later).
@@ -148,7 +149,7 @@ AC:
 - After import: 0 unread, 0 pushes, 0 Hermes revisions changed.
 - 0 cron, one-shot, ACP, chat-app or empty chats in bb.
 - A CLI turn streams in bb; a Conduit turn shows the message, then the reply.
-- 3 re-lists during one outside turn → 1 bubble; a compaction or `/retry` adds no repeated turn.
+- 3 re-lists during one outside turn → 1 bubble; a compaction adds no repeated turn; a `/retry` adds exactly one turn: the retried message and its new reply.
 
 ## 8. Notifications [P1]
 

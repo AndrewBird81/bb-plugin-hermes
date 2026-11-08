@@ -20,7 +20,7 @@ How Hermes' other apps reach the same chats:
 ## Placement
 
 - The bb server can't reach Hermes files or `gateway.sock`. All Hermes I/O goes through the worker (host RPC, 30 s timeout, r01 §1) or a bridge.
-- Settings: **Hermes machine** (a bb host id) and **Hermes folder** (default `~/.hermes`), as `bb.settings` (`bb plugin config hermes set …` works). bb draws a plugin's settings section below its declarative form, so the raw fields show above the app's picker (T0.10). The folder reaches the worker in `ensureWatch{root}` and bridges via `deriveProviderOptions`. Logic never names a machine. Unset machine → no Hermes I/O (R3 M3).
+- Settings: **Hermes folder** (default `~/.hermes`) is a `bb.settings` field (`bb plugin config hermes set folder …`). **Hermes machine** (a bb host id) lives in the mapping db's `kv`, set by RPC `setConnection` from the app's picker, so bb's settings form never shows a host id. Bridges that need the machine (P1) get it through `deriveProviderOptions` from the server's copy. The folder reaches the worker in `ensureWatch{root}` and bridges via `deriveProviderOptions`. Logic never names a machine. Unset machine → no Hermes I/O (R3 M3).
 - Canonical connection: `identify` → `session-ticket{scope:"host"}` → `/api/ws` with subprotocols `["hermes-gateway-v1","hermes-gateway-ticket.<t>"]` (S0-S4 cheat-sheet 1). Rediscover on every connect; `gateway.sock.path` fallback. One host ticket drives every served profile (S8 §Per-profile reach).
 - **Never start a gateway** (r09 M5): no `connect_gateway()` without an endpoint, no `hermes gateway …`, no `ensure` verbs.
 
@@ -61,7 +61,7 @@ Choice (README confirm item 4): Hermes' REST projection, as Hermes Desktop reads
 Also:
 - `bots(profile_home PK, name, enabled, enabled_at)`.
 - `tombstones(profile_home, lineage_root, at)`: never import (Q1).
-- `kv`: `worker_boot_id`, worker identity `{uid, instance_id}`.
+- `kv`: `machine` (the Hermes machine), `worker_boot_id`, worker identity `{uid, instance_id}`.
 - No transcript text on the server. Migrations: additive, one transaction at load. `VACUUM INTO` a copy before any plugin remove.
 
 Identity rules:
@@ -100,7 +100,7 @@ Signals (worker → server): `changed{profile_homes[]}`, debounced; `watch{state
 ### Bridge state (`<bridge dataDir>/`)
 
 - `threads.json`: `{threadId: {profile, bot}}`, needed before a Hermes session exists.
-- `bridges/<pid>.json`: `{build, threadId, startedAt}` for `diagnostics`. bb gives bridges `…/plugins/hermes/bridge-data` and the worker `…/host-data` (A22 false), so the worker reads the sibling `bridge-data/bridges/`. `build` is the host artifact's digest, the same for the worker and bridges of one deploy.
+- `bridges/<pid>.json`: `{build, threadId, startedAt}` for `diagnostics`. bb gives bridges `…/plugins/hermes/bridge-data` and the worker `…/host-data` (A22 false), so the worker reads the sibling `bridge-data/bridges/`. `build` is `<plugin version>+<host artifact digest>`, the same for the worker and bridges of one deploy; the bundled version makes every release a new artifact, even with unchanged host code (A26).
 - `models/<profile>.json`: last-known model list.
 
 ## Protocol mapping
@@ -182,7 +182,7 @@ Hermes events → bb deltas:
    - Interrupted (restart, sleep): on boot a `replaying` binding's hidden thread is deleted with its rows and re-queued (R3 S2; A38).
 6. **Wake and mirror**
    1. Hint or WAL stat → `changed` → debounced re-list → `readTurns` for each `live` binding of enabled bots. [P2] Unbound allowed chats → flow 5, turns since `enabled_at − 30 d`.
-   2. Anchors not in `turns` and not bb's (`submission_id` starts `bb:`, A4): `INSERT OR IGNORE` as `queued`; if inserted, `threads.send{queue-if-active, ["[<tag>] <text>", mirror{anchor_uid}]}`. Hidden user row → marker only. A done anchor with a new reply uid → `mirror{rest:true}`. A `/retry` sent as text adds a new user row (new uid) and keeps the first turn (T0.5), so it mirrors as a new turn; T1.6 settles this against 01 §7's AC.
+   2. Anchors not in `turns` and not bb's (`submission_id` starts `bb:`, A4): `INSERT OR IGNORE` as `queued`; if inserted, `threads.send{queue-if-active, ["[<tag>] <text>", mirror{anchor_uid}]}`. Hidden user row → marker only. A done anchor with a new reply uid → `mirror{rest:true}`. A `/retry` adds a new user row (new uid) and keeps the first turn (T0.5), so it mirrors as a new turn, as Hermes' own view shows it (owner default). bb's own `/retry` turn never mirrors a second time (`persisted_turn` record).
    3. Server sets the thread's level to `input-only` for the mirror turn (approvals and `clarify` still push; S1-S3 §S3c), then restores it.
    4. Bridge, by turn state: complete → render rows. Running as canonical work (CLI, TUI, Desktop, forwarded Conduit) → `session.resume` + `events.since` from the turn's first seq, close on its `message.complete` (A19; R1 S2). No canonical admission (Conduit's own) → render the user row, close `partial`; reply rows arrive by re-list as `mirror{rest:true}` (S8 step 6). No store polling.
    5. On idle: `turns` → `done`. The finished turn marks the thread unread (bb).

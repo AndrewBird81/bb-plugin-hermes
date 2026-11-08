@@ -82,7 +82,7 @@ Critical path: T0.1 → T0.3 → T0.4 → T1.1 → T1.4 → T1.6 → T1.13 → T
 | A3 | The bridge can close a pending interaction | T1.2 |
 | A4 | PARTLY (T0.5): bb's `bb:` `submission_id` persists on submits, queued and hidden prompts and shows in REST `display_metadata.submission_id`; a repeated one runs once. Not on steers or `/retry` rows | T0.5, T1.1 |
 | A5 | VERIFIED no (R5): Conduit isn't distinguishable from other dashboard clients; tags come from real source values | — |
-| A8 | VERIFIED for compaction (T0.5) with the 02 §History reader rules (`include_compacted`, uid dedupe, steer and hidden rows skipped). `/retry` adds a turn: T1.6 | T0.5, T1.6 |
+| A8 | VERIFIED for compaction (T0.5) with the 02 §History reader rules (`include_compacted`, uid dedupe, steer and hidden rows skipped). `/retry` adds a turn, shown as such (owner default) | T0.5, T1.6 |
 | A9 | Sends while the Hermes machine is offline wait or fail (sets the banner text) | T1.14 |
 | A13 | Outside start → visible in bb ≤ 3 s | T1.14 |
 | A15 | Conformance accepts a placeholder identity | T1.1 |
