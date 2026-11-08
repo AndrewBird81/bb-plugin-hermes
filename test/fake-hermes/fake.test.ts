@@ -52,12 +52,15 @@ describe("strict fake Hermes", () => {
     const c = await client(f);
     expect(await c.describe()).toMatchObject({ instance_id: f.instanceId, profile_id: f.folder, authority_epoch: 1 });
     expect((await c.profilesList({ include_sessions: false })).profiles.map((p) => p.name)).toEqual(["default", "alex", "bob", "solo"]);
-    expect(await c.sessionList({ profile: "alex", title: "Bot Chat", include_hidden: true, scope: "stored", limit: 5 })).toEqual({ sessions: [], scope: "stored" });
+    expect(await c.sessionList({ profile: "alex", title: "Bot Chat", include_hidden: true, limit: 5 })).toEqual({ sessions: [], scope: "stored" });
+    // `title` with `scope` is refused (`gateway/session_controls.py` list_sessions).
+    expect(await rpcError(c.sessionList({ profile: "alex", title: "Bot Chat", scope: "stored" }))).toMatchObject({ reason: "invalid_params" });
     expect((await c.modelOptions("bob")).providers).toHaveLength(1);
     expect(f.requests.map((r) => [r.method, r.profile, r.refused])).toEqual([
       ["runtime.describe", "default", undefined],
       ["profiles.list", "default", undefined],
       ["session.list", "alex", undefined],
+      ["session.list", "alex", "invalid_params"],
       ["model.options", "bob", undefined],
     ]);
     expect(f.violations).toEqual([]);
@@ -75,9 +78,10 @@ describe("strict fake Hermes", () => {
     expect(await rpcError(c.rpc("session.list", { profile: "nobody" }))).toMatchObject({ reason: "profile_mismatch" });
     expect(await rpcError(c.rpc("session.archive", {}))).toMatchObject({ reason: "unknown method: session.archive" });
     // `profile` routes, then is stripped before validation, as on a host socket (contract has no `profile` here).
-    expect(await rpcError(c.detach({ session_id: "s", subscription_id: "x", end_reason: null }))).toMatchObject({ reason: "not_implemented_in_fake" });
-    expect(await rpcError(c.rpc("session.detach", { profile: "alex", session_id: "s", subscription_id: "x", end_reason: null }))).toMatchObject({ reason: "not_implemented_in_fake" });
+    expect(await c.detach({ session_id: "s", subscription_id: "x", end_reason: null })).toEqual({ session_id: "s", subscription_id: "x", detached: false });
+    expect(await c.rpc("session.detach", { profile: "alex", session_id: "s", subscription_id: "x", end_reason: null })).toMatchObject({ detached: false });
     expect(f.requests.at(-1)).toMatchObject({ profile: "alex", params: { session_id: "s" } });
+    expect(await rpcError(c.rpc("session.info", { profile: "alex", session_id: "s" }))).toMatchObject({ reason: "unknown method: session.info" });
   });
 
   it("only opens /api/ws with a fresh, single-use interactive ticket", async () => {
@@ -110,7 +114,9 @@ describe("strict fake Hermes", () => {
     expect(await get("/api/sessions?profile=alex", { [NATIVE_HTTP_HEADER]: await mintTicket(ep, "interactive") })).toEqual([401, { detail: "Unauthorized" }]);
     expect(await get("/api/sessions?profile=bob", { [NATIVE_HTTP_HEADER]: await mintTicket(ep, "native-http", alex) })).toEqual([403, { detail: "profile_scope_mismatch" }]);
     expect(await get("/api/sessions?profile=alex", { [NATIVE_HTTP_HEADER]: await mintTicket(ep, "native-http", alex), Origin: "http://x" })).toEqual([401, { detail: "Unauthorized" }]);
-    expect(await get("/api/sessions?profile=alex", { [NATIVE_HTTP_HEADER]: await mintTicket(ep, "native-http", alex) })).toEqual([404, { detail: "not recorded" }]);
+    expect(await get("/api/sessions/nope/messages?profile=alex", { [NATIVE_HTTP_HEADER]: await mintTicket(ep, "native-http", alex) })).toEqual([404, { detail: "not recorded" }]);
+    // No chats and no recording: the engine's empty page, in the recorded shape.
+    expect(await get("/api/sessions?profile=alex", { [NATIVE_HTTP_HEADER]: await mintTicket(ep, "native-http", alex) })).toEqual([200, { sessions: [], total: 0, limit: 20, offset: 0, storage: {} }]);
   });
 
   it("restarts with a new port, instance and epoch; the connection follows", async () => {

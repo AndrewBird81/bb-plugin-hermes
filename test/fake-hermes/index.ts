@@ -7,13 +7,18 @@
  *   fake.requests      // every RPC, as validated; `refused` holds the error reason Hermes would send
  *   fake.handle("session.create", (params, ctx) => …)   // add or replace a method (P1 grows here)
  *   fake.emit({ type: "sessions.changed", payload: {} }) // push an event to every socket
- *   await fake.restart({ contract: "changed" })  // new port, instance_id and authority epoch
+ *   fake.nextTurn("alex", { tool: true, approval: {} }) // script the next turn (engine.ts: TurnScript)
+ *   fake.outsideTurn("alex", id, "hi")   // another canonical client's turn (CLI); conduitTurn: a dashboard send
+ *   fake.legacySession("bob", { title: "Bot Chat", hidden: true, held: true }) // a Conduit-minted row
+ *   fake.session("alex", id)             // engine state of a chat (any id of its chain → the tip)
+ *   await fake.restart({ contract: "changed" })  // new port, instance_id and authority epoch; running turns → unknown
  *   await fake.stop()  // closes everything; removes the folder if the fake made it, else only its socket
  *
  * Like Hermes c314285f07: `<folder>/gateway.sock` (`identify`, `session-ticket`), one loopback listener with
  * `/api/ws` (`hermes-gateway-v1` + a host-scoped interactive ticket) and the REST projection (`native-http`
  * ticket per request). Every request is validated against the vendored contract, `additionalProperties:false`.
- * REST answers come only from recordings in test/fixtures/rest/ (R5 C6). Standalone: `npm run fake-hermes`.
+ * Sessions live in the engine (engine.ts). REST answers: the engine's chats as clones of recorded rows (shapes
+ * recorded, R5 C6), else the recordings in test/fixtures/rest/ a test asks for. Standalone: `npm run fake-hermes`.
  */
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -22,6 +27,7 @@ import path from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 import { ROUTING_PARAM } from "../../src/hermes/contract.js";
 import { GATEWAY_PROTOCOL, NATIVE_HTTP_HEADER, TICKET_PREFIX } from "../../src/hermes/types.js";
+import { Engine, type Session, type TurnScript } from "./engine.js";
 import { validate } from "./schema.js";
 import { controlServer, removeDir, tempDir, TEST_ROOT, type ControlServer } from "./wire.js";
 
@@ -97,6 +103,10 @@ export interface FakeOptions {
   codeVersion?: string;
   /** Recording names in test/fixtures/rest/ (without `.json`) whose REST answers to serve. */
   rest?: string[];
+  /** Profiles with `compression.in_place: false`: a compress rotates to a new tip (S8 E8). */
+  rotating?: string[];
+  /** One Hermes second in ms, for prompt deadlines (`timeout_s`); tests shorten it. Default 1000. */
+  secondMs?: number;
 }
 
 export interface RequestRecord {
@@ -122,6 +132,25 @@ export interface FakeHermes {
   readonly violations: string[];
   handle(method: string, fn: Handler): void;
   emit(event: Json): void;
+  readonly engine: Engine;
+  /** `model.options` answers after this delay (the bridge's 2 s last-known fallback). */
+  modelOptionsDelayMs: number;
+  /** Engine state of a chat; any id of its chain gives the tip. */
+  session(profile: string, id: string): Session | undefined;
+  /** Script the next turn in this profile (else words in the prompt script it: engine.ts). */
+  nextTurn(profile: string, script: TurnScript): void;
+  /** A turn by another canonical client (CLI, TUI, Desktop): live on every subscriber. Returns its AdmissionStatus. */
+  outsideTurn(profile: string, sessionId: string, text: string, opts?: { admissionId?: string; script?: TurnScript }): Json;
+  /** A dashboard (Conduit) send: forwarded (`desktop-forward-…`) while gateway work is pending, else a legacy turn. */
+  conduitTurn(profile: string, sessionId: string, text: string, opts?: { durationMs?: number; reply?: string }): Promise<{ forwarded: string | null }>;
+  /** A dashboard chat the gateway doesn't own yet; `held`: the dashboard keeps its claim. Returns its id. */
+  legacySession(profile: string, opts?: { title?: string; hidden?: boolean; turns?: string[]; held?: boolean }): string;
+  /** The dashboard takes or drops its claim on a legacy row (`runtime_coordination_required` while held). */
+  hold(profile: string, sessionId: string, on: boolean): void;
+  /** Another client answers a pending approval or clarify. */
+  answerElsewhere(profile: string, sessionId: string, promptId: string, answer: string): boolean;
+  /** The dashboard drops pending approvals (`approval.cancelled`). */
+  cancelApprovals(profile: string, sessionId: string, reason?: string): void;
   restart(opts?: Pick<FakeOptions, "contract" | "codeVersion">): Promise<void>;
   stop(): Promise<void>;
 }
@@ -150,7 +179,16 @@ export async function startFakeHermes(opts: FakeOptions = {}): Promise<FakeHerme
     (name) => (JSON.parse(readFileSync(path.join(RECORDINGS, `${name}.json`), "utf8")) as { exchanges: RecordedExchange[] }).exchanges,
   );
 
-  const handlers = new Map<string, Handler>(Object.entries(p0Handlers()));
+  const violations: string[] = [];
+  const engine = new Engine({
+    instanceId: () => instanceId,
+    authorityEpoch: () => epoch,
+    sockets: () => sockets,
+    secondMs: opts.secondMs ?? 1000,
+    rotating: new Set(opts.rotating ?? []),
+    violations,
+  });
+  const handlers = new Map<string, Handler>(Object.entries({ ...p0Handlers(), ...engine.handlers() }));
   const tickets = new Map<string, { purpose: string; profile_id: string; scope: string; expires: number }>();
   const sockets = new Set<WebSocket>();
   let contract: Contract;
@@ -161,6 +199,11 @@ export async function startFakeHermes(opts: FakeOptions = {}): Promise<FakeHerme
   let control: ControlServer | null = null;
   let server: http.Server | null = null;
 
+  const named = (name: string): FakeProfile => {
+    const p = profiles.find((x) => x.name === name);
+    if (!p) throw new Error(`fake Hermes serves no profile ${name}`);
+    return p;
+  };
   const profileNamed = (v: unknown): FakeProfile | undefined =>
     profiles.find((p) => v === p.name || v === p.home || (v === "current" && p.name === "default"));
 
@@ -291,6 +334,8 @@ export async function startFakeHermes(opts: FakeOptions = {}): Promise<FakeHerme
     const hit = recorded.find(
       (x) => x.profile === owner.name && x.path === url.pathname && JSON.stringify(Object.entries(x.query).sort()) === JSON.stringify(Object.entries(query).sort()),
     );
+    const live = engine.rest(owner, url.pathname, query, !!hit);
+    if (live) return send(live.status, live.body);
     if (!hit) return send(404, { detail: "not recorded" });
     send(hit.status, hit.body);
   };
@@ -314,7 +359,10 @@ export async function startFakeHermes(opts: FakeOptions = {}): Promise<FakeHerme
       }
       wss.handleUpgrade(req, socket, head, (ws) => {
         sockets.add(ws);
-        ws.on("close", () => sockets.delete(ws));
+        ws.on("close", () => {
+          sockets.delete(ws);
+          engine.dropSocket(ws);
+        });
         ws.on("message", (data) => void onRpc(ws, String(data)));
         ws.send(JSON.stringify({ jsonrpc: "2.0", method: "event", params: { type: "gateway.ready", payload: { skin: {}, change_events: true, heartbeat: 30, replay_epoch: randomBytes(16).toString("hex"), session_authority: true } } }));
       });
@@ -368,13 +416,24 @@ export async function startFakeHermes(opts: FakeOptions = {}): Promise<FakeHerme
     unserved,
     requests: [],
     tickets: [],
-    violations: [],
+    violations,
+    engine,
+    modelOptionsDelayMs: 0,
+    session: (profile, id) => engine.session(named(profile), id),
+    nextTurn: (profile, script) => engine.nextTurn(named(profile), script),
+    outsideTurn: (profile, id, text, o) => engine.outsideTurn(named(profile), id, text, o),
+    conduitTurn: (profile, id, text, o) => engine.conduitTurn(named(profile), id, text, o),
+    legacySession: (profile, o) => engine.legacySession(named(profile), o),
+    hold: (profile, id, on) => engine.hold(named(profile), id, on),
+    answerElsewhere: (profile, id, promptId, answer) => engine.answerElsewhere(named(profile), id, promptId, answer),
+    cancelApprovals: (profile, id, reason) => engine.cancelApprovals(named(profile), id, reason),
     handle: (method, fn) => void handlers.set(method, fn),
     emit: (event) => {
       for (const s of sockets) s.send(JSON.stringify({ jsonrpc: "2.0", method: "event", params: event }));
     },
     restart: async (o = {}) => {
       await shutdown();
+      engine.restart();
       if (o.contract) writeContract(o.contract);
       if (o.codeVersion) codeVersion = o.codeVersion;
       await start();
@@ -417,10 +476,13 @@ function p0Handlers(): Record<string, Handler> {
       install_id: "",
     }),
     "session.list": (p) => ({ sessions: [], scope: (p.scope as string | undefined) ?? "live" }),
-    "model.options": () => ({
-      providers: [{ slug: "stub", name: "stub", is_current: true, models: ["stub"], total_models: 1, capabilities: { stub: { fast: false, reasoning: true } } }],
-      model: "stub",
-      provider: "stub",
-    }),
+    "model.options": async (_p, { fake }) => {
+      if (fake.modelOptionsDelayMs) await new Promise((r) => setTimeout(r, fake.modelOptionsDelayMs));
+      return {
+        providers: [{ slug: "stub", name: "stub", is_current: true, models: ["stub"], total_models: 1, capabilities: { stub: { fast: false, reasoning: true } } }],
+        model: "stub",
+        provider: "stub",
+      };
+    },
   };
 }
