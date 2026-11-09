@@ -85,6 +85,27 @@ Results (2026-11-09, UTC). Steps 1–9, 11 and 14 passed; step 10 failed (BUG 4)
   - BUG 4 (step 10): from `$WORK_HOST`, `bb thread spawn` without `--model` fails "HTTP 503: The hermes model catalog is empty…" with no thread; with `--model` it says "add `--machine the Hermes machine`" (provider options carry no machine name).
   - The bot thread's `titleFallback` is the raw init marker: bb derives it from every text part of the spawn input, agent-only included.
 
+## P2 live dogfood (owner present)
+
+Run in order on `v0.3.0`; each gated step checks §Approvals first. The import writes nothing to Hermes; live Hermes writes come only from the owner's own actions (steps 5–7). Every read below is read-only (`sqlite3 -readonly`, `diagnostics`, `bb thread get`).
+
+0. **Baseline:** `S=$(date +%s)`; the gateway pid from `~/.hermes/gateway.pid`; `node scripts/live-audit.mjs --since $S`. Per bot already on (Neo, `default`, alex, david): `npx tsx e2e/eligibility.ts --folder ~/.hermes --profile <bot> --since <its switch-on, Unix s, − 2592000>` → `would_import` (P1 bound only bot threads and side chats, which it leaves out).
+1. **Release `v0.3.0`** [approved 2026-11-09]: 04 §Release steps 1–3 (the stack's last commit is `release: v0.3.0`).
+2. **Live update** [approved 2026-11-09]: `bb plugin update hermes`, then `bb plugin rpc call hermes stopHosted`. `diagnostics`: `0.3.0+…` on the worker and every bridge (P1 step 13), health connected and supported, duplicates 0, no errors.
+3. **Upgrade import** (automatic, at the first full reconcile; part of the approved update): per bot, its new mirrored threads == step 0's `would_import`; every one `bb thread get <id> --json` → `lastReadAt ≥ latestAttentionAt`, `titleFallback` null, Hermes' title; 0 pushes. Also BUG 1: `default`'s composer lists its models (no `provider/unhandled`); BUG 2: `/new` in a short Bot Chat → "Nothing to compact yet…".
+4. **P1 bot threads:** Neo's, `default`'s, alex's and david's keep the init marker as `titleFallback` (bb never changes it; a set title wins everywhere bb shows one) and may still be unread from the P1 import: mark them read. Optional [live bb change]: delete one; it comes back pinned at the next reconcile with no fallback, its Bot Chat imported again.
+5. **New chat:** `hermes -p neo chat` → a thread, unread, no push, within ~5 s; a reply from bb → `hermes -p neo chat --resume <id>` has it.
+6. **Conduit chat** on the phone: a reply from bb continues it in place (adoption; A-S8a–c).
+7. **Title follow:** rename a chat in Hermes → bb follows; rename it in bb → it no longer does.
+8. **D15:** `[Outside bb] hi` in a Hermes thread → "Remove the [Outside bb] tag to send."
+9. **A49:** archive a mirrored thread, make a CLI turn in it, unarchive → the turn shows at once.
+10. **BUG 4** (P1 step 10) from `$WORK_HOST`: `bb thread spawn --project proj_personal --provider hermes --option profile=neo --machine $WORK_HOST`, with and without `--model` → "Hermes runs on `$HERMES_HOST`: add `--machine $HERMES_HOST`".
+11. **Outage** (A9, R3 S13): `$HERMES_HOST` off the network for 5 min → "… is offline: sends wait until it reconnects"; a CLI turn meanwhile mirrors after reconnect.
+12. **todoist on** [approval: live bot switch-on]: before, `e2e/eligibility.ts --profile todoist` → `would_import` == the switch row's "Imports N chats"; after, N mirrored threads, 0 unread, 0 pushes.
+13. **After:** gateway pid unchanged; `node scripts/live-audit.mjs --since $S`: only the steps' own writes.
+
+Then T2.6 (`v1.0.0`, approved 2026-11-09) after the P2 gate. The live install tracks `@^0`, which never offers `1.0.0`: moving it to `@^1` takes `bb plugin remove` (keep a `VACUUM INTO` copy of `data.db`; settings and the connection must be saved again) and a fresh install.
+
 ## Approvals
 
 Gated steps (pushes, tags, releases, the live install, each live bot switch-on) check this log first (04 §Rollout).

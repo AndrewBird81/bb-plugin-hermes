@@ -165,7 +165,7 @@ AC: a CLI turn → dot, 0 pushes; an outside approval → 1 push; first import �
 ## 9. bb tooling [P1]
 
 - `bb thread tell|read|wait|stop|archive` work on Hermes threads.
-- `bb thread spawn --project proj_personal --provider hermes --option profile=<bot>` makes a side chat (A18; the CLI needs the project). No `profile` → `default` if it is on, else the turn fails listing the enabled bots. On another machine → "Hermes runs on <machine>: add `--machine <machine>`".
+- `bb thread spawn --project proj_personal --provider hermes --option profile=<bot>` makes a side chat (A18; the CLI needs the project). No `profile` → `default` if it is on, else the turn fails listing the enabled bots. On another machine → "Hermes runs on <machine>: add `--machine <machine>`" (bb refuses the spawn's first message, with or without `--model`).
 - An enabled bot runs these same commands through its skill (§2; 02 §bb access).
 
 AC: `bb thread tell <hermes-thread> "ping"` gets a reply; from an enabled bot's chat, "list my bb threads" runs `bb-hermes thread list`.
