@@ -12,6 +12,8 @@ Chat with your Hermes bots in bb, and see their Hermes chats as bb threads that 
 
 1. `bb plugin install git:github.com/AndrewBird81/bb-plugin-hermes@^1 --yes` (a version range: a tag would pin it).
 2. Settings → Plugins → Hermes: pick the **Hermes machine**. Change the **Hermes folder** only for an unusual install. The health line turns "connected, supported" within a minute.
+   - Hermes then appears in bb's New Thread on that machine only. bb caches which machines have Hermes for up to 5 minutes; `bb plugin reload hermes` shows it at once.
+   - Settings → Providers and the Hermes icon on threads show Hermes only when the Hermes machine is bb's primary machine. There, **Disable** stops every Hermes turn, the plugin's own syncs and imports included, until you enable it again.
 3. To update: `bb plugin update hermes`, then `bb plugin rpc call hermes stopHosted`, so running bot processes restart on the new build.
 
 ## Bot switches
@@ -28,7 +30,7 @@ Switching it **off** archives its bb threads, removes the skill, and stops watch
 ## What you see
 
 - **Bot thread:** pinned, titled with the bot's name. It is the bot's Bot Chat, shared with Hermes' other apps (Desktop, Conduit).
-- **Side chats:** bb's New Thread on the Hermes machine: pick Hermes, then the bot in the Bot chip. Or `bb thread spawn --project proj_personal --provider hermes --option profile=<bot>` on the Hermes machine.
+- **Side chats:** bb's New Thread: pick the Hermes machine, then Hermes (listed only there), then the bot in the Bot chip. On another machine, a send is refused: "Hermes isn't on <this machine>. Start the thread on <Hermes machine> (--machine <Hermes machine>)." Or `bb thread spawn --project proj_personal --provider hermes --option profile=<bot>` on the Hermes machine.
   - Left untouched, the chip shows the `default` bot ("Hermes bot") if it is on, else the first bot that's on, and the chat goes there. `bb thread spawn` with no `--option profile` goes to the same bot.
   - No bot on: "No Hermes bot is on. Switch one on in Settings → Plugins → Hermes [Experimental]."
   - In a project (Project checkout), the bot works in the project's folder; with "No project", in its own working folder (`terminal.cwd`).

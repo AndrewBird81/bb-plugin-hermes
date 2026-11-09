@@ -9,10 +9,10 @@ What the user sees, feature by feature. Each ends with acceptance criteria (AC);
   - **Hermes folder:** defaults to `~/.hermes`; editable for unusual installs and for tests (02 §Placement).
 - **Health line:** connected or not; Hermes version and "supported" or "not supported"; worker last seen.
   - Not supported → mirroring and import pause; chats from bb keep working while the methods they use are present (02 flow 11).
-- Provider hidden from bb's New Thread picker and Settings → Providers (S1-S3 §S3a). No machine picker anywhere.
+- Hermes is listed only on the Hermes machine (D56): in New Thread there; in Settings → Providers and the row icon only when that machine is bb's primary machine. The plugin adds no machine picker of its own.
 
 AC:
-- Unset machine: 0 Hermes calls. Set: health green within 60 s. No Hermes entry in bb's pickers.
+- Unset machine: 0 Hermes calls, Hermes listed nowhere. Set: health green within 60 s; Hermes in New Thread on that machine only (within bb's 5-min listing cache, 02 §Listing).
 - A changed Hermes contract (fake) → health "not supported", mirroring paused, a bb chat still replies.
 
 ## 2. Bot switches [P1; import P2]
@@ -53,7 +53,7 @@ The owner's model: **each bot has one thread, its Bot Chat.** A bot can also hav
 - Turns in the Bot Chat from any app (Desktop, Conduit, Bot Mode DMs from other bots, r12 §2) show in the bot thread, never in a new thread.
 - A Hermes side chat that bb started shows in Hermes Desktop's sidebar like Desktop's own side chats.
 - Deleting the bot thread in bb: it is re-created, pinned, at the next reconcile (D44). The Hermes Bot Chat is untouched.
-- Every row looks like any bb thread: one line, the Hermes icon before the title, no metadata line (D55). The pinned position and the title mark the bot thread.
+- Every row looks like any bb thread: one line, the Hermes icon before the title (when the Hermes machine is bb's primary machine, D56), no metadata line (D55). The pinned position and the title mark the bot thread.
 
 AC:
 - [P2] One bot with a Bot Chat, 2 side chats and 3 CLI chats → exactly 1 pinned + 5 other threads.
@@ -63,7 +63,7 @@ AC:
 
 ![A chat from bb](../diagrams/chat-from-bb.svg)
 
-- **Start:** bb's New Thread (D51): pick Hermes on the Hermes machine, then the bot in the Bot chip, which lists every enabled bot the gateway serves; `default` reads "Hermes bot", "Default profile", in the chip and its menu only (ux-v1.1 §3, r13 §3). Untouched, the chip shows the `default` bot, else the first switched-on one the gateway serves, and bb sends no choice: the chat goes to the bot it showed (the bridge falls back the same way). A picked bot stays picked for any model. With no bot on, a banner: "No Hermes bot is on. Switch one on in Settings → Plugins → Hermes [Experimental]." `bb thread spawn --option profile=<bot>` does the same. The bot thread itself is a chat too.
+- **Start:** bb's New Thread (D51): pick the Hermes machine, then Hermes (listed only there, D56), then the bot in the Bot chip, which lists every enabled bot the gateway serves; `default` reads "Hermes bot", "Default profile", in the chip and its menu only (ux-v1.1 §3, r13 §3). Untouched, the chip shows the `default` bot, else the first switched-on one the gateway serves, and bb sends no choice: the chat goes to the bot it showed (the bridge falls back the same way). A picked bot stays picked for any model. With no bot on, a banner: "No Hermes bot is on. Switch one on in Settings → Plugins → Hermes [Experimental]." `bb thread spawn --option profile=<bot>` does the same. The bot thread itself is a chat too.
   - bb names the chat from its first message.
   - The Hermes session is created on the first message: an abandoned draft leaves nothing in Hermes.
 - **Composer:** bb's own: text, attachments, voice dictation, bb's model chip, reasoning.

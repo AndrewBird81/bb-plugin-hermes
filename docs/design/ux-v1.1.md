@@ -41,6 +41,8 @@ Chat with a bot in bb and see its Hermes chats as threads. Every bot starts off.
 
 ## 2. New Thread on a machine without Hermes
 
+> **Superseded (owner, 2026-11-09):** listing B was chosen (D56): Hermes is listed only on the machine where it runs, so there is no Hermes tab to hang a banner on elsewhere. The wrong-machine banner and its one-time switch are dropped. The refusal below stays, for the CLI and stale pickers; the "No Hermes bot is on" banner (§3) is built. The rest of this section is the design as written.
+
 bb's native model (root-compose `mn`, source): a card titled `Pi not installed`, description `Install Pi before starting a thread.`, button `Install Pi`. bb also passes `blocker: {message, reason: "agent_missing"}`, which disables Send. **Plugins can't set a blocker:** `ComposerCustomization` has `banners` (`chrome: "card" | "bare"`) but no blocker. Ours copies the card, not the block.
 
 **Option A — listed on every machine (recommended).** The Hermes tab shows everywhere; on $WORK_HOST:

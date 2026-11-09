@@ -25,7 +25,7 @@ In:
 - **Chats from bb:** pick a bot, model and reasoning; live replies; approvals, `clarify`, Stop, steer, attachments; the bot is fixed per chat (01 §4–§5).
 - **Full mirroring** (D42): CLI, TUI, Desktop and Conduit chats of enabled bots; last 30 days imported at switch-on; replies from bb continue the same Hermes session (01 §7).
 - **Notifications:** outside activity marks unread; approvals and `clarify` push (01 §8).
-- **Hermes icon** on rows (D55) and in the composer.
+- **Hermes icon** on rows (D55; when the Hermes machine is bb's primary machine, D56) and in the composer.
 
 Later (out of v1):
 - Owner-specific: work/personal boundary (D28), Discord approvals (D24), per-bot restrictions (`approvals.deny` globs or a hook, r12 §4), privacy filter for tool results (D36), ACP harness retirement and probe cleanup (D12, D25).
@@ -42,7 +42,6 @@ Later (out of v1):
 | # | Rule |
 |---|---|
 | D1 | Plugin code on the Hermes machine reaches chats only through the gateway: tickets from `<folder>/gateway.sock`, canonical `hermes-gateway-v1`, and Hermes' REST projection with a `native-http` ticket (same trust model, R6 C3). No Hermes config edit, network credential or new port |
-| D2 | Every Hermes chat bb shows is a real bb thread: Hermes icon, bb-side pin/archive/rename, no machine or harness picker, provider hidden from bb's pickers, works with `bb thread tell/spawn/…` |
 | D7 | Outside activity mirrors live with progress. An outside user message is the user's bubble tagged `[Outside bb]` (never an app's name). Notifications follow the v1 rule (01 §8) |
 | D11 | Approvals and `clarify` become bb interactions. Never auto-approve |
 | D14 | Delegated build: one writer per seam in its own jj workspace; a gate per phase; Claude-family subagents in the background |
@@ -66,10 +65,13 @@ Later (out of v1):
 | D53 | A new chat uses its bot's own model unless the user picks one in that chat: "The bot's model" is every model list's default. Extended: its own reasoning too, unless the user picks a level, with a model ("The bot's model" offers only "Default") |
 | D54 | A Hermes chat in a project works in that project's folder, as Codex, Claude and Pi do; with "No project", in its bot's `terminal.cwd` |
 | D55 | Rows look like any bb thread: the Hermes icon before the title, no metadata line (owner, 2026-11-09). bb draws that icon only for a provider in its provider list, so it needs Hermes listed |
+| D56 | Hermes is listed only on the machine where it runs; D2 superseded. Row icons need that machine to be bb's primary machine, until bb draws icons per thread machine (owner, 2026-11-09; 02 §Listing) |
+| D57 | No remote mode (r15) |
 | Q1 default | No cross-delete. bb delete → tombstone (mirrored chats and side chats; a bot thread is re-created instead), never re-imported. Deleted in Hermes → the thread stays; sends fail "Deleted in Hermes" |
 | Q7 default | Imported bubbles carry the outside tag and date (`[Outside bb · Oct 12]`), never an app's name; oldest first; item times are import time |
 
 Superseded, one line each:
+- D2 "every Hermes chat bb shows is a real bb thread: Hermes icon, bb-side pin/archive/rename, no machine or harness picker, provider hidden from bb's pickers, works with `bb thread tell/spawn/…`" → D56: the provider is listed on the Hermes machine and chats start there; the rest holds.
 - D3 profile chip and handoff → the bot is fixed per chat; handoff Later.
 - D4 optional project → Later.
 - D5 one pinned thread per bot → kept by D44, bound by title; "hide `todoist`" → per-bot switches.
@@ -140,6 +142,6 @@ Settled by this plan; each is reversible:
 5. **Which outside chats mirror:** an allow-list, CLI, TUI, Desktop and Conduit, visible sessions plus the Bot Chat. ACP, API server, `a2a`, tool, subagent, cron, one-shot, chat-app and hidden sessions stay out.
 6. **The skill reaches existing chats:** after writing or deleting the skill, the worker runs `hermes -p <profile> sessions refresh-prompts`. A continuing session (the Bot Chat) otherwise keeps its old system prompt (`hermes_state_prompt_refresh.py:1-8`). Cost: one prompt-cache miss per continuing session of that bot.
 7. **`/new` and `/reset`** become a compaction in every Hermes thread, not only bot threads: a bb thread keeps one Hermes chat.
-8. **Entry points:** the pinned bot thread, bb's New Thread with the Bot chip (D51), and `bb thread spawn`. The home-composer row and the shortcut are Later.
+8. **Entry points:** the pinned bot thread, bb's New Thread on the Hermes machine with the Bot chip (D51, D56), and `bb thread spawn`. The home-composer row and the shortcut are Later.
 
 Flagged gold-plating, kept because a decision requires it: live streaming of outside CLI/TUI/Desktop turns (D7; one mirror mode and A19 could go); the source-tag refusal (D15).

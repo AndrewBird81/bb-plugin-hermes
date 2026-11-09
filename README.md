@@ -1,6 +1,6 @@
 # bb-plugin-hermes
 
-A bb plugin that makes Hermes Agent chats first-class bb threads: chat with your Hermes bots in bb, and see every CLI, TUI, Desktop and Conduit chat of a bot you switch on as a bb thread that keeps updating. `v1.0.0`: phases P0–P2 are built and tested live. Install and use: [`docs/guide.md`](docs/guide.md).
+A bb plugin that makes Hermes Agent chats first-class bb threads: chat with your Hermes bots in bb, and see every CLI, TUI, Desktop and Conduit chat of a bot you switch on as a bb thread that keeps updating. `v1.0.0`: phases P0–P2 are built and tested live. v1.1.0 (in progress): start a chat from bb's New Thread on the Hermes machine, where Hermes is listed (D56). Install and use: [`docs/guide.md`](docs/guide.md).
 
 [![What runs where](docs/diagrams/architecture.svg)](https://andrewbird81.github.io/bb-plugin-hermes/)
 

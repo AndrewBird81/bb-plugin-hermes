@@ -31,6 +31,7 @@ Phases run in order; the owner can stop after any of them (D47). Each ends with 
 | P0 Foundations | Live bb shows Hermes health and version support | 01 §1 AC; 03 P0 gate |
 | P1 Chats and Bot Chats | Switch a bot on; chat in its pinned Bot Chat, shared with Conduit; side chats; approvals; bound threads mirror | 01 §2 (without import), §3–§6, §8, §9 AC; 03 P1 gate |
 | P2 Full mirroring | Every CLI, TUI, Desktop and Conduit chat of enabled bots in bb; 30-day import at switch-on; D48 catch-up | 01 §2 import AC, §7 AC; 03 P2 gate; v1.0.0 released |
+| v1.1 Native New Thread | Chats start from bb's New Thread on the Hermes machine, where alone Hermes is listed (D51, D56); Hermes Agent icon; the bot's own model and reasoning; project folders; ux-v1.1 settings and chip; one-line rows (D52–D55) | 01 §1–§4 AC; listing e2e on two machines and one (02 §Listing); p2-fake end to end |
 
 ## Work breakdown
 
@@ -87,7 +88,7 @@ Critical path: T0.1 → T0.3 → T0.4 → T1.1 → T1.4 → T1.6 → T1.13 → T
 | A13 | VERIFIED (T1.14, isolated bb): a Conduit-style turn's bubble in 1.4 s (fake) and 3.1 s (isolated Hermes); a real `hermes chat --resume` turn showed in 2.7 s and streamed. Live latency: dogfood | T1.14 |
 | A15 | VERIFIED (T1.1): conformance passes every scenario with `pending:<threadId>` at start | T1.1 |
 | A16 | PARTLY (T1.7): the host RPC output limit is 8 MiB, so `readTurns` keeps the newest turns under 4 MiB and sets `truncated`; prewarmed `models` answers in ~1 ms, isolated `model.options` 0.6–0.7 s cold, 32–36 ms warm (stub model). Live: a remote server and the ~15 s cold `model.options` are dogfood-only | T1.7, T1.14 |
-| A18 | VERIFIED on the Hermes machine (T1.14): `bb thread spawn --project proj_personal --provider hermes --option profile=<bot>` replies; no profile → "Pick a bot: …". From another machine: dogfood | T1.14 |
+| A18 | VERIFIED on the Hermes machine (T1.14): `bb thread spawn --project proj_personal --provider hermes --option profile=<bot>` replies. v1.1: no profile → the bot an untouched chip shows (served `default`, else the first served bot that's on). From another machine (isolated bb, two machines): refused "Hermes isn't on <machine>. Start the thread on <Hermes machine> (--machine <Hermes machine>)." | T1.14, v1.1 |
 | A19 | VERIFIED (T1.0, isolated): a second canonical viewer that resumed the session gets a `hermes chat --resume` turn live; streamed == final text | T1.0 |
 | A20 | FAILED (T1.0, isolated): `hermes chat -c` continues bb's `source:"cli"` chat, from the same and from another cwd; a newer `gui` chat is never picked. bb creates with `source:"gui"` | T1.0 |
 | A22 | FAILED (isolated bb 0.49.0): bridges get `bridge-data`, the worker `host-data`; the worker reads the sibling dir (02 §Bridge state) | T0.8 |
@@ -95,7 +96,7 @@ Critical path: T0.1 → T0.3 → T0.4 → T1.1 → T1.4 → T1.6 → T1.13 → T
 | A24 | VERIFIED (T1.0, isolated): `end_reason:null` leaves the row open for later turns; `"user_closed"` ends it | T1.0 |
 | A25 | VERIFIED (T1.14, isolated bb 0.49.0): queued sends run as one turn each, in order | T1.14 |
 | A26 | VERIFIED (T0.11, live): `bb plugin update` swapped the worker (`0.1.0+…` → `0.1.1+…`, new pid) and the maintenance bridge to the new build; the machine setting was kept, no errors | T0.11 |
-| A28 | VERIFIED (T1.14, isolated bb, DOM + screenshot): with the `threadRowMetadata` experiment and Rows → Metadata on, the pinned row shows the Hermes SVG and "Hermes · Alex · Bot Chat" | T1.12 |
+| A28 | VERIFIED (T1.14, isolated bb, DOM + screenshot): with the `threadRowMetadata` experiment and Rows → Metadata on, the pinned row shows the Hermes SVG and "Hermes · Alex · Bot Chat". Superseded by D55: no badge | T1.12 |
 | A30 | Plugin slots render on bb mobile. Dogfood only | T1.14 |
 | A36 | VERIFIED (T0.5, isolated; live: 5 of 5 served profiles answered one read-only list) | T0.5 |
 | A37 | VERIFIED (T1.14, isolated bb): `hermes/persisted-turn` reaches the server; it binds side chats from bb's stored turns | T1.1 |
@@ -118,6 +119,7 @@ Critical path: T0.1 → T0.3 → T0.4 → T1.1 → T1.4 → T1.6 → T1.13 → T
 | A54 | VERIFIED (P1 live dogfood): bb can report a thread `idle` with nothing queued while it still dispatches a queued turn, whose idle then moves `latestAttentionAt` past an earlier `markRead`; an import's end is confirmed by a quiet re-read | P1 dogfood |
 | A55 | VERIFIED (source c314285f07, live list keys): REST `last_active` is a chat's latest activity (heartbeat, newest message, start); the raw `last_activity_at` is heartbeats only, null on older rows, the root's on a rotated chain (`docs/operations.md` §Surfaces) | T2.1 |
 | A56 | VERIFIED (source c314285f07, live counts): no recorded surface has a single writer, so no badge names an app; Hermes stores bb's side chats `local`/`desktop`, like Desktop's: bb-created chats are found by `expected_id` and a `bb:` first submission, never by surface | T2.1 |
+| A57 | VERIFIED (v1.1, isolated bb 0.49.0, fake; two machines, then one): with listing B, Hermes is in New Thread on the Hermes machine only and listed nowhere with no Connection; Settings → Providers and row icons only when the Hermes machine is primary. Moving the Connection releases the old machine (its `worker.json` goes). With the gateway down Hermes stays listed and a send fails "Hermes isn't reachable on this machine right now." bb's 5-min listing cache: 02 §Listing | v1.1 |
 
 ## Dev loop
 
@@ -146,6 +148,7 @@ Each approval is logged in `docs/operations.md` §Approvals (date, item, answer)
 - P1: one bot on first (e.g. Neo), then the others one at a time. Left as is: that bot's own bb skills (`~/src/hermes-config`), `compression.in_place: false` in `default` (D50), hermes-webui (D45).
 - P2: on the upgrade, each bot already on imports, once and read, its chats active since 30 days before its switch-on (02 flow 1 step 6). No re-switching.
 - No gateway restart on live. Restart behaviour is tested on isolated Hermes only.
+- v1.1: after the update, `stopHosted` (bridges of the old build can't read the new `worker.json`). Hermes is listed only on $HERMES_HOST (D56); Settings → Providers and the row icons show it only if $HERMES_HOST is bb's primary machine.
 
 ## Rollback
 
