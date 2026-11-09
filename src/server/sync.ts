@@ -460,18 +460,26 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
     if (thread.status !== "idle" && thread.status !== "error") return;
     // A message queued behind a dead card waits for it: the stop runs even with a queue.
     if (thread.queuedMessageCount > 0) return deadCards(threadId, (await latestStates(threadId)).status);
-    await ingestPersistedNow(threadId);
-    const binding = bindingByThread(db, threadId);
-    if (binding?.state === "replaying" && unfinished.has(threadId)) {
-      // An import still to send (a bot thread bound by bb's own first send): send it; its idle finalizes.
-      const enabledAt = botRecord(db, binding.profile_home)?.enabled_at;
-      const sent = target && enabledAt != null && enabled(binding.profile_home) ? await importNow(binding, enabledAt, target) : 0;
-      // Turns just sent haven't run: their idle finalizes.
-      if (sent > 0 || unfinished.has(threadId)) return;
+    let binding: Binding | null;
+    let flagged: boolean;
+    try {
+      await ingestPersistedNow(threadId);
+      binding = bindingByThread(db, threadId);
+      if (binding?.state === "replaying" && unfinished.has(threadId)) {
+        // An import still to send (a bot thread bound by bb's own first send): send it; its idle finalizes.
+        const enabledAt = botRecord(db, binding.profile_home)?.enabled_at;
+        const sent = target && enabledAt != null && enabled(binding.profile_home) ? await importNow(binding, enabledAt, target) : 0;
+        // Turns just sent haven't run: their idle finalizes.
+        if (sent > 0 || unfinished.has(threadId)) return;
+      }
+      if (binding?.state === "replaying" && binding.kind !== "mirror" && !unfinished.has(threadId)) updateBinding(db, threadId, { state: "live" });
+      flagged = readAtIdle.has(threadId) || importing.has(threadId);
+      if (readAtIdle.has(threadId)) await bb.sdk.threads.markRead({ threadId });
+    } catch (error) {
+      // An init or import whose last idle failed here still ends: no further idle may come (review-2 5).
+      if (readAtIdle.has(threadId) || importing.has(threadId)) confirmLater(threadId, thread.latestAttentionAt);
+      throw error;
     }
-    if (binding?.state === "replaying" && binding.kind !== "mirror" && !unfinished.has(threadId)) updateBinding(db, threadId, { state: "live" });
-    const flagged = readAtIdle.has(threadId) || importing.has(threadId);
-    if (readAtIdle.has(threadId)) await bb.sdk.threads.markRead({ threadId });
     if (flagged || (binding && queuedTurnsOf(db, threadId).length)) confirmLater(threadId, thread.latestAttentionAt);
     if (!flagged) notify.release(threadId);
     const live = bindingByThread(db, threadId);
@@ -554,7 +562,8 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
       }
     }
     if (!readAtIdle.has(threadId) && !importing.has(threadId)) return;
-    if (readAtIdle.has(threadId) && (thread.lastReadAt ?? -Infinity) < thread.latestAttentionAt) return;
+    // Quiet since the finalize, so unread only if its `markRead` never ran (it threw): read now.
+    if (readAtIdle.has(threadId) && (thread.lastReadAt ?? -Infinity) < thread.latestAttentionAt) await bb.sdk.threads.markRead({ threadId });
     if (importing.has(threadId)) await onImportOver(threadId);
     if (readAtIdle.delete(threadId)) {
       readCheck.set(threadId, READ_CHECKS);

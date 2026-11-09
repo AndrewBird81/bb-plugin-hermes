@@ -86,7 +86,7 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
   const sessions = new Map<string, SessionRow[]>();
   const access: { profile_home: string; on: boolean; enabled_bots: string[] }[] = [];
   /** `root`: the folder these profiles live in. `outside`: the worker refuses every profile as outside the root. */
-  const state = { root: "~/.hermes", outside: false, failSpawn: 0, watched: [] as string[], failSend: 0, failAccess: false, refreshed: true, online: true, boot: "boot_1", supported: true, seq: 0, ids: 0, clock: 1_000, unreadable: [] as string[], lateAttention: false };
+  const state = { root: "~/.hermes", outside: false, failSpawn: 0, watched: [] as string[], failSend: 0, failAccess: false, refreshed: true, online: true, boot: "boot_1", supported: true, seq: 0, ids: 0, clock: 1_000, unreadable: [] as string[], lateAttention: false, failEvents: 0 };
 
   const thread = (id: string) => {
     const t = threads.get(id);
@@ -240,6 +240,7 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
         getPluginMetadata: async () => ({ metadata: {} }),
         events: {
           list: async ({ threadId, types, order, limit, beforeSeq }) => {
+            if (state.failEvents > 0 && state.failEvents--) throw Object.assign(new Error("HTTP 503"), { code: "unavailable" });
             const rows = (events.get(threadId) ?? []).filter(
               (e) => (!types || (types as readonly string[]).includes(e.type)) && (beforeSeq === undefined || e.seq < Number(beforeSeq)),
             );

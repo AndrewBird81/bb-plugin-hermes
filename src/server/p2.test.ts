@@ -1099,3 +1099,20 @@ describe("review-2 3: a wake sent at an import's end", () => {
     expect(w.levels.get(t)).toBe("inherit");
   });
 });
+
+describe("review-2 5: a throw in an import's last finalize", () => {
+  it("still arms the quiet confirm: the import ends read and frees its slot", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "c1");
+    await on(w);
+    const t = bindingByLineage(w.db, NEO, "c1")!.thread_id;
+    w.render(t);
+    // Its last idle can't read the bridge's state (and so never marks it read).
+    w.state.failEvents = 1;
+    await w.idle(t);
+    await w.quiet();
+    expect(bindingByThread(w.db, t)?.state).toBe("live");
+    expect(w.thread(t).visibility).toBe("visible");
+    expect(isRead(w, t)).toBe(true);
+  });
+});
