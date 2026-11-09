@@ -92,6 +92,7 @@ export function createHostEntry(opts: HostEntryOptions = {}) {
         const env = { ...process.env };
         return setBotAccess({ rootHome: expandRoot(root), profileHome: profile_home, on, enabledBots: enabled_bots, dataDir: context.experimental_paths.dataDir, env, ...opts.access });
       },
+      release: async (_input, context) => ({ removed: await watcher.release(context.experimental_paths.dataDir) }),
     },
     dispose: () => watcher.close(),
   });

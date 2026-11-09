@@ -1,6 +1,5 @@
 // Provider registration (T0.7; 02 §Components, §Protocol mapping `initialize` row).
-// Hidden from bb's pickers: visible only where health says installed, and the bridge always says
-// `not_installed` (S1-S3 §S3a).
+// Listed only where health doesn't say `not_installed`: the Hermes machine (D56, `bridge.ts` `health`).
 import type { BbPluginApi, PluginProviderOptionsContext } from "@get-bb/plugin-sdk";
 import { EXTENSION_KINDS, persistedTurnStateSchema, statusStateSchema } from "../shared/extension-state.js";
 import type { ProviderOptions } from "../shared/provider-options.js";

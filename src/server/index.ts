@@ -37,6 +37,9 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 const MACHINE_KEY = "machine";
+/** kv: machines the Connection moved off whose worker hasn't confirmed `release` yet (offline then). */
+const RELEASE_KEY = "release_pending";
+const RELEASE_TIMEOUT_MS = 5_000;
 
 function savedMachine(db: Db): string {
   const value = getKv(db, MACHINE_KEY);
@@ -189,9 +192,26 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
     void connection.ensureNow();
   });
 
+  /**
+   * D56: a machine the Connection moved off must stop listing Hermes. Its worker removes `worker.json` (`release`);
+   * an offline one is retried at each keep-alive until it answers. Never the current machine.
+   */
+  const pendingReleases = () => ((getKv(db, RELEASE_KEY) as string[] | null) ?? []).filter((id) => id !== savedMachine(db));
+  async function releaseNow(): Promise<void> {
+    for (const hostId of pendingReleases()) {
+      try {
+        await host.call("release", null, { hostId, timeoutMs: RELEASE_TIMEOUT_MS });
+      } catch {
+        continue; // offline: the next keep-alive retries
+      }
+      setKv(db, RELEASE_KEY, pendingReleases().filter((id) => id !== hostId));
+    }
+  }
+
   bb.background.service("keepalive", {
     async start(signal) {
       while (!signal.aborted) {
+        if (pendingReleases().length) await releaseNow().catch((error) => fail(errorCode(error, "release_failed")));
         // Until known, every thread works in its bot's folder (D54).
         if (getKv(db, PERSONAL_PROJECT_KEY) === null) await personalProject(bb, db).catch((error) => fail(errorCode(error, "projects_failed")));
         await connection.ensureNow();
@@ -226,7 +246,12 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
       };
     },
     async setConnection({ machine, folder }) {
+      const previous = savedMachine(db);
       setKv(db, MACHINE_KEY, machine);
+      if (previous && previous !== machine) {
+        setKv(db, RELEASE_KEY, [...new Set([...pendingReleases(), previous])]);
+        void releaseNow().catch((error) => fail(errorCode(error, "release_failed")));
+      }
       setKv(db, MACHINE_FOLDER_KEY, folder ?? (await settings.get()).folder);
       // A folder change also fires `onChange`; both share one check.
       if (folder !== undefined) await settings.experimental_set({ folder });

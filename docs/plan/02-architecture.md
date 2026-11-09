@@ -4,7 +4,7 @@
 
 | Component | Runs on | Entry | Owns |
 |---|---|---|---|
-| Server part | bb server | `server.ts` | Provider registration (hidden, `models.scope:"workspace"`); mapping db; switches; import queue; wakes; RPC (`diagnostics`, `bots`, `setBot`, `stopHosted`, `threadInfo`); `message.dispatch` hook (D15) |
+| Server part | bb server | `server.ts` | Provider registration (listed only on the Hermes machine, D56; `models.scope:"workspace"`); mapping db; switches; import queue; wakes; RPC (`diagnostics`, `bots`, `setBot`, `stopHosted`, `threadInfo`); `message.dispatch` hook (D15) |
 | Host worker | Hermes machine, bb host daemon | `host.ts` default export (`experimental_defineHostEntry`) | One host-scoped canonical connection; change watch; history reads; Bot Chat lookup; models; skill and wrapper files; version check |
 | Bridge | Hermes machine, one process per hosted thread (S1-S3 fact 2) | `host.ts` export `experimental_providerBridge` | Its own canonical connection; turns, deltas, interactions; replay and mirror rendering; S8's send rules |
 | Canonical client | library (worker, bridge) | `src/hermes/client.ts` | Discovery, ticket, dial, RPC, replay cursors; ported from `spike/hermes` `src/hermes/` |
@@ -23,6 +23,12 @@ How Hermes' other apps reach the same chats:
 - Settings: **Hermes folder** (default `~/.hermes`) is a `bb.settings` field (`bb plugin config hermes set folder …`). **Hermes machine** (a bb host id) lives in the mapping db's `kv`, set by RPC `setConnection` from the app's picker, so bb's settings form never shows a host id. Bridges get the machine, and the server's view of their thread's binding, through `deriveProviderOptions` (§Provider options). The folder reaches the worker in `ensureWatch{root}` and bridges via `deriveProviderOptions`. Logic never names a machine. Unset machine → no Hermes I/O (R3 M3).
 - Canonical connection: `identify` → `session-ticket{scope:"host"}` → `/api/ws` with subprotocols `["hermes-gateway-v1","hermes-gateway-ticket.<t>"]` (S0-S4 cheat-sheet 1). Rediscover on every connect; `gateway.sock.path` fallback. One host ticket drives every served profile (S8 §Per-profile reach).
 - **Never start a gateway** (r09 M5): no `connect_gateway()` without an endpoint, no `hermes gateway …`, no `ensure` verbs.
+
+## Listing (D56)
+
+- bb lists an `installed` provider on a machine unless its health there says `not_installed` (r13 §1). Hermes' bridge says `ready` only where `worker.json` is (§Bridge state), so Hermes is in New Thread only on the Hermes machine. Settings → Providers, the row icon and `bb provider list` read the primary machine, so they show Hermes only when the Hermes machine is primary.
+- **bb caches each machine's answer for 5 min**, in memory, stale-while-revalidate (bb-app 0.49.0 `PROVIDER_INSTALLED_CACHE_TTL_MS`): the first listing after expiry still returns the old answer and re-probes. Measured on the isolated bb: a machine probed just before the Connection was saved listed Hermes 5:06–5:26 after the save; a machine the Connection left stays listed until its answer expires. A plugin reload (`bb plugin reload hermes`), a plugin settings change (`forgetAllInstalled`) or a server restart clears it: the next listing is right.
+- **A remembered provider wins:** a New Thread draft whose provider is Hermes keeps the Hermes tab on any machine (bb `includeRequestedRegisteredProvider`). The dispatch refusal covers it, and the CLI.
 
 ## History reader
 
@@ -97,6 +103,7 @@ Every call carries `root` (the folder); profiles are named by `profile_home`, wh
 | `firstSubmissions` | `{root, profile_home, lineage_roots[≤100]}` → `{submissions{<lineage_root>: submission_id \| null}}`: each chat's first user row, from its oldest page; `bb:` = bb created it. Discovery excludes bb-created chats by this and `expected_id`, never by surface (bb's side chats are stored `local`/`desktop`, like Desktop's) |
 | `findBotChat` | `{root, profile_home}` → `{state:"found", lineage_root, session_id, legacy}` · `{state:"none"}` · `{state:"held"}`. Read-only: `profiles.list` `canonical_session`, which lists only a Bot Chat Hermes has adopted |
 | `setBotAccess` | `{root, profile_home, on, enabled_bots}` → `{skill, wrapper, refreshed, detail}`: writes or deletes skill and wrapper (the wrapper goes when `enabled_bots` is empty), then `refresh-prompts` (flow 1) |
+| `release` | `null` → `{removed}`: the Connection moved off this machine (another machine, or Not connected): stop the watch, delete `worker.json`, so bb stops listing Hermes here (D56). An offline machine is retried at each keep-alive (`kv` `release_pending`); a machine the Connection moves back to is never released |
 | `diagnostics` | → pid, uptime, boot id, watch state, version check, bridge build registry |
 
 Signals (worker → server): `changed{profile_homes[]}`, debounced; `watch{state}`. `sessions.changed` is only a hint (r11 §8), and on the canonical socket it arrives only for the root profile, never for a Conduit dashboard turn (T1.0), so the worker also stats each enabled profile's `state.db-wal` every 2 s: the only signal for secondary profiles and for Conduit's own turns.
@@ -104,7 +111,7 @@ Signals (worker → server): `changed{profile_homes[]}`, debounced; `watch{state
 ### Bridge state (`<bridge dataDir>/`)
 
 - `threads/<threadId>.json`: `{profile, bot, …}`, one file per thread so bridge processes never overwrite each other, for `model/list`, which runs with no provider options (cwd → threadId → profile, S7 1c).
-- `worker.json` (written by the worker, `src/shared/bridge-files.ts`): `{root, worker_boot_id, written_at, enabled[{profile, profile_home, bot_label, cwd, served}]}`. Present = this machine runs the worker; absent → turns fail "Hermes isn't on this machine. Start the thread on <machine> (--machine <machine>)." (the server sends the machine's name in provider options and refuses the dispatch itself, `message.dispatch`), and `model/list` (absent, or no bot on) answers one placeholder default, never sent to Hermes, so `bb thread spawn` on another machine reaches that refusal instead of bb's "catalog is empty". `enabled` feeds `model/list`'s `profile` session option (A18).
+- `worker.json` (written by the worker, `src/shared/bridge-files.ts`): `{root, worker_boot_id, written_at, enabled[{profile, profile_home, bot_label, cwd, served}]}`. Present = this machine runs the worker, and bb lists Hermes here (D56); written at every keep-alive, gateway up or down, removed only by `release`; absent → turns fail "Hermes isn't on this machine. Start the thread on <machine> (--machine <machine>)." (the server sends the machine's name in provider options and refuses the dispatch itself, `message.dispatch`), and `model/list` (absent, or no bot on) answers one placeholder default, never sent to Hermes, so `bb thread spawn` on another machine reaches that refusal instead of bb's "catalog is empty". `enabled` feeds `model/list`'s `profile` session option (A18).
 - `bridges/<pid>.json`: `{build, threadId, startedAt}` for `diagnostics`. bb gives bridges `…/plugins/hermes/bridge-data` and the worker `…/host-data` (A22 false), so the worker reads the sibling `bridge-data/bridges/`. `build` is `<plugin version>+<host artifact digest>`, the same for the worker and bridges of one deploy; the bundled version makes every release a new artifact, even with unchanged host code (A26).
 - `models/<sha256(profile_home)[:16]>.json`: last-known catalog, written by the worker's prewarm and by bridges.
 
@@ -120,7 +127,7 @@ bb → bridge → Hermes:
 | bb method / input | Hermes call | Notes |
 |---|---|---|
 | `initialize` | — | `sessionRestore`, `approvalEnforcedBy:"provider"`, grammar v3, `permissionModes:["auto"]` (A2, D17), reasoning levels, `supportsNativeUserQuestion:true`. No fork, manual compaction, archive or rename support (Later) |
-| `provider/health` | — | `not_installed` always: hides Hermes from pickers (S1-S3 §S3a) |
+| `provider/health` | — | `ready` where `worker.json` is, else `not_installed`: bb lists Hermes only on the Hermes machine (D56). It reads no provider options (bb sends none), only this local file. Kept while the gateway or the worker is down; a send then fails "Hermes isn't reachable on this machine right now." (after ~20 s). See §Listing |
 | any turn on another host | — | `provider.error` "Hermes isn't on this machine. Start the thread on <machine> (--machine <machine>)."; the dispatch hook refuses first, naming this machine |
 | any turn, bot switched off | — | `provider.error` "<bot> is switched off in the Hermes plugin settings" |
 | `model/list` | legacy `model.options{profile}`, 2 s | Last-known list on timeout. Never creates a session (r09 M6) |

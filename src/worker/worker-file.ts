@@ -1,7 +1,7 @@
 // `bridge-data/worker.json` (02 §Bridge state, `src/shared/bridge-files.ts`): what bridges on this machine
 // learn from the worker. Rewritten whole (write, then rename) only when its content changes; the boot id
 // is part of it, so each worker process writes it once at least.
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { WORKER_FILE, workerFileSchema, type EnabledBot } from "../shared/bridge-files.js";
 
@@ -20,5 +20,17 @@ export class WorkerFileWriter {
     await rename(tmp, file);
     this.last = key;
     return true;
+  }
+
+  /** Removes `<bridgeDataDir>/worker.json`; true when there was one. The next `write` writes it again. */
+  async remove(bridgeDataDir: string): Promise<boolean> {
+    this.last = null;
+    return rm(path.join(bridgeDataDir, WORKER_FILE)).then(
+      () => true,
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return false;
+        throw error;
+      },
+    );
   }
 }

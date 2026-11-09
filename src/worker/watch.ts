@@ -163,6 +163,16 @@ export class Watcher {
     return described;
   }
 
+  /** The Connection moved away (`release`, D56): stop watching, forget the folder and bots, remove `worker.json`. */
+  async release(dataDir: string): Promise<boolean> {
+    this.drop();
+    this.root = null;
+    this.enabled = [];
+    this.profiles.clear();
+    await this.changes.set(new Map());
+    return this.workerFile.remove(bridgeDataDir(dataDir));
+  }
+
   close(): void {
     this.closed = true;
     this.emit = null;

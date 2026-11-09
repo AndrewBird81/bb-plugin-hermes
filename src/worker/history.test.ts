@@ -69,6 +69,20 @@ describe("worker.json", () => {
     await h.experimental_call("ensureWatch", { root, enabled_bots: [] });
     expect(JSON.parse(readFileSync(path.join(bridgeDir, WORKER_FILE), "utf8")).enabled).toEqual([]);
   });
+
+  it("D56: written with the gateway down too; `release` removes it and stops the watch; a later keep-alive writes it again", async () => {
+    const { fake, h, bridgeDir, root } = await setup();
+    const file = path.join(bridgeDir, WORKER_FILE);
+    await fake.stop();
+    expect(await h.experimental_call("ensureWatch", { root, enabled_bots: [] })).toMatchObject({ connected: false });
+    expect(existsSync(file)).toBe(true);
+    expect(await h.experimental_call("release", null)).toEqual({ removed: true });
+    expect(existsSync(file)).toBe(false);
+    expect(await h.experimental_call("release", null)).toEqual({ removed: false });
+    // Picked again: the same worker process writes it again.
+    await h.experimental_call("ensureWatch", { root, enabled_bots: [] });
+    expect(existsSync(file)).toBe(true);
+  });
 });
 
 describe("models (A16)", () => {

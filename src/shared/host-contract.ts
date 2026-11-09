@@ -229,6 +229,14 @@ export const hostContract = defineRpcContract({
     input: z.object({ root: folderSchema, profile_home: profileHome, on: z.boolean(), enabled_bots: z.array(profileHome) }).strict(),
     output: botAccessSchema,
   },
+  /**
+   * The Connection moved off this machine (D56): stop watching and remove `worker.json`, so bb stops listing Hermes
+   * here and bridges here refuse turns. `removed`: there was one.
+   */
+  release: {
+    input: z.null(),
+    output: z.object({ removed: z.boolean() }).strict(),
+  },
 });
 export type HostContract = typeof hostContract;
 

@@ -10,6 +10,7 @@ import { type FakeThread, MACHINE, NEO, session, turn, world, type World } from 
 import { deriveProviderOptions } from "./provider-options.js";
 import { RESTORE_DELAY_MS } from "./notify.js";
 import { IMPORT_WINDOW_MS, MISSING_RECHECK_MS } from "./sync.js";
+import { KEEPALIVE_MS } from "./connection.js";
 
 const DAY = 86_400_000;
 
@@ -632,6 +633,55 @@ describe("BUG 4: another machine", () => {
     w.state.failEvents = 1;
     await w.emit("thread.created", "thr_cli2");
     expect((await w.rpc<Diagnostics>("diagnostics")).errors).toContain("unavailable");
+  });
+});
+
+describe("D56: Hermes is listed only on the machine where it runs", () => {
+  const releases = (w: World) => w.hostCalls("release").map((c) => c.hostId);
+
+  it("moving the Connection releases the old machine (it removes worker.json); not the same machine, not the first save", async () => {
+    const w = await world();
+    await w.connect();
+    await w.connect();
+    expect(releases(w)).toEqual([]);
+    await w.rpc("setConnection", { machine: "host_work" });
+    await w.flush();
+    expect(releases(w)).toEqual([MACHINE]);
+    await w.rpc("setConnection", { machine: "" });
+    await w.flush();
+    expect(releases(w)).toEqual([MACHINE, "host_work"]);
+  });
+
+  it("an offline old machine is released at a later keep-alive; moving back to it before then drops the release", async () => {
+    const w = await world();
+    await w.connect();
+    w.unreachable.add(MACHINE);
+    await w.rpc("setConnection", { machine: "host_work" });
+    await w.flush();
+    expect(releases(w)).toEqual([MACHINE]);
+    const svc = w.harness.behavior.runService("keepalive");
+    // Still offline at the first keep-alive; it answers at the next one, and isn't asked again.
+    await w.flush();
+    expect(releases(w)).toEqual([MACHINE, MACHINE]);
+    w.unreachable.delete(MACHINE);
+    await w.elapse(KEEPALIVE_MS);
+    expect(releases(w)).toEqual([MACHINE, MACHINE, MACHINE]);
+    await w.elapse(KEEPALIVE_MS);
+    expect(releases(w)).toHaveLength(3);
+    // host_work offline; the Connection moves back to it before it answered: it is the Hermes machine again.
+    w.unreachable.add("host_work");
+    await w.rpc("setConnection", { machine: MACHINE });
+    await w.flush();
+    expect(releases(w).slice(3)).toEqual(["host_work"]);
+    await w.rpc("setConnection", { machine: "host_work" });
+    await w.flush();
+    w.unreachable.delete("host_work");
+    await w.elapse(KEEPALIVE_MS);
+    await w.elapse(KEEPALIVE_MS);
+    // MACHINE (left again, online) is released at once; host_work (current) never again.
+    expect(releases(w).slice(3)).toEqual(["host_work", MACHINE]);
+    svc.controller.abort();
+    await svc.done;
   });
 });
 

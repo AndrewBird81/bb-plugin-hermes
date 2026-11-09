@@ -15,7 +15,7 @@ function register() {
 }
 
 describe("registerProvider", () => {
-  it("registers Hermes hidden from bb's pickers (S1-S3 §S3a)", () => {
+  it("registers Hermes as installed: listed only where the bridge's health says so (D56)", () => {
     expect(register()).toMatchObject({
       id: PROVIDER_ID,
       displayName: "Hermes",

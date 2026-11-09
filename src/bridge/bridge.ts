@@ -39,12 +39,17 @@ import { PROVIDER_ID } from "./provider.js";
 /** Identity before a Hermes session exists (02 §Protocol mapping `thread/start`; A15). */
 export const pendingIdentity = (threadId: string) => `pending:${threadId}`;
 
-/** `not_installed` always: hides Hermes from bb's pickers (S1-S3 §S3a). */
-const HEALTH: ProviderHealthResult = {
+/**
+ * Listing B (D56): bb lists an `installed` provider on a machine unless its health there says `not_installed`
+ * (research 13 §1). Hermes runs where the worker wrote `worker.json`: the saved Hermes machine, written at each
+ * keep-alive whether or not the gateway answers, and removed when the Connection moves away (`release`). So Hermes is
+ * listed only there, and stays listed while the gateway or the worker is down (a send then says why).
+ */
+const health = (here: boolean): ProviderHealthResult => ({
   supported: true,
   health: {
-    status: "not_installed",
-    statusMessage: "Hermes chats are managed by the Hermes plugin.",
+    status: here ? "ready" : "not_installed",
+    statusMessage: here ? "Hermes runs on this machine." : "Hermes runs on another machine.",
     accountEmail: null,
     planLabel: null,
     installedVersion: null,
@@ -53,7 +58,7 @@ const HEALTH: ProviderHealthResult = {
     canUpdate: false,
     loginCommand: null,
   },
-};
+});
 
 type Notification = { jsonrpc: "2.0"; method: string; params: unknown };
 type Reply = (result: unknown) => void;
@@ -187,7 +192,7 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
         },
       }),
     ),
-    [BRIDGE_REQUEST_METHODS.providerHealth]: method(providerMaintenanceParamsSchema, (_, reply) => reply(HEALTH)),
+    [BRIDGE_REQUEST_METHODS.providerHealth]: method(providerMaintenanceParamsSchema, (_, reply) => reply(health(dataDir !== null && readWorkerFile(dataDir) !== null))),
     // A maintenance process: no provider options, so the thread's bot comes from its `threads/` record by cwd (S7 1c).
     [BRIDGE_REQUEST_METHODS.modelList]: method(modelListParamsSchema, async ({ cwd }, reply) => reply(await modelList(cwd))),
     [BRIDGE_REQUEST_METHODS.threadStart]: method(threadStartParamsSchema, ({ threadId, cwd, options }, reply) => {

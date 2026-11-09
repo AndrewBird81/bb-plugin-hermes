@@ -149,7 +149,8 @@ describe("keep-alive and health", () => {
       state: "machine_offline",
       machine: { id: "host_gone", name: null, online: false },
     });
-    expect(t.harness.inspection.experimental_hostRpcCalls).toEqual([]);
+    // Nothing on the unknown machine; the machine it moved off is released (D56).
+    expect(t.harness.inspection.experimental_hostRpcCalls.map((c) => [c.method, c.hostId])).toEqual([["release", MACHINE]]);
   });
 
   it("records a new worker_boot_id in kv", async () => {

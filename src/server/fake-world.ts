@@ -87,6 +87,8 @@ export async function world({ profiles = [neo, bob], seed, threads: before = [] 
   const sessions = new Map<string, SessionRow[]>();
   const access: { profile_home: string; on: boolean; enabled_bots: string[] }[] = [];
   /** `root`: the folder these profiles live in. `outside`: the worker refuses every profile as outside the root. */
+  /** Hosts whose worker doesn't answer (offline): `release` fails there. */
+  const unreachable = new Set<string>();
   const state = { root: "~/.hermes", outside: false, failSpawn: 0, watched: [] as string[], failSend: 0, failAccess: false, refreshed: true, online: true, boot: "boot_1", supported: true, seq: 0, ids: 0, clock: 1_000, unreadable: [] as string[], lateAttention: false, failEvents: 0, failDescribe: 0 };
 
   const thread = (id: string) => {
@@ -143,6 +145,9 @@ export async function world({ profiles = [neo, bob], seed, threads: before = [] 
       }
       case "findBotChat":
         return botChats.get(input.profile_home) ?? { state: "none" };
+      case "release":
+        if (unreachable.has(call.hostId)) throw Object.assign(new Error("offline"), { code: "host_offline" });
+        return { removed: true };
       case "readTurns": {
         const chat = history.get(input.lineage_root);
         // The worker's REST read of a chat Hermes deleted (`sessions.py` `_NOT_FOUND`).
@@ -307,6 +312,7 @@ export async function world({ profiles = [neo, bob], seed, threads: before = [] 
     ...fake,
     db,
     state,
+    unreachable,
     threads,
     history,
     botChats,

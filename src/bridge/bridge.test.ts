@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -13,6 +13,7 @@ import {
   experimental_createBridgeJsonRpcTestHarness as createHarness,
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { WORKER_FILE } from "../shared/bridge-files.js";
 import { bridgeFileSchema } from "../shared/bridge-registry.js";
 import { type Bridge, createBridge } from "./bridge.js";
 import { placeholderModel } from "./composer.js";
@@ -59,10 +60,16 @@ describe("bridge handshake", () => {
     });
   });
 
-  it("health is always not_installed; with no worker file, models are the placeholder", async () => {
-    const health = providerHealthResultSchema.parse((await call(1, "provider/health", { providerId: PROVIDER_ID })).result);
-    expect(health).toMatchObject({ supported: true, health: { status: "not_installed" } });
+  it("D56: health is ready only where the worker wrote worker.json (the Hermes machine), else not_installed; models are then the placeholder", async () => {
+    const health = async (id: number) => providerHealthResultSchema.parse((await call(id, "provider/health", { providerId: PROVIDER_ID })).result);
+    expect(await health(1)).toMatchObject({ supported: true, health: { status: "not_installed" } });
     expect((await call(2, "model/list", { cwd })).result).toEqual({ models: [placeholderModel()], selectedOnlyModels: [] });
+    // The worker's file, with no bot on and no gateway behind it: still the Hermes machine, so listed.
+    writeFileSync(join(dataDir, WORKER_FILE), JSON.stringify({ root: "/nowhere", worker_boot_id: "b", written_at: 1, enabled: [] }));
+    expect(await health(3)).toMatchObject({ supported: true, health: { status: "ready" } });
+    // Released (the Connection moved away): unlisted again.
+    rmSync(join(dataDir, WORKER_FILE));
+    expect(await health(4)).toMatchObject({ health: { status: "not_installed" } });
   });
 
   it("thread/start answers and announces pending:<threadId>", async () => {
