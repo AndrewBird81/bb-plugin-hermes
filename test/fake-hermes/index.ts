@@ -27,7 +27,7 @@ import path from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 import { ROUTING_PARAM } from "../../src/hermes/contract.js";
 import { GATEWAY_PROTOCOL, NATIVE_HTTP_HEADER, TICKET_PREFIX } from "../../src/hermes/types.js";
-import { Engine, type Session, type TurnScript } from "./engine.js";
+import { Engine, type OutsideChat, type Session, type TurnScript } from "./engine.js";
 import { validate } from "./schema.js";
 import { controlServer, removeDir, tempDir, TEST_ROOT, type ControlServer } from "./wire.js";
 
@@ -151,6 +151,18 @@ export interface FakeHermes {
   legacySession(profile: string, opts?: { title?: string; hidden?: boolean; turns?: string[]; held?: boolean }): string;
   /** The dashboard takes or drops its claim on a legacy row (`runtime_coordination_required` while held). */
   hold(profile: string, sessionId: string, on: boolean): void;
+  /** A finished chat another Hermes client made (CLI, TUI, Desktop, cron, one-shot, ACP, a chat app…). Returns its id. */
+  outsideChat(profile: string, opts?: OutsideChat): string;
+  /** A Hermes title change. */
+  setTitle(profile: string, sessionId: string, title: string | null): void;
+  /** Archive or unarchive a chat in Hermes. */
+  archive(profile: string, sessionId: string, on: boolean): void;
+  /** Another client's `/retry` of the last message. */
+  retry(profile: string, sessionId: string): Json;
+  /** Another client's compaction. */
+  compressElsewhere(profile: string, sessionId: string): Json;
+  /** Every REST answer waits this long (a slow import, A38). */
+  restDelayMs: number;
   /** Another client answers a pending approval or clarify. */
   answerElsewhere(profile: string, sessionId: string, promptId: string, answer: string): boolean;
   restart(opts?: Pick<FakeOptions, "contract" | "codeVersion">): Promise<void>;
@@ -320,8 +332,12 @@ export async function startFakeHermes(opts: FakeOptions = {}): Promise<FakeHerme
   // REST projection (`hermes_cli/web_routers/sessions.py:182, 739`), behind `native-http` (`hermes_cli/dashboard_auth/native_http.py`).
   const onHttp = (req: http.IncomingMessage, res: http.ServerResponse) => {
     const send = (status: number, body: unknown) => {
-      res.writeHead(status, { "content-type": "application/json" });
-      res.end(JSON.stringify(body));
+      const out = () => {
+        res.writeHead(status, { "content-type": "application/json" });
+        res.end(JSON.stringify(body));
+      };
+      if (fake.restDelayMs > 0) setTimeout(out, fake.restDelayMs);
+      else out();
     };
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const header = req.headers[NATIVE_HTTP_HEADER.toLowerCase()];
@@ -421,12 +437,18 @@ export async function startFakeHermes(opts: FakeOptions = {}): Promise<FakeHerme
     violations,
     engine,
     modelOptionsDelayMs: 0,
+    restDelayMs: 0,
     session: (profile, id) => engine.session(named(profile), id),
     nextTurn: (profile, script) => engine.nextTurn(named(profile), script),
     outsideTurn: (profile, id, text, o) => engine.outsideTurn(named(profile), id, text, o),
     conduitTurn: (profile, id, text, o) => engine.conduitTurn(named(profile), id, text, o),
     legacySession: (profile, o) => engine.legacySession(named(profile), o),
     hold: (profile, id, on) => engine.hold(named(profile), id, on),
+    outsideChat: (profile, o) => engine.outsideChat(named(profile), o),
+    setTitle: (profile, id, title) => engine.setTitle(named(profile), id, title),
+    archive: (profile, id, on) => engine.archive(named(profile), id, on),
+    retry: (profile, id) => engine.retry(named(profile), id),
+    compressElsewhere: (profile, id) => engine.compressElsewhere(named(profile), id),
     answerElsewhere: (profile, id, promptId, answer) => engine.answerElsewhere(named(profile), id, promptId, answer),
     handle: (method, fn) => void handlers.set(method, fn),
     emit: (event) => {

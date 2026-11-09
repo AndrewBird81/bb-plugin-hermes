@@ -16,12 +16,21 @@
 //   /modelOptionsDelay {ms}
 //   /restart         {contract?, codeVersion?}          running turns → unknown; new port, instance, epoch
 //   /session         {profile, session_id}              engine state of a chat (ids, fences, pending, prompts)
+//   /outsideChat     {profile, kind?, turns?, title?, hidden?, archived?, daysAgo?, …OutsideChat}  a finished chat
+//                    another client made → {session_id}; kind: cli tui desktop (in) | cron oneshot acp discord
+//                    hidden empty bb (out); a Conduit chat is /legacySession
+//   /title           {profile, session_id, title}        a Hermes title change
+//   /archive         {profile, session_id, on?}          archive (or unarchive, on:false) in Hermes
+//   /retry           {profile, session_id}              another client's /retry of the last message
+//   /compress        {profile, session_id}              another client's compaction
+//   /restDelay       {ms}                               every REST answer waits (a slow import, A38)
+//   /requests        {from?}                            the canonical calls since index `from`: {next, calls[{method, profile, refused?}]}
 // SIGHUP restarts too. Prompt words script turns from bb's composer as well: #slow #tool #approval #edit
 // #clarify #think #fail.
 import { writeFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import type { Session } from "./engine.js";
+import type { OutsideChat, Session } from "./engine.js";
 import { RECORDINGS_LATEST_FIRST, startFakeHermes, type FakeHermes } from "./index.js";
 
 const args = process.argv.slice(2);
@@ -65,6 +74,26 @@ function state(s: Session) {
 }
 
 type Body = Record<string, any>;
+
+/** The outside chats e2e needs, as Hermes stores them (`docs/operations.md` §Surfaces; live labels). */
+const KINDS: Record<string, OutsideChat> = {
+  cli: { source: "local", created_source: "cli" },
+  tui: { source: "local", created_source: "tui" },
+  desktop: { source: "local", created_source: "desktop" },
+  cron: { source: "cron", created_source: "cron" },
+  oneshot: { source: "oneshot", created_source: "oneshot" },
+  acp: { source: "local", created_source: "acp" },
+  discord: { source: "discord", created_source: "discord", chat_id: "e2e-channel" },
+  hidden: { source: "local", created_source: "cli", hidden: true },
+  empty: { source: "local", created_source: "cli", turns: [] },
+};
+function outsideChat(b: Body): OutsideChat {
+  const { profile: _p, kind, ...rest } = b;
+  const thread = `thr_e2e${Date.now()}`;
+  const base = kind === "bb" ? { source: "local", created_source: "desktop", request_id: `bb:${thread}`, submission_id: `bb:${thread}:1` } : KINDS[kind ?? "cli"];
+  if (!base) throw new Error(`unknown kind ${kind}`);
+  return { turns: [`a ${kind ?? "cli"} chat`], ...base, ...rest };
+}
 const ops: Record<string, (b: Body, f: FakeHermes) => unknown> = {
   nextTurn: (b, f) => f.nextTurn(b.profile, b.script ?? {}),
   outsideTurn: (b, f) => f.outsideTurn(b.profile, b.session_id, b.text),
@@ -76,6 +105,16 @@ const ops: Record<string, (b: Body, f: FakeHermes) => unknown> = {
   restart: async (b, f) => {
     await f.restart({ contract: b.contract, codeVersion: b.codeVersion });
     return announce();
+  },
+  outsideChat: (b, f) => ({ session_id: f.outsideChat(b.profile, outsideChat(b)) }),
+  title: (b, f) => f.setTitle(b.profile, b.session_id, b.title ?? null),
+  archive: (b, f) => f.archive(b.profile, b.session_id, b.on !== false),
+  retry: (b, f) => f.retry(b.profile, b.session_id),
+  compress: (b, f) => f.compressElsewhere(b.profile, b.session_id),
+  restDelay: (b, f) => void (f.restDelayMs = Number(b.ms) || 0),
+  requests: (b, f) => {
+    const from = Number(b.from) || 0;
+    return { next: f.requests.length, calls: f.requests.slice(from).map((r) => ({ method: r.method, profile: r.profile, ...(r.refused ? { refused: r.refused } : {}) })) };
   },
   session: (b, f) => {
     const s = f.session(b.profile, b.session_id);

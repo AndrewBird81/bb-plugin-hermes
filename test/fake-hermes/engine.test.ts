@@ -763,3 +763,69 @@ describe("engine: REST projection", () => {
     expect(oldest.pagination).toEqual({ limit: 2, offset: 2, order: "oldest", returned: 2 });
   });
 });
+
+describe("engine: outside chats on demand (e2e knobs)", () => {
+  it("makes finished chats as Hermes stores them, each REST row with a recorded key set", async () => {
+    const f = await fake();
+    const made = {
+      cli: f.outsideChat("alex", { turns: ["from the cli"] }),
+      tui: f.outsideChat("alex", { created_source: "tui", turns: ["from the tui"] }),
+      old: f.outsideChat("alex", { created_source: "desktop", turns: ["long ago"], daysAgo: 40 }),
+      cron: f.outsideChat("alex", { source: "cron", turns: ["a job"] }),
+      oneshot: f.outsideChat("alex", { source: "oneshot", turns: ["once"] }),
+      discord: f.outsideChat("alex", { source: "discord", chat_id: "e2e-channel", turns: ["a dm"] }),
+      hidden: f.outsideChat("alex", { hidden: true, turns: ["hidden"] }),
+      empty: f.outsideChat("alex"),
+      bb: f.outsideChat("alex", { created_source: "desktop", request_id: "bb:thr_x", submission_id: "bb:thr_x:1", turns: ["from bb"] }),
+    };
+    const rows = (await listSessions(f.folder, "alex", { order: "recent", archived: "include", limit: 100 })).sessions;
+    for (const r of rows) expect(recordedKeys.list.has(keysOf(r)), r.id).toBe(true);
+    const by = (id: string) => rows.find((r) => r.id === id);
+    expect(by(made.hidden)).toBeUndefined();
+    expect(rows).toHaveLength(8);
+    expect(by(made.cli)).toMatchObject({ source: "local", created_source: "cli", chat_id: made.cli, message_count: 2 });
+    expect(by(made.tui)).toMatchObject({ source: "local", created_source: "tui" });
+    expect(by(made.cron)).toMatchObject({ source: "cron", created_source: "cron", chat_id: null });
+    expect(by(made.oneshot)).toMatchObject({ source: "oneshot", created_source: "oneshot" });
+    expect(by(made.discord)).toMatchObject({ source: "discord", created_source: "discord", chat_id: "e2e-channel" });
+    expect(by(made.empty)).toMatchObject({ message_count: 0 });
+    expect(made.bb).toBe("local-" + createHash("sha256").update(JSON.stringify([f.profiles[1]!.home, `uid:${process.getuid!()}`, "bb:thr_x"])).digest("hex"));
+    const bbFirst = (await readMessages(f.folder, "alex", made.bb, { order: "oldest", limit: 500 })).messages[0]!;
+    expect(bbFirst.display_metadata).toMatchObject({ submission_id: "bb:thr_x:1" });
+    expect(Date.now() / 1000 - by(made.old)!.last_active!).toBeGreaterThan(39 * 86_400);
+    const oldRows = (await readMessages(f.folder, "alex", made.old, { order: "oldest", limit: 500 })).messages;
+    expect(Date.now() / 1000 - oldRows[1]!.timestamp!).toBeGreaterThan(39 * 86_400);
+  });
+
+  it("a title change, an archive, a /retry and a compaction from another client", async () => {
+    const f = await fake();
+    const id = f.outsideChat("alex", { turns: ["first ask"] });
+    f.setTitle("alex", id, "Renamed in Hermes");
+    f.archive("alex", id, true);
+    const list = () => listSessions(f.folder, "alex", { order: "recent", archived: "include", limit: 100 }).then((p) => p.sessions[0]!);
+    expect(await list()).toMatchObject({ title: "Renamed in Hermes", archived: true });
+    expect((await listSessions(f.folder, "alex", { order: "recent", limit: 100 })).sessions).toHaveLength(0);
+    f.archive("alex", id, false);
+    const k = await client(f);
+    await k.c.resume({ profile: "alex", session_id: id, omit_messages: true });
+    f.retry("alex", id);
+    await k.until(() => k.completes(id).length === 1);
+    const chain = await readChain(f.folder, "alex", id);
+    const users = chain.messages.filter((m) => m.role === "user");
+    expect(users.map((m) => m.content)).toEqual(["first ask", "first ask"]);
+    expect(users[1]!.message_uid).not.toBe(users[0]!.message_uid);
+    expect(users[1]!.display_metadata).toEqual({ gateway_input_owner: "<redacted>" });
+    expect(groupTurns(chain.messages)).toHaveLength(2);
+    f.compressElsewhere("alex", id);
+    const after = await readChain(f.folder, "alex", id);
+    expect(groupTurns(after.messages).map((t) => t.anchor_uid)).toEqual(groupTurns(chain.messages).map((t) => t.anchor_uid));
+  });
+
+  it("restDelayMs slows every REST answer", async () => {
+    const f = await fake();
+    f.restDelayMs = 300;
+    const t0 = Date.now();
+    await listSessions(f.folder, "alex", { order: "recent", limit: 1 });
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(290);
+  });
+});

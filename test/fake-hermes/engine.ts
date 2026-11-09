@@ -19,7 +19,7 @@
  * `#approval` / `#edit` raise an approval before the tool runs, `#clarify` asks, `#think` reasons (streamed on tui/gui sessions),
  * `#fail` fails the turn. `nextTurn(profile, script)` scripts the next turn of a profile instead.
  */
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { WebSocket } from "ws";
@@ -110,6 +110,26 @@ export interface TurnScript {
   holdMs?: number;
 }
 
+export interface OutsideChat {
+  /** Raw `source`: `local` (default) for canonical rows, else the label as stored (`cron`, `oneshot`, `discord`, `desktop`…). */
+  source?: string;
+  /** Default: `cli` for `local`, else the `source`. */
+  created_source?: string | null;
+  /** A chat app's platform chat id (raw sources only). */
+  chat_id?: string | null;
+  title?: string | null;
+  hidden?: boolean;
+  archived?: boolean;
+  cwd?: string | null;
+  /** User texts; each gets an echo reply. None: an empty chat. */
+  turns?: string[];
+  /** The create's request id (`bb:<thread>` for a session bb created). */
+  request_id?: string;
+  /** The first user row's submission id (`bb:<thread>:<request>` for bb's). */
+  submission_id?: string;
+  daysAgo?: number;
+}
+
 export interface Row extends Json {
   id: number;
   session_id: string;
@@ -140,6 +160,8 @@ export interface Admission {
   userRow?: Row;
   /** The authority epoch the admission was taken in; it keeps it across a restart. */
   epoch: number;
+  /** A `/retry` from another client: its user row carries no submission id (retry.json). */
+  retry?: boolean;
 }
 
 interface Prompt {
@@ -602,7 +624,7 @@ export class Engine {
   }
 
   // ---- submit and the FIFO
-  private submit(profile: FakeProfile, socket: WebSocket | null, params: Json, opts: { admissionId?: string; script?: TurnScript } = {}): Json {
+  private submit(profile: FakeProfile, socket: WebSocket | null, params: Json, opts: { admissionId?: string; script?: TurnScript; retry?: boolean } = {}): Json {
     const s = this.require(profile, params.session_id);
     if (socket && !s.subscribers.has(socket)) throw new Refusal("permission_denied");
     const request = (params.submission_id ?? params.input_id) as string | undefined;
@@ -636,6 +658,7 @@ export class Engine {
       turn_author: (params.turn_author as Json | null | undefined) ?? null,
       script: opts.script ?? this.scriptFor(profile, params.text as string),
       epoch: this.hooks.authorityEpoch(),
+      ...(opts.retry ? { retry: true } : {}),
     };
     s.queue.push(a);
     const status = this.admissionStatus(a);
@@ -856,7 +879,7 @@ export class Engine {
       const stored = path.join(a.session.profile.home, "cache", "documents", "native-inputs", digest, path.basename(file));
       return `[The user sent an image~ Here's what I can see:\nStub chat]\n[If you need a closer look, use vision_analyze with image_url: ${stored} ~]\n\n`;
     });
-    return { tpl: "user", role: "user", content: notes.join("") + a.text, display_kind: a.display_kind, display_metadata: { gateway_input_owner: "<redacted>", submission_id: a.submission_id } };
+    return { tpl: "user", role: "user", content: notes.join("") + a.text, display_kind: a.display_kind, display_metadata: a.retry ? { gateway_input_owner: "<redacted>" } : { gateway_input_owner: "<redacted>", submission_id: a.submission_id } };
   }
 
   /** Append a row to the chat's physical tip. */
@@ -1213,6 +1236,79 @@ export class Engine {
 
   hold(profile: FakeProfile, sessionId: string, on: boolean) {
     this.require(profile, sessionId).held = on;
+  }
+
+  /**
+   * A stored chat another Hermes client made, finished: CLI, TUI, Desktop (`source: local`, the surface in
+   * `created_source`), or what must stay out of bb: cron, one-shot, ACP, a chat app (raw `source`), hidden, empty,
+   * bb-created (a `bb:` request id and first submission). Shapes as recorded (`docs/operations.md` §Surfaces and
+   * the live labels: canonical rows `local`/<surface>, `oneshot`/`oneshot`, `cron`/`cron`, `discord`/`discord`).
+   * `daysAgo` moves its start and rows back. Returns its id.
+   */
+  outsideChat(profile: FakeProfile, opts: OutsideChat = {}): string {
+    const source = opts.source ?? "local";
+    const local = source === "local";
+    const stamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
+    const id = local
+      ? "local-" + createHash("sha256").update(JSON.stringify([profile.home, `uid:${this.uid}`, opts.request_id ?? hex()])).digest("hex")
+      : `${stamp.slice(0, 8)}_${stamp.slice(8)}_${hex(3)}`;
+    const s = this.newSession(profile, id, {
+      title: opts.title ?? null,
+      hidden: opts.hidden ?? false,
+      archived: opts.archived ?? false,
+      source,
+      created_source: opts.created_source ?? (local ? "cli" : source),
+      // A chat app's rows carry the platform's chat id, never a lineage root.
+      chat_id: local ? id : (opts.chat_id ?? null),
+      cwd: opts.cwd ?? null,
+    });
+    for (const [i, t] of (opts.turns ?? []).entries()) {
+      const submission = i === 0 && opts.submission_id ? opts.submission_id : randomUUID();
+      this.addRow(s, { tpl: "user", role: "user", content: t, display_kind: null, display_metadata: local ? { gateway_input_owner: "<redacted>", submission_id: submission } : null });
+      this.addRow(s, { tpl: "assistant", role: "assistant", content: `echo(${2 * i + 2}): ${t}`, finish_reason: "stop" });
+    }
+    const back = (opts.daysAgo ?? 0) * 86_400;
+    if (back) {
+      s.started_at -= back;
+      s.last_activity_at -= back;
+      for (const r of s.rows) r.timestamp -= back;
+    }
+    this.changed(profile);
+    return id;
+  }
+
+  /** A Hermes title change (a rename in any app): the chain's listed row, its tip. */
+  setTitle(profile: FakeProfile, sessionId: string, title: string | null) {
+    const s = this.require(profile, sessionId);
+    this.tipOf(s).title = title;
+    if (this.tipOf(s) !== s) s.title = title;
+    this.changed(profile);
+  }
+
+  /** Archive or unarchive a chat in Hermes (Desktop's archive): every segment of its chain. */
+  archive(profile: FakeProfile, sessionId: string, on: boolean) {
+    for (let x: Session | null = this.require(profile, sessionId); x; x = x.tip) x.archived = on;
+    this.changed(profile);
+  }
+
+  /**
+   * Another client's `/retry`: the last user message again as a new turn (new row, new uid, no submission id),
+   * the first turn kept (T0.5 retry.json). Returns its AdmissionStatus.
+   */
+  retry(profile: FakeProfile, sessionId: string): Json {
+    const s = this.require(profile, sessionId);
+    const last = [...this.chainRows(s)].reverse().find((r) => r.active && r.role === "user" && r.display_kind !== "steer");
+    if (!last) throw new Refusal("not_found");
+    return this.submit(profile, null, { session_id: s.id, text: String(last.content), submission_id: `retry-${hex()}` }, { retry: true });
+  }
+
+  /** Another client's compaction (Desktop's compress, `/compress`): in place or rotating, as the profile is set. */
+  compressElsewhere(profile: FakeProfile, sessionId: string): Json {
+    const s = this.require(profile, sessionId);
+    if (s.running) throw new Refusal("session_busy");
+    const result = this.compress(s);
+    this.changed(profile);
+    return result;
   }
 
   /** Another client answers a pending prompt (`*.settled` follows). */

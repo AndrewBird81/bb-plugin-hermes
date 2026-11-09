@@ -9,7 +9,9 @@ Isolated runs only: Hermes homes under `/private/tmp/bb-hermes-test/`, the isola
 | `isolated-hermes.ts` | isolated Hermes: stub model, gateway, dashboard (Conduit's client), canonical client; standalone for `bb-e2e.sh hermes` |
 | `record-frames.ts` | T1.0 recordings → `test/fixtures/frames/` |
 | `two-client.test.ts` | T1.13: `npx vitest run --config e2e/vitest.config.ts` |
-| `fake-ctl.sh` | a knob on the running strict fake (`test/fake-hermes/run.ts` ops: `nextTurn`, `outsideTurn`, `conduitTurn`, `legacySession`, `hold`, `session`, …) |
+| `fake-ctl.sh` | a knob on the running strict fake (`test/fake-hermes/run.ts` ops: `nextTurn`, `outsideTurn`, `conduitTurn`, `legacySession`, `hold`, `session`; P2: `outsideChat` (kinds `cli` `tui` `desktop`; out: `cron` `oneshot` `acp` `discord` `hidden` `empty` `bb`), `title`, `archive`, `retry`, `compress`, `restDelay`, `requests`) |
+| `hermes-ctl.ts` | the same outside chats on the isolated Hermes, through Hermes' own clients (`hermes chat --source`, `-z`, `cron run`, the dashboard socket, canonical creates); `title`, `archive`, `turn`, `compress` |
+| `eligibility.ts` | P2 gate: the chats a switch-on imports, counted from `state.db` alone (`sqlite3 -readonly`), minus bb's bindings and tombstones (`--data-db`); safe on a live Hermes. Test: `npx vitest run --config e2e/vitest.config.ts e2e/eligibility.test.ts` |
 | `fake-sessions.ts`, `fake-messages.ts` | the fake's chats and stored rows |
 | `conduit-send.ts` | a Conduit-style (dashboard) send on the isolated Hermes |
 | `tlog.mjs` | a thread's bb event log, one line per event |
