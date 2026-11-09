@@ -24,6 +24,8 @@ node=$(command -v node)
 # the host daemon re-derives the user's PATH, so provider-acp stays disabled (preflight).
 clean_env() {
   for v in $(env | sed -n 's/^\(BB_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$v"; done
+  # UTC: the bridges inherit it and print card deadlines ("until hh:mm") in it (docs/variables.md).
+  export TZ=UTC
   local dirs="" d
   IFS=: read -ra parts <<<"$PATH"
   for d in "${parts[@]}"; do

@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
+import { GENERIC_PATTERNS } from './private-patterns.mjs';
 
 const envPath = join(homedir(), '.config/bb-plugin-hermes/private.env');
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -20,13 +21,7 @@ if (existsSync(envPath)) {
 } else {
   console.warn(`note: ${envPath} not found; checking generic patterns only`);
 }
-checks.push(
-  ['tailnet IP', /\b100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b/g],
-  ['*.ts.net name', /[a-z0-9-]+\.ts\.net\b/gi],
-  ['/Users/<name>/ path', /\/Users\/[^/\s"'`<>]+\//g],
-  ['email', /(?<![\w.+-])[\w.%+-]+@[\w.-]+\.[a-z]{2,}/gi],
-  ['Hermes session id', /\b\d{8}_\d{6}_[0-9a-f]{6,}\b/g],
-);
+checks.push(...GENERIC_PATTERNS);
 const allowedEmail = /^(git@github\.com|[\w.+-]+@users\.noreply\.github\.com)$/i;
 
 // Archify pages embed copies of other files as base64 or gzip+base64.

@@ -51,7 +51,7 @@ const stub = http.createServer(async (req, res) => {
   res.end("data: [DONE]\n\n");
 });
 
-const ENV = { HOME: `${H}/home`, PATH: `${H}/bin:/usr/bin:/bin:/usr/sbin:/sbin`, TMPDIR: `${H}/tmp`, LANG: "en_US.UTF-8", HERMES_GATEWAY_LOCK_DIR: `${H}/locks` };
+const ENV = { HOME: `${H}/home`, PATH: `${H}/bin:/usr/bin:/bin:/usr/sbin:/sbin`, TMPDIR: `${H}/tmp`, LANG: "en_US.UTF-8", TZ: "UTC", HERMES_GATEWAY_LOCK_DIR: `${H}/locks` };
 const procs: ChildProcess[] = [];
 function hermes(args: string[], log: string, extraEnv: Record<string, string> = {}): ChildProcess & { lines: string[] } {
   const p = spawn(path.join(LIVE, "hermes-agent/venv/bin/python"), ["-m", "hermes_cli.main", ...args], { cwd: H, env: { ...ENV, HERMES_HOME: H, ...extraEnv }, stdio: ["ignore", "pipe", "pipe"] }) as ChildProcess & { lines: string[] };

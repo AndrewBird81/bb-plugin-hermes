@@ -63,7 +63,8 @@ const stub = http.createServer(async (req, res) => {
 // ---- isolated Hermes
 const procs: ChildProcess[] = [];
 function hermes(args: string[], log: string, extraEnv: Record<string, string> = {}): ChildProcess {
-  const env = { HOME: `${H}/home`, PATH: "/usr/bin:/bin:/usr/sbin:/sbin", TMPDIR: `${H}/tmp`, LANG: "en_US.UTF-8", HERMES_HOME: H, HERMES_GATEWAY_LOCK_DIR: `${H}/locks`, ...extraEnv };
+  // TZ=UTC: Hermes writes the zone into every system prompt (docs/variables.md).
+  const env = { HOME: `${H}/home`, PATH: "/usr/bin:/bin:/usr/sbin:/sbin", TMPDIR: `${H}/tmp`, LANG: "en_US.UTF-8", TZ: "UTC", HERMES_HOME: H, HERMES_GATEWAY_LOCK_DIR: `${H}/locks`, ...extraEnv };
   const p = spawn(path.join(HERMES, "hermes-agent/venv/bin/python"), ["-m", "hermes_cli.main", ...args], { cwd: H, env, stdio: ["ignore", "pipe", "pipe"] });
   const lines: string[] = [];
   p.stdout!.on("data", (d) => lines.push(String(d)));

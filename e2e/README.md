@@ -13,6 +13,6 @@ Isolated runs only: Hermes homes under `/private/tmp/bb-hermes-test/`, the isola
 | `fake-sessions.ts`, `fake-messages.ts` | the fake's chats and stored rows |
 | `conduit-send.ts` | a Conduit-style (dashboard) send on the isolated Hermes |
 | `tlog.mjs` | a thread's bb event log, one line per event |
-| `screenshots/` | T1.14 UI evidence |
+| `screenshots/` | T1.14 UI evidence. Taken in UTC: `bb-e2e.sh` runs bb-app (and so the bridges, which print card deadlines) with `TZ=UTC`, and the browser is a headless Chrome for Testing started with `TZ=UTC` and `--remote-debugging-port`, driven through agent-browser `--cdp` (`Intl.DateTimeFormat().resolvedOptions().timeZone` must say `UTC`) |
 
 T1.14 on the fake, in order: `stop`; `install <repo>`; `fake /private/tmp/bb-hermes-test/e2e-fake`; `start`; `connect /private/tmp/bb-hermes-test/e2e-fake`; `check` (abort unless the instance id is the fake's); then `sbb plugin rpc call hermes setBot|newChat|bots|diagnostics`, `sbb thread tell|stop|spawn|log|interactions`, `sbb push-notifications thread`, and `fake-ctl.sh` for outside, Conduit and scripted turns. Before running a bot's `bb-hermes` wrapper, check it sets `BB_SERVER_URL=http://127.0.0.1:48886`.

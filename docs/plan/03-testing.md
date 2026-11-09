@@ -40,6 +40,8 @@ Conformance scenarios: `handshake/initialize`, `session/start-identity`, `sessio
 
 ## Recorded fixtures (isolated unless noted; redact tokens, `origin_json`, user ids)
 
+Recordings and screenshots run in UTC (`TZ=UTC` for Hermes, bb and the browser): Hermes writes the local zone into every system prompt (docs/variables.md).
+
 | Fixture | Task |
 |---|---|
 | Existing: `spike/hermes` `src/hermes/fixtures/*.json` (create/stream, clarify, steer/interrupt, replay, viewer, mutate, approval) | — |

@@ -246,7 +246,9 @@ export async function startIsolatedHermes(opts: IsolatedOptions) {
   });
   const profileHome = (p: string) => (p === "default" ? H : `${H}/profiles/${p}`);
   /** Every Hermes process here runs with this environment: nothing of the caller's. */
-  const baseEnv = { HOME: `${H}/home`, PATH: "/usr/bin:/bin:/usr/sbin:/sbin", TMPDIR: `${H}/tmp`, LANG: "en_US.UTF-8", HERMES_HOME: H, HERMES_GATEWAY_LOCK_DIR: `${H}/locks` };
+  // TZ=UTC: Hermes writes the zone into every system prompt ("Conversation started: … (UTC, …)"), and
+  // recordings must not carry the machine's (docs/variables.md).
+  const baseEnv = { HOME: `${H}/home`, PATH: "/usr/bin:/bin:/usr/sbin:/sbin", TMPDIR: `${H}/tmp`, LANG: "en_US.UTF-8", TZ: "UTC", HERMES_HOME: H, HERMES_GATEWAY_LOCK_DIR: `${H}/locks` };
   const spawnHermes = (args: string[], log: string, o: { env?: Record<string, string>; cwd?: string } = {}): Proc => {
     const env = { ...baseEnv, ...o.env };
     const p = spawn(path.join(HERMES, "hermes-agent/venv/bin/python"), ["-m", "hermes_cli.main", ...args], { cwd: o.cwd ?? H, env, stdio: ["ignore", "pipe", "pipe"] }) as Proc;

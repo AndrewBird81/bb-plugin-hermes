@@ -5,6 +5,7 @@ The docs never hold the owner's personal values. Each one is written as a variab
 - Real values: `~/.config/bb-plugin-hermes/private.env` (`KEY=value`, mode 600, outside the repo, never committed).
 - Home paths are written `~/…`. In prose the owner is "the owner".
 - Times of day of the owner's activity are dropped or coarsened (dates, durations and config timings stay). Commit dates are UTC.
+- The owner's time zone never appears: recordings run Hermes with `TZ=UTC` (its system prompt names the zone), and screenshots come from a bb and a browser in UTC. `check-private` refuses a non-UTC Hermes zone line and the owner's offsets (`scripts/private-patterns.mjs`); it can't read screenshots, so check them by eye.
 - Guard: `node scripts/check-private.mjs` fails if a tracked file holds a value from `private.env` or a generic pattern (tailnet IP, `*.ts.net` name, `/Users/<name>/` path, non-noreply email, Hermes session id).
 
 ## Machines and tailnet
