@@ -1307,6 +1307,15 @@ export class Engine {
     this.changed(profile);
   }
 
+  /** A chat deleted in Hermes (any app's delete): its whole chain goes; reads answer `not_found` / 404. */
+  deleteChat(profile: FakeProfile, sessionId: string) {
+    const root = this.require(profile, sessionId);
+    const chain = new Set<Session>();
+    for (let x: Session | null = root; x; x = x.tip) chain.add(x);
+    this.sessions.set(profile.home, this.all(profile).filter((s) => !chain.has(s)));
+    this.changed(profile);
+  }
+
   /** Archive or unarchive a chat in Hermes (Desktop's archive): every segment of its chain. */
   archive(profile: FakeProfile, sessionId: string, on: boolean) {
     for (let x: Session | null = this.require(profile, sessionId); x; x = x.tip) x.archived = on;

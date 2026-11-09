@@ -821,6 +821,15 @@ describe("engine: outside chats on demand (e2e knobs)", () => {
     expect(groupTurns(after.messages).map((t) => t.anchor_uid)).toEqual(groupTurns(chain.messages).map((t) => t.anchor_uid));
   });
 
+  it("a chat deleted in Hermes leaves the list; its messages answer 404", async () => {
+    const f = await fake();
+    const id = f.outsideChat("alex", { turns: ["soon gone"] });
+    f.deleteChat("alex", id);
+    expect((await listSessions(f.folder, "alex", { order: "recent", archived: "include", limit: 100 })).sessions).toHaveLength(0);
+    expect(f.session("alex", id)).toBeUndefined();
+    await expect(readMessages(f.folder, "alex", id, { order: "oldest", limit: 500 })).rejects.toThrow();
+  });
+
   it("restDelayMs slows every REST answer", async () => {
     const f = await fake();
     f.restDelayMs = 300;

@@ -155,6 +155,8 @@ export interface FakeHermes {
   outsideChat(profile: string, opts?: OutsideChat): string;
   /** A Hermes title change. */
   setTitle(profile: string, sessionId: string, title: string | null): void;
+  /** Delete a chat in Hermes. */
+  deleteChat(profile: string, sessionId: string): void;
   /** Archive or unarchive a chat in Hermes. */
   archive(profile: string, sessionId: string, on: boolean): void;
   /** Another client's `/retry` of the last message. */
@@ -447,6 +449,7 @@ export async function startFakeHermes(opts: FakeOptions = {}): Promise<FakeHerme
     outsideChat: (profile, o) => engine.outsideChat(named(profile), o),
     setTitle: (profile, id, title) => engine.setTitle(named(profile), id, title),
     archive: (profile, id, on) => engine.archive(named(profile), id, on),
+    deleteChat: (profile, id) => engine.deleteChat(named(profile), id),
     retry: (profile, id) => engine.retry(named(profile), id),
     compressElsewhere: (profile, id) => engine.compressElsewhere(named(profile), id),
     answerElsewhere: (profile, id, promptId, answer) => engine.answerElsewhere(named(profile), id, promptId, answer),

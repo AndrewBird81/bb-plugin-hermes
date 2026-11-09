@@ -67,6 +67,20 @@ const diagnostics = () => rpc("diagnostics");
 /** Errors the harness itself causes: the fake folder has no `hermes` CLI for refresh-prompts. */
 const HARNESS = /^(hermes_not_found|set_bot_access_incomplete)$/;
 const productErrors = () => diagnostics().errors.filter((e) => !HARNESS.test(e));
+/** The plugin's error codes in bb's server log since `since` (ms), harness ones left out: unlike diagnostics' bounded list, a window. */
+function logErrors(since) {
+  const lines = readFileSync(`${process.env.HOME}/.bb-hermes-e2e/logs/server.1.log`, "utf8").split("\n");
+  const out = [];
+  for (const line of lines) {
+    if (!line.includes("[plugin:hermes] error ")) continue;
+    try {
+      const l = JSON.parse(line);
+      const code = l.msg.slice("[plugin:hermes] error ".length);
+      if (l.time >= since && !HARNESS.test(code)) out.push(code);
+    } catch {}
+  }
+  return out;
+}
 const allLive = (profile, count) => {
   const b = bindings(profile);
   return b.length >= count && b.every((x) => x.state === "live") ? b : null;
@@ -138,6 +152,7 @@ ids.tui = await chat({ profile: "alex", kind: "tui", turns: ["tui one"] });
 ids.desktop = await chat({ profile: "alex", kind: "desktop", title: "Planning", turns: ["desk one"] });
 ids.archived = await chat({ profile: "alex", kind: "cli", archived: true, turns: ["archived one"] });
 ids.d20 = await chat({ profile: "alex", kind: "cli", daysAgo: 20, turns: ["twenty days ago"] });
+ids.long25 = await chat({ profile: "alex", kind: "cli", turns: Array.from({ length: 25 }, (_, i) => `twenty-five turn ${i + 1}`) });
 ids.conduit = (await ctl("legacySession", { profile: "alex", turns: ["conduit one", "conduit two"] })).session_id;
 const out = {};
 for (const kind of ["cron", "oneshot", "acp", "discord", "hidden", "empty", "bb"]) out[kind] = await chat({ profile: "alex", kind });
@@ -146,14 +161,14 @@ ids.alexBot = await chat({ profile: "alex", kind: "cli", title: "Bot Chat", turn
 const many = (label, k) => Array.from({ length: k }, (_, i) => `${label} ${i + 1}`);
 ids.bobBot = await chat({ profile: "bob", kind: "desktop", title: "Bot Chat", hidden: true, turns: many("bob bot chat turn", 30) });
 ids.bobSlow = await chat({ profile: "bob", kind: "cli", turns: many("bob slow turn", 10) });
-ids.defBot = await chat({ profile: "default", kind: "desktop", title: "Bot Chat", hidden: true, turns: many("default bot chat turn", 40) });
-const expectedAlex = [ids.cli, ids.tui, ids.desktop, ids.archived, ids.d20, ids.conduit];
+ids.defBot = await chat({ profile: "default", kind: "desktop", title: "Bot Chat", hidden: true, turns: many("default bot chat turn", 45) });
+const expectedAlex = [ids.cli, ids.tui, ids.desktop, ids.archived, ids.d20, ids.conduit, ids.long25];
 
 const counts = await until("switch rows count (60 s cache)", () => {
   const b = bots();
-  return b.alex.import_count === 6 && b.bob.import_count === 1 ? b : null;
+  return b.alex.import_count === 7 && b.bob.import_count === 1 ? b : null;
 }, 90_000, 3000).catch(() => bots());
-check("switch rows: Imports 6 (alex), 1 (bob), 0 (default)", counts.alex.import_count === 6 && counts.bob.import_count === 1 && counts.default.import_count === 0, `alex ${counts.alex.import_count}, bob ${counts.bob.import_count}, default ${counts.default.import_count}`);
+check("switch rows: Imports 7 (alex), 1 (bob), 0 (default)", counts.alex.import_count === 7 && counts.bob.import_count === 1 && counts.default.import_count === 0, `alex ${counts.alex.import_count}, bob ${counts.bob.import_count}, default ${counts.default.import_count}`);
 
 await openPage();
 const pushStart = Date.now();
@@ -161,10 +176,10 @@ const reqStart = (await ctl("requests")).next;
 
 // ---- 1. import at switch-on (alex)
 setBot("alex", true);
-await until("alex imported", () => allLive("alex", 7), 120_000);
+await until("alex imported", () => allLive("alex", 8), 120_000);
 const ab = bindings("alex");
 const mirrors = ab.filter((b) => b.kind === "mirror");
-check("1 imported threads == switch row == 6", mirrors.length === 6, `${mirrors.length}`);
+check("1 imported threads == switch row == 7", mirrors.length === 7, `${mirrors.length}`);
 check("1 imported chats are exactly the eligible ones", JSON.stringify(mirrors.map((b) => b.lineage_root).sort()) === JSON.stringify([...expectedAlex].sort()));
 const botA = ab.find((b) => b.kind === "bot");
 check("2 the chat titled Bot Chat is bound only to the bot thread", botA?.lineage_root === ids.alexBot && !mirrors.some((b) => b.lineage_root === ids.alexBot));
@@ -181,11 +196,19 @@ const reqs = (await ctl("requests", { from: reqStart })).calls.map((c) => c.meth
 const writes = reqs.filter((m) => !["profiles.list", "model.options", "session.list", "runtime.describe"].includes(m));
 check("1 0 Hermes writes during the import (canonical calls)", writes.length === 0, `${[...new Set(reqs)].join(", ")}`);
 check("1 0 pushes during the import", (await pushes(pushStart)).length === 0, JSON.stringify(await pushes(pushStart)));
+check("1 no plugin errors during the import (server log)", logErrors(pushStart).length === 0, JSON.stringify(logErrors(pushStart)));
 setBot("alex", false);
 await sleep(3000);
 setBot("alex", true);
 await sleep(15_000);
-check("1 a re-run (off, on) imports 0 new", bindings("alex").length === 7 && hermesThreads().filter((t) => bindings("alex").some((b) => b.thread_id === t.id)).length === 7);
+check("1 a re-run (off, on) imports 0 new", bindings("alex").length === 8 && hermesThreads().filter((t) => bindings("alex").some((b) => b.thread_id === t.id)).length === 8);
+// A 25-turn import, then a later outside turn: no imported reply shows twice (> 20 records).
+const l25 = bindingOf(ids.long25).thread_id;
+await ctl("outsideTurn", { profile: "alex", session_id: ids.long25, text: "after the 25-turn import" });
+await until("turn after the 25-turn import", () => sends(l25).some((x) => x.startsWith("[Outside bb] after the 25-turn import")), 30_000);
+await sleep(8000);
+const r25 = replies(l25).filter((r) => /twenty-five turn \d+$/.test(r));
+check("a 25-turn mirrored import: a later turn re-renders no imported reply", r25.length === 25 && new Set(r25).size === 25, `${r25.length} replies, ${new Set(r25).size} distinct`);
 
 // ---- turns during an import, and a user send queued behind it (bob, a slow import)
 await ctl("restDelay", { ms: 1500 });
@@ -230,14 +253,26 @@ await sleep(1500);
 const before = sends(defBot.thread_id).length;
 // A slow REST past the restart would time the worker's host calls out (its 30 s deadline): normal speed again.
 await ctl("restDelay", { ms: 0 });
+const restartAt = Date.now();
 await restartBb("bot thread mid-import");
-const defLive = await until("default bot thread imported", () => bindings("default").find((b) => b.kind === "bot" && b.state === "live" && sends(b.thread_id).filter((x) => /default bot chat turn \d+/.test(x)).length >= 40), 300_000, 3000);
+await sleep(10_000);
+check("no plugin errors after a bb restart (server log, shutdown included)", logErrors(restartAt).length === 0, JSON.stringify(logErrors(restartAt)));
+const defLive = await until("default bot thread imported", () => bindings("default").find((b) => b.kind === "bot" && b.state === "live" && sends(b.thread_id).filter((x) => /default bot chat turn \d+/.test(x)).length >= 45), 300_000, 3000);
 await until("default bot thread idle", () => thread(defLive.thread_id).status === "idle", 120_000, 1000);
 await sleep(5000);
 const defSends = sends(defLive.thread_id).filter((s) => /default bot chat turn \d+/.test(s));
 const defT = thread(defLive.thread_id);
-check("bb restart mid-import of a bot thread: same thread, 40 turns once each", defLive.thread_id === defBot.thread_id && defSends.length === 40 && new Set(defSends).size === 40, `${before} sends before the restart, ${defSends.length} turn sends after`);
+check("bb restart mid-import of a bot thread: same thread, 45 turns once each", defLive.thread_id === defBot.thread_id && defSends.length === 45 && new Set(defSends).size === 45, `${before} sends before the restart, ${defSends.length} turn sends after`);
 check("… ends read, 0 pushes", isRead(defT) && (await pushes(defPushStart)).length === 0, `lastReadAt − latestAttentionAt = ${(defT.lastReadAt ?? 0) - (defT.latestAttentionAt ?? 0)} ms; pushes ${JSON.stringify(await pushes(defPushStart))}`);
+
+// A 45-turn Bot Chat import, then one user send: no reply twice, and the send's reply pushes once.
+const defUser = Date.now();
+sbb("thread", "tell", defLive.thread_id, "a user send after the 45-turn import");
+await until("user send reply (45)", () => replies(defLive.thread_id).some((r) => r.includes("a user send after the 45-turn import")), 30_000);
+await sleep(10_000);
+const r45 = replies(defLive.thread_id).filter((r) => /default bot chat turn \d+$/.test(r));
+check("45-turn Bot Chat: a user send re-renders no imported reply", r45.length === 45 && new Set(r45).size === 45, `${r45.length} replies, ${new Set(r45).size} distinct`);
+check("45-turn Bot Chat: the user send's reply pushes once", (await pushes(defUser)).length === 1, JSON.stringify((await pushes(defUser)).map((p) => p.body)));
 
 // ---- 5. D48: off, turns and a new chat while off, on
 const alexBefore = bindings("alex").map((b) => b.thread_id).sort();
@@ -340,6 +375,15 @@ const tU = Date.now();
 await until("missed turn after unarchive", () => sends(deskT).length > s0, 30_000);
 check("A49 unarchive mirrors the missed turn at once", true, `${Date.now() - tU} ms`);
 
+// ---- a chat deleted in Hermes: its thread stays; reconnects log no error for it
+const deletedAt = Date.now();
+await ctl("delete", { profile: "alex", session_id: ids.tui });
+await sleep(8000);
+check("a chat deleted in Hermes: its thread stays", hermesThreads().some((t) => t.id === tuiT));
+sbb("thread", "tell", tuiT, "a send after the delete");
+const deletedErr = await until("send fails", () => events(tuiT).find((e) => e.type === "provider/error" && e.createdAt >= deletedAt), 30_000).catch(() => null);
+check("… a send to it fails 'Deleted in Hermes'", /Deleted in Hermes/.test(deletedErr?.data?.message ?? ""), deletedErr?.data?.message ?? "no provider/error");
+
 // ---- 7. A38: bb stopped mid-import
 await ctl("restDelay", { ms: 6000 });
 ids.long = await chat({ profile: "alex", kind: "cli", turns: many("long chat turn", 40) });
@@ -354,7 +398,8 @@ const longSends = sends(redone.thread_id).filter((s) => /long chat turn \d+/.tes
 const goneOld = !hermesThreads().some((t) => t.id === hidden.thread_id);
 check("7 after restart: the hidden thread deleted, the chat imported again once", goneOld && redone.thread_id !== hidden.thread_id && longSends.length === 40 && new Set(longSends).size === 40 && db(`SELECT count(*) AS n FROM bindings WHERE lineage_root = ${q(ids.long)}`)[0].n === 1);
 const d = diagnostics();
-check("7 no 409, duplicates 0, diagnostics clean (finding 2)", d.bindings.duplicates === 0 && productErrors().length === 0, `errors ${JSON.stringify(productErrors())}`);
+check("7 duplicates 0; no plugin errors since a chat was deleted in Hermes, A38's restart and redo included", d.bindings.duplicates === 0 && logErrors(deletedAt).length === 0, `errors ${JSON.stringify(logErrors(deletedAt))}`);
+check("7 no HTTP 409 in bb's server log since the run started", !readFileSync(`${process.env.HOME}/.bb-hermes-e2e/logs/server.1.log`, "utf8").split("\n").some((l) => { try { const j = JSON.parse(l); return j.time >= t0 && /\b409\b/.test(l); } catch { return false; } }));
 
 // ---- 9. no marker shown; a side chat too
 const side = rpc("newChat", { profile: "alex" }).thread_id;
@@ -375,6 +420,7 @@ await ctl("models", { count: 1 });
 // ---- 11. end
 const end = diagnostics();
 check("11 diagnostics at the end: connected, supported, duplicates 0, no product errors", end.health.state === "connected" && end.health.supported === true && end.bindings.duplicates === 0 && productErrors().length === 0, `${JSON.stringify(end.bindings)} ${JSON.stringify(end.errors)}`);
+check("11 no plugin errors in the server log over the whole run", logErrors(pushStart).length === 0, JSON.stringify(logErrors(pushStart)));
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed in ${Math.round((Date.now() - t0) / 1000)} s`);
 writeFileSync(path.join(TMP, "p2-fake-ids.json"), JSON.stringify({ ids, out }, null, 1));

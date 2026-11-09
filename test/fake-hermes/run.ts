@@ -21,6 +21,7 @@
 //                    hidden empty bb (out); a Conduit chat is /legacySession
 //   /title           {profile, session_id, title}        a Hermes title change
 //   /archive         {profile, session_id, on?}          archive (or unarchive, on:false) in Hermes
+//   /delete          {profile, session_id}              the chat deleted in Hermes
 //   /retry           {profile, session_id}              another client's /retry of the last message
 //   /compress        {profile, session_id}              another client's compaction
 //   /restDelay       {ms}                               every REST answer waits (a slow import, A38)
@@ -111,6 +112,7 @@ const ops: Record<string, (b: Body, f: FakeHermes) => unknown> = {
   title: (b, f) => f.setTitle(b.profile, b.session_id, b.title ?? null),
   archive: (b, f) => f.archive(b.profile, b.session_id, b.on !== false),
   retry: (b, f) => f.retry(b.profile, b.session_id),
+  delete: (b, f) => f.deleteChat(b.profile, b.session_id),
   compress: (b, f) => f.compressElsewhere(b.profile, b.session_id),
   restDelay: (b, f) => void (f.restDelayMs = Number(b.ms) || 0),
   models: (b, f) => {
