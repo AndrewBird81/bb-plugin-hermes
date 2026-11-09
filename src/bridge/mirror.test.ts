@@ -52,6 +52,21 @@ describe("replay (flow 5)", () => {
     expect(agentTexts(rig, "thr_imp")).toEqual([EARLIER_TEXT, "echo(2): first ask", "echo(4): second ask"]);
     expect((rig.notifications("thread/identity") as { providerThreadId: string }[]).at(-1)!.providerThreadId).toBe(`${home("alex")}#${chat.id}`);
   });
+
+  it("records each replayed turn with the reply rows it showed, so the server settles only what ran; a missing anchor records none", async () => {
+    const chat = await cliChat("alex", ["first ask", "second ask"]);
+    const rows = rig.fake.session("alex", chat.id)!.rows;
+    const reply = (i: number) => rows.filter((r) => r.role === "assistant")[i]!.message_uid;
+    await startThread(rig, "thr_rec", opts("alex", view(chat.id)));
+    await turn(rig, "thr_rec", wake({ op: "bind", profile_home: home("alex"), lineage_root: chat.id, legacy: false, anchor_uid: chat.anchors[0]! }, "[Outside bb · Oct 12] first ask"), opts("alex", view(chat.id)));
+    await turn(rig, "thr_rec", wake({ op: "replay", anchor_uid: chat.anchors[1]! }, "[Outside bb · Oct 12] second ask"), opts("alex", view(chat.id)));
+    await turn(rig, "thr_rec", wake({ op: "replay", anchor_uid: "gone-uid" }, "[Outside bb · Oct 12] gone"), opts("alex", view(chat.id)));
+    expect(mirrored("thr_rec")).toEqual([
+      expect.objectContaining({ anchor_uid: chat.anchors[0], reply_uids: [reply(0)], partial: false }),
+      expect.objectContaining({ anchor_uid: chat.anchors[1], reply_uids: [reply(1)], partial: false }),
+      expect.objectContaining({ anchor_uid: "gone-uid", reply_uids: [], partial: true }),
+    ]);
+  });
 });
 
 describe("mirror modes (flow 6)", () => {

@@ -1056,10 +1056,10 @@ export class HostedThread {
         ctx.lineageRoot = marker.lineage_root;
         ctx.legacy = marker.legacy;
         if (marker.since !== undefined) this.emit(textItem({ providerItemId: `note:${marker.anchor_uid}` }, EARLIER_TEXT));
-        return this.replay(ctx, marker.anchor_uid);
+        return this.replay(turn, ctx, marker.anchor_uid);
       }
       case "replay":
-        return this.replay(this.resolve(params), marker.anchor_uid);
+        return this.replay(turn, this.resolve(params), marker.anchor_uid);
       case "mirror":
         return this.mirror(turn, this.resolve(params), marker.anchor_uid, marker.rest === true);
     }
@@ -1080,9 +1080,10 @@ export class HostedThread {
 
   /**
    * Replay (flow 5): render that turn from history only; no canonical call (D16). An import sends one replay
-   * per turn in a row: one chain read serves them (re-read when the anchor isn't in it).
+   * per turn in a row: one chain read serves them (re-read when the anchor isn't in it). Recorded in `mirrored`
+   * like a mirror turn, so the server settles only what was shown (a failed render leaves no record).
    */
-  private async replay(ctx: ThreadContext, anchorUid: string): Promise<void> {
+  private async replay(turn: BbTurn, ctx: ThreadContext, anchorUid: string): Promise<void> {
     const cached = this.replayRows && Date.now() - this.replayRows.at < REPLAY_CACHE_MS ? this.replayRows.rows : null;
     let found = cached ? findTurn(cached, anchorUid) : null;
     if (!found) {
@@ -1090,7 +1091,8 @@ export class HostedThread {
       this.replayRows = { rows, at: Date.now() };
       found = findTurn(rows, anchorUid);
     }
-    if (found) this.renderReplies(ctx, anchorUid, found.turn.replies);
+    const uids = found ? this.renderReplies(ctx, anchorUid, found.turn.replies) : [];
+    this.noteMirrored(turn, anchorUid, uids, !found?.complete);
   }
 
   private replayRows: { rows: RestMessage[]; at: number } | null = null;
