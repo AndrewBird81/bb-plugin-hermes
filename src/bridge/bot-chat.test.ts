@@ -1,9 +1,19 @@
 // T1.4: the bot thread's Bot Chat (02 flow 3; S8 §Recommended protocol steps 1–6; 03 traps "Bot thread").
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Refusal } from "../../test/fake-hermes/index.js";
 import { BOT_CHAT_TITLE } from "../shared/sources.js";
 import { AUTO, creq, type Rig, startRig, startThread, text, turn } from "./testing/harness.js";
 import { agentTexts, deltas, events, statuses } from "./testing/read.js";
+
+/** The next `failChain.n` chain reads fail (REST 5xx, a gateway restart). */
+const failChain = vi.hoisted(() => ({ n: 0 }));
+vi.mock("../hermes/history.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../hermes/history.js")>();
+  return {
+    ...real,
+    readChain: (...args: Parameters<typeof real.readChain>) => (failChain.n > 0 && failChain.n-- ? Promise.reject(new Error("history_http_503:down")) : real.readChain(...args)),
+  };
+});
 
 let rig: Rig;
 beforeEach(async () => {
@@ -161,5 +171,27 @@ describe("a rotated Bot Chat (S8 E8; rotating-viewer.json)", () => {
     expect(statuses(rig, "thr_rot")).toEqual(Array(5).fill("completed"));
     const state = deltas(rig, "thr_rot").filter((d) => d.extensionKind === "hermes/persisted-turn").at(-1)!.payload as { lineage_root: string; session_id: string };
     expect(state).toEqual(expect.objectContaining({ lineage_root: root, session_id: tip }));
+  });
+});
+
+describe("review-2 11: a failed chain read while the Bot Chat rotated", () => {
+  // Hermes lists a rotated Bot Chat by its root's row (rotated-bot-chat.json `after_compress.canonical`), so the
+  // fallback (the listed id) is the root: no false move.
+  it("keeps the lineage root: the server sees no move", async () => {
+    await rig.close();
+    rig = await startRig({ rotating: ["bob"] });
+    await startThread(rig, "thr_rf", bot());
+    for (const t of ["one", "two", "three", "four"]) await turn(rig, "thr_rf", [text(t)], bot());
+    const root = rig.requests("prompt.submit")[0]!.params.session_id as string;
+    const cli = await rig.cli();
+    const snap = await cli.resume({ profile: "bob", session_id: root, omit_messages: true });
+    await cli.mutate({ profile: "bob", session_id: root, request_id: "desk-compress", expected_revision: snap.revision, expected_generation: snap.execution_generation, operation: "compress", payload: {} });
+    rig.restartBridge();
+    failChain.n = 1;
+    await startThread(rig, "thr_rf", bot("bob", { lineage_root: root, session_id: root }));
+    await turn(rig, "thr_rf", [text("five")], bot("bob", { lineage_root: root, session_id: root }));
+    expect(failChain.n).toBe(0);
+    const state = deltas(rig, "thr_rf").filter((d) => d.extensionKind === "hermes/persisted-turn").at(-1)!.payload as { lineage_root: string };
+    expect(state.lineage_root).toBe(root);
   });
 });
