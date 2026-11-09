@@ -206,6 +206,7 @@ export function createDiscovery(deps: SyncDeps & { sync: Sync }) {
     deleteBinding(db, binding.thread_id);
     sync.importing.delete(binding.thread_id);
     sync.readAtIdle.delete(binding.thread_id);
+    notify.forget(binding.thread_id);
     invalidateThreadInfo(bb);
     await bb.sdk.threads.delete({ threadId: binding.thread_id, childThreadsConfirmed: true }).catch((error) => fail(errorCode(error, "import_cleanup_failed")));
   }

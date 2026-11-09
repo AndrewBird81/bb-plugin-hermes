@@ -758,3 +758,27 @@ describe("review 4: a turn after the cutoff is news, not an import", () => {
     expect(isRead(w, bindingByLineage(w.db, NEO, "c1")!.thread_id)).toBe(true);
   });
 });
+
+describe("review 3: a server restart mid-import", () => {
+  it("keeps the hold of a thread with queued rows and re-flags the bot thread's import for read", async () => {
+    const w = await world({
+      seed: (db) => {
+        db.prepare(`INSERT INTO bots (profile_home, name, enabled, enabled_at) VALUES (?, 'neo', 1, ?)`).run(NEO, Date.now());
+        insertBinding(db, { thread_id: "thr_bot", profile_home: NEO, lineage_root: "root_bc", session_id: "root_bc", expected_id: null, kind: "bot", source: null, tag: null, state: "replaying", legacy: false, archived_by_switch: false, title_set: null });
+        db.prepare(`INSERT INTO turns (thread_id, anchor_uid, kind, state, at) VALUES ('thr_bot', 'u1', 'replay', 'queued', 1)`).run();
+        db.prepare(`INSERT INTO kv (key, value) VALUES ('notify_restore', '{"thr_bot":"all"}')`).run();
+      },
+    });
+    expect(w.levelCalls).toEqual([]);
+    w.threads.set("thr_bot", { ...fakeThread("thr_bot"), visibility: "visible", pinned: true, inputs: [[encodeMarker({ op: "bind", profile_home: NEO, lineage_root: "root_bc", legacy: false, anchor_uid: "u1" })]] });
+    w.botChats.set(NEO, { state: "found", lineage_root: "root_bc", session_id: "root_bc", legacy: false });
+    w.history.set("root_bc", { session_id: "root_bc", turns: [turn("u1")] });
+    w.event("thr_bot", "client/turn/requested", { input: [{ type: "text", text: '<hermes-bb>{"op":"bind","anchor_uid":"u1"}</hermes-bb>' }] });
+    await w.connect();
+    await drain(w);
+    expect(turnRow(w.db, "thr_bot", "u1")?.state).toBe("done");
+    expect(isRead(w, "thr_bot")).toBe(true);
+    await w.elapse(RESTORE_DELAY_MS);
+    expect(w.levelCalls).toEqual([{ threadId: "thr_bot", level: "all" }]);
+  });
+});

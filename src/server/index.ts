@@ -11,7 +11,7 @@ import { createDiscovery } from "./discovery.js";
 import { dispatchDecision } from "./dispatch.js";
 import { type ConnectionSource, createConnection, errorCode, KEEPALIVE_MS, type OnConnected } from "./connection.js";
 import { hermesMachine, MACHINE_FOLDER_KEY, machineFolder } from "./provider-options.js";
-import { addTombstone, bindingByThread, bindingCounts, type Db, deleteBinding, getKv, openMappingDb, setKv } from "./db.js";
+import { addTombstone, allBindings, bindingByThread, bindingCounts, type Db, deleteBinding, getKv, openMappingDb, queuedTurnsOf, setKv } from "./db.js";
 import { createNotify } from "./notify.js";
 import { createQueue, createSync, invalidateThreadInfo, targetOf } from "./sync.js";
 
@@ -87,7 +87,10 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
       if (newBoot) await sync.recoverQueuedNow(finalize);
       await bots.onConnectedNow(target, { newBoot, reconnected });
     });
-  void notify.restoreAll();
+  // A restart mid-import (review 3): a thread with queued rows keeps its hold until its finalize, and a bot
+  // thread's or side chat's import still ends read (a mirrored one is redone anyway).
+  for (const b of allBindings(db)) if (b.state === "replaying" && b.kind !== "mirror") sync.readAtIdle.add(b.thread_id);
+  void notify.restoreAll((threadId) => queuedTurnsOf(db, threadId).length > 0);
   // The folder as of the last check (the hook can't await settings).
   bb.experimental_hooks.on("message.dispatch", (context) => dispatchDecision(context, hermesMachine(db, connection.health().folder)));
 

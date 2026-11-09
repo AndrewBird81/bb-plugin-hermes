@@ -92,9 +92,17 @@ export function createNotify(bb: BbPluginApi, db: Db, onError: (code: string) =>
   return {
     hold,
     release,
-    /** Boot: levels a previous run left quiet go back now. */
-    async restoreAll(): Promise<void> {
-      for (const threadId of Object.keys(saved())) if (!held.has(threadId)) await restore(threadId);
+    /** Boot: levels a previous run left quiet go back now, except those `keep` names (their turns still run). */
+    async restoreAll(keep: (threadId: string) => boolean = () => false): Promise<void> {
+      for (const threadId of Object.keys(saved())) if (!held.has(threadId) && !keep(threadId)) await restore(threadId);
+    },
+    /** A thread the server deleted: its saved level goes, with no call (nothing to restore). */
+    forget(threadId: string): void {
+      clearTimeout(timers.get(threadId));
+      timers.delete(threadId);
+      held.delete(threadId);
+      const { [threadId]: _, ...rest } = saved();
+      save(rest);
     },
   };
 }
