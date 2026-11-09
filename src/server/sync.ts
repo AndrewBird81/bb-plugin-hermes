@@ -155,7 +155,9 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
       return true;
     } catch (error) {
       releaseTurn(db, binding.thread_id, anchorUid);
-      fail(errorCode(error, "send_failed"));
+      // bb takes no send into an archived thread (A49): not an error; `thread.unarchived` wakes it.
+      const archived = await bb.sdk.threads.get({ threadId: binding.thread_id }).then((t) => t.archivedAt !== null, () => false);
+      if (!archived) fail(errorCode(error, "send_failed"));
       return false;
     }
   }

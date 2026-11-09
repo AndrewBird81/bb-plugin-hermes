@@ -98,6 +98,15 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
   bb.events.on("experimental_thread.events", ({ thread }) => {
     if (isHermes(thread)) run("persisted_turn_failed", () => sync.ingestPersistedNow(thread.id));
   });
+  // A49: wakes bb refused while the user had it archived run now.
+  bb.events.on("thread.unarchived", ({ thread }) => {
+    if (!isHermes(thread)) return;
+    run("wake_failed", async () => {
+      const binding = bindingByThread(db, thread.id);
+      const target = targetOf(connection);
+      if (binding && target && bots.isEnabled(binding.profile_home)) await sync.reconcileNow(binding, target);
+    });
+  });
   bb.events.on("thread.created", ({ thread }) => run("bind_failed", () => chats.onCreatedNow(thread)));
   bb.events.on("thread.deleted", ({ thread }) => {
     const binding = bindingByThread(db, thread.id);

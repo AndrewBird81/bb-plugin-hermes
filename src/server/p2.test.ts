@@ -4,7 +4,7 @@ import { encodeMarker } from "../shared/marker.js";
 import type { BotRow, Diagnostics } from "../shared/rpc-contract.js";
 import { otherMachineText } from "../shared/provider-options.js";
 import { OUTSIDE_TAG_REFUSAL, outsideTag } from "../shared/sources.js";
-import { allBindings, bindingByLineage, bindingByThread, botRecord, insertBinding } from "./db.js";
+import { allBindings, bindingByLineage, bindingByThread, botRecord, insertBinding, turnRow } from "./db.js";
 import { MAX_IMPORTS } from "./discovery.js";
 import { type FakeThread, MACHINE, NEO, session, turn, world, type World } from "./fake-world.js";
 import { deriveProviderOptions } from "./provider-options.js";
@@ -572,5 +572,30 @@ describe("BUG 4: another machine", () => {
     expect(await send(w, { id: MACHINE })).toEqual({ action: "proceed" });
     expect(await send(w, null)).toEqual({ action: "proceed" });
     expect(await send(w, { id: "host_work" }, "codex")).toEqual({ action: "proceed" });
+  });
+});
+
+describe("A49: a thread the user archived", () => {
+  it("a wake into it is refused by bb: the claim goes back, no error; unarchiving it wakes at once", async () => {
+    const w = await botChatWorld([turn("u1")]);
+    chat(w, "c1");
+    await on(w);
+    await drain(w);
+    const t = bindingByLineage(w.db, NEO, "c1")!.thread_id;
+    for (const id of [t, "thr_1"]) w.thread(id).archivedAt = 5;
+    w.history.get("c1")!.turns.push(turn("c1-3"));
+    w.history.get("root_bc")!.turns.push(turn("u2"));
+    await w.changed(NEO);
+    await w.changed(NEO);
+    expect(w.markers(t).filter((m) => m.op === "mirror")).toEqual([]);
+    expect(turnRow(w.db, t, "c1-3")).toBeNull();
+    expect((await w.rpc<Diagnostics>("diagnostics")).errors).toEqual([]);
+    for (const id of [t, "thr_1"]) {
+      w.thread(id).archivedAt = null;
+      await w.emit("thread.unarchived", id);
+    }
+    expect(w.markers(t).filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "c1-3", labeled: true }]);
+    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u2", labeled: true }]);
+    expect((await w.rpc<Diagnostics>("diagnostics")).errors).toEqual([]);
   });
 });

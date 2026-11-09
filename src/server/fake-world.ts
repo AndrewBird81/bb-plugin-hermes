@@ -206,6 +206,8 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
             state.failSend--;
             throw Object.assign(new Error("HTTP 503"), { code: "unavailable" });
           }
+          // bb 0.49.0 `ensureThreadIsWritable`: an archived thread takes no send.
+          if (thread(threadId).archivedAt !== null) throw Object.assign(new Error("HTTP 409: Thread is archived"), { code: "thread_not_writable" });
           thread(threadId).inputs.push(input as PromptInput[]);
           return { ok: true, delivery: "sent" };
         },
