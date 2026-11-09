@@ -104,7 +104,7 @@ Signals (worker → server): `changed{profile_homes[]}`, debounced; `watch{state
 ### Bridge state (`<bridge dataDir>/`)
 
 - `threads/<threadId>.json`: `{profile, bot, …}`, one file per thread so bridge processes never overwrite each other, for `model/list`, which runs with no provider options (cwd → threadId → profile, S7 1c).
-- `worker.json` (written by the worker, `src/shared/bridge-files.ts`): `{root, worker_boot_id, written_at, enabled[{profile, profile_home, bot_label, cwd}]}`. Present = this machine runs the worker; absent → turns fail "Hermes runs on <machine>". `enabled` feeds `model/list`'s `profile` session option (A18).
+- `worker.json` (written by the worker, `src/shared/bridge-files.ts`): `{root, worker_boot_id, written_at, enabled[{profile, profile_home, bot_label, cwd}]}`. Present = this machine runs the worker; absent → turns fail "Hermes runs on <machine>" (the server sends the machine's name in provider options and refuses the dispatch itself, `message.dispatch`), and `model/list` (absent, or no bot on) answers one placeholder default, never sent to Hermes, so `bb thread spawn` on another machine reaches that refusal instead of bb's "catalog is empty". `enabled` feeds `model/list`'s `profile` session option (A18).
 - `bridges/<pid>.json`: `{build, threadId, startedAt}` for `diagnostics`. bb gives bridges `…/plugins/hermes/bridge-data` and the worker `…/host-data` (A22 false), so the worker reads the sibling `bridge-data/bridges/`. `build` is `<plugin version>+<host artifact digest>`, the same for the worker and bridges of one deploy; the bundled version makes every release a new artifact, even with unchanged host code (A26).
 - `models/<sha256(profile_home)[:16]>.json`: last-known catalog, written by the worker's prewarm and by bridges.
 
@@ -214,7 +214,7 @@ Hermes events → bb deltas:
 - **Turns:** one wake per anchor; bb's rows never mirror; approvals and `clarify` never filtered by admission.
 - **Approvals:** never auto-approve; never widen Hermes' choices.
 - **Hermes-side writes:** only those a bb user action causes (creates, sends, adoptions, Stop, steer, answers, `/new` compactions, model and reasoning picks, image copies into `<profile home>/cache/images/`, `prompt.resolve_unknown` for bb's own turns), plus the marked skill dir and `refresh-prompts` epochs.
-- **Off bot:** no call names that profile except the switch row's read-only count (`listSessions`, flow 1 "Before on") and removing its skill. Accepted: Hermes' own read of every served profile's store behind the host-scoped `profiles.list{include_sessions:true}` (cached, read-only; nothing from those rows leaves the worker).
+- **Off bot:** no call names that profile except the switch row's read-only count (`listSessions`, `firstSubmissions`; flow 1 "Before on") and removing its skill. Accepted: Hermes' own read of every served profile's store behind the host-scoped `profiles.list{include_sessions:true}` (cached, read-only; nothing from those rows leaves the worker).
 
 ## bb access and security
 
