@@ -71,7 +71,11 @@ function efforts(model: CatalogModel) {
   return [{ reasoningEffort: DEFAULT_REASONING, label: "Default", description: "The bot's own level in Hermes" }, ...reasoningEffortsForLevels([...levels])];
 }
 
-/** The bot chip (A52): one value, so the bot is visible and fixed per chat; `values` = the switched-on bots for `model/list`. */
+/** A chip value: `default` reads "Hermes bot", "Default profile", in the chip and its menu only (ux-v1.1 §3). */
+const chipValue = (b: { profile: string; bot_label: string }): { id: string; label: string; description?: string } =>
+  b.profile === "default" ? { id: b.profile, label: "Hermes bot", description: "Default profile" } : { id: b.profile, label: b.bot_label };
+
+/** The bot chip (A52): one value, so the bot is visible and fixed per chat; `values` = the switched-on, served bots for `model/list`. */
 export function botOption(bot: { profile: string; bot_label: string }, values: { profile: string; bot_label: string }[] = [bot]) {
   return {
     id: "profile",
@@ -79,8 +83,15 @@ export function botOption(bot: { profile: string; bot_label: string }, values: {
     category: "mode",
     type: "select" as const,
     value: bot.profile,
-    values: values.map((b) => ({ id: b.profile, label: b.bot_label })),
+    values: values.map(chipValue),
   };
+}
+
+/** The chip's menu: the served bots, with `bot` first if it isn't one (its own thread's chip). */
+export function chipBots<B extends { profile: string; served: boolean }>(bot: { profile: string }, enabled: readonly B[]): B[] {
+  const served = enabled.filter((b) => b.served);
+  const own = enabled.find((b) => b.profile === bot.profile);
+  return own && !own.served ? [own, ...served] : served;
 }
 
 /** "The bot's model" (the default), then the bot's models. */
@@ -155,9 +166,10 @@ export function catalogState(catalog: Catalog, sessionOptions?: ReturnType<typeo
  * carry the chip with every switched-on bot, as `model/list` does: a project's threads share its catalog with the
  * project's New Thread, which would lose the chip after the first chat there (research 13 §6).
  */
-export function composerStates(bot: { profile: string; bot_label: string }, catalog: Catalog | null, enabled: readonly { profile: string; bot_label: string }[] = []): ThreadDelta[] {
+export function composerStates(bot: { profile: string; bot_label: string }, catalog: Catalog | null, enabled: readonly EnabledBot[] = []): ThreadDelta[] {
   const states: ThreadDelta[] = [{ kind: "extension.state", extensionKind: "bb/session-options", payload: { options: [botOption(bot)] } }];
-  const values = enabled.some((b) => b.profile === bot.profile) ? [...enabled] : [bot, ...enabled];
+  const menu = chipBots(bot, enabled);
+  const values = menu.some((b) => b.profile === bot.profile) ? menu : [bot, ...menu];
   if (catalog) states.push({ kind: "extension.state", extensionKind: "bb/provider-model-catalog", payload: catalogState(catalog, [botOption(bot, values)]) as never });
   return states;
 }

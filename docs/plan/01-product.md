@@ -63,7 +63,7 @@ AC:
 
 ![A chat from bb](../diagrams/chat-from-bb.svg)
 
-- **Start:** bb's New Thread (D51): pick Hermes on the Hermes machine, then the bot in the Bot chip, which lists every enabled bot (r13 §3). `bb thread spawn --option profile=<bot>` does the same. The bot thread itself is a chat too.
+- **Start:** bb's New Thread (D51): pick Hermes on the Hermes machine, then the bot in the Bot chip, which lists every enabled bot the gateway serves; `default` reads "Hermes bot", "Default profile", in the chip and its menu only (ux-v1.1 §3, r13 §3). With no bot on, a banner: "No Hermes bot is on. Switch one on in Settings → Plugins → Hermes [Experimental]." `bb thread spawn --option profile=<bot>` does the same. The bot thread itself is a chat too.
   - bb names the chat from its first message.
   - The Hermes session is created on the first message: an abandoned draft leaves nothing in Hermes.
 - **Composer:** bb's own: text, attachments, voice dictation, bb's model chip, reasoning.

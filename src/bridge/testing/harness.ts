@@ -55,7 +55,7 @@ export async function startRig(opts: { profiles?: string[]; enabled?: string[]; 
   const dataDir = tempDir("bridge-data-");
   const enabled = (opts.enabled ?? fake.profiles.map((p) => p.name)).map((name) => {
     const p = fake.profiles.find((x) => x.name === name)!;
-    return { profile: p.name, profile_home: p.home, bot_label: botLabel(p.name), cwd: null };
+    return { profile: p.name, profile_home: p.home, bot_label: botLabel(p.name), cwd: null, served: true };
   });
   if (opts.worker !== false) {
     const worker: WorkerFile = { root: fake.folder, worker_boot_id: "boot-1", written_at: Date.now(), enabled };

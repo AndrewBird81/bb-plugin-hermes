@@ -27,7 +27,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { ConnectionOptions } from "../hermes/client.js";
 import { canonicalHome } from "../hermes/control.js";
-import { availableModels, botOption, fetchCatalog, placeholderModel } from "./composer.js";
+import { availableModels, botOption, chipBots, fetchCatalog, placeholderModel } from "./composer.js";
 import { resolveContext } from "./context.js";
 import { expandHome, readThread, readWorkerFile, threadForCwd } from "./files.js";
 import { HermesLink, type History, restHistory } from "./hermes.js";
@@ -152,17 +152,16 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
     void thread.publishComposer(ctx).catch(() => undefined);
   };
 
-  /** `model/list`: the bot of the thread at `cwd` (else the default bot), every switched-on bot as the chip's values (A18). */
+  /** `model/list`: the bot of the thread at `cwd` (else the default bot), every switched-on, served bot as the chip's values (A18). */
   const modelList = async (cwd: string | undefined) => {
     const worker = dataDir ? readWorkerFile(dataDir) : null;
-    if (!worker || !worker.enabled.length) return { models: [placeholderModel()], selectedOnlyModels: [] };
-    const known = threadForCwd(host.dataDir, cwd)?.entry;
-    const bot =
-      worker.enabled.find((b) => b.profile_home === known?.profile_home || b.profile === known?.profile) ??
-      worker.enabled.find((b) => b.profile === "default") ??
-      worker.enabled[0]!;
+    const known = worker ? threadForCwd(host.dataDir, cwd)?.entry : undefined;
+    const own = known ? worker!.enabled.find((b) => b.profile_home === known.profile_home || b.profile === known.profile) : undefined;
+    const menu = worker ? chipBots(own ?? { profile: "" }, worker.enabled) : [];
+    const bot = own ?? menu.find((b) => b.profile === "default") ?? menu[0];
+    if (!worker || !bot) return { models: [placeholderModel()], selectedOnlyModels: [] };
     const catalog = await fetchCatalog(host.link(expandHome(worker.root)), host.dataDir, bot);
-    return { models: availableModels(catalog, [botOption(bot, worker.enabled)]), selectedOnlyModels: [] };
+    return { models: availableModels(catalog, [botOption(bot, menu)]), selectedOnlyModels: [] };
   };
 
   const hostThread = (threadId: string, providerThreadId: string): HostedThread => {

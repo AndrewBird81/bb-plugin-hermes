@@ -185,7 +185,7 @@ export class Watcher {
     const dirs = new Map<string, string>();
     for (const home of this.enabled) {
       const known = this.profiles.get(home);
-      if (known) enabled.push({ profile: known.profile.name, profile_home: home, bot_label: botLabel(known.profile.name, known.profile.handle), cwd: known.profile.terminal_cwd });
+      if (known) enabled.push({ profile: known.profile.name, profile_home: home, bot_label: botLabel(known.profile.name, known.profile.handle), cwd: known.profile.terminal_cwd, served: known.profile.served });
       dirs.set(home, known?.dir ?? canonicalHome(home));
     }
     await this.workerFile.write(bridgeDataDir(dataDir), root, this.bootId, enabled).catch(() => {});

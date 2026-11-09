@@ -138,7 +138,7 @@ describe("side chat", () => {
     rig = await startRig({ enabled: ["alex"] });
     await startThread(rig, "thr_v", opts("alex", null));
     await turn(rig, "thr_v", [text("hi")], opts("alex", null));
-    expect(errors(rig, "thr_v")).toEqual([noBotText([{ profile: "alex", profile_home: "", bot_label: "", cwd: null }])]);
+    expect(errors(rig, "thr_v")).toEqual([noBotText([{ profile: "alex", profile_home: "", bot_label: "", cwd: null, served: true }])]);
     expect(rig.requests("session.create")).toHaveLength(0);
   });
 });

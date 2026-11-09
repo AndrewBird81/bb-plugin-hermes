@@ -17,6 +17,8 @@ export const enabledBotSchema = z
     profile_home: z.string(),
     bot_label: z.string(),
     cwd: z.string().nullable(),
+    /** In the host gateway's `served_profiles`; an unserved bot is left out of the bot chip (ux-v1.1 §3). */
+    served: z.boolean().default(true),
   })
   .strict();
 export type EnabledBot = z.infer<typeof enabledBotSchema>;

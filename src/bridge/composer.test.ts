@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { modelsFile } from "../shared/bridge-files.js";
+import { modelsFile, WORKER_FILE, type WorkerFile } from "../shared/bridge-files.js";
 import { catalogFromModelOptions } from "../shared/models.js";
 import { catalogState, imagesOnlyText, PLACEHOLDER_MODEL, unofferedModelText } from "./composer.js";
 import { updateThread } from "./files.js";
@@ -97,6 +97,44 @@ describe("D53: a new chat runs its bot's own model unless the user picks one", (
   });
 });
 
+describe("ux-v1.1 §3: the bot chip", () => {
+  /** Marks bots unserved in the worker's file, as the worker writes it when the gateway stops serving them. */
+  const unserve = (...profiles: string[]) => {
+    const file = path.join(rig.dataDir, WORKER_FILE);
+    const worker = JSON.parse(readFileSync(file, "utf8")) as WorkerFile;
+    writeFileSync(file, JSON.stringify({ ...worker, enabled: worker.enabled.map((b) => (profiles.includes(b.profile) ? { ...b, served: false } : b)) }));
+  };
+  const chip = (models: Record<string, any>[]) => models[0]!.sessionOptions[0] as { value: string; values: { id: string; label: string; description?: string }[] };
+
+  it("`default` reads \"Hermes bot\", \"Default profile\", in the chip and its menu; the sidebar label stays Hermes", async () => {
+    const { models } = (await rig.call("model/list", {})).result as { models: Record<string, any>[] };
+    expect(chip(models)).toMatchObject({ value: "default", values: [{ id: "default", label: "Hermes bot", description: "Default profile" }, { id: "alex", label: "Alex" }, { id: "bob", label: "Bob" }] });
+    await startThread(rig, "thr_def", opts("default"));
+    await rig.waitFor(() => deltas(rig, "thr_def").length >= 2);
+    expect(deltas(rig, "thr_def")[0]).toMatchObject({ extensionKind: "bb/session-options", payload: { options: [{ value: "default", values: [{ id: "default", label: "Hermes bot", description: "Default profile" }] }] } });
+    expect(rig.options("default").thread?.bot_label).toBe("Hermes");
+  });
+
+  it("an unserved bot is left out of the chip; its own thread still shows it", async () => {
+    unserve("bob");
+    const { models } = (await rig.call("model/list", {})).result as { models: Record<string, any>[] };
+    expect(chip(models).values.map((v) => v.id)).toEqual(["default", "alex"]);
+    await startThread(rig, "thr_bob", opts("bob"));
+    await rig.waitFor(() => deltas(rig, "thr_bob").length >= 2);
+    const catalog = deltas(rig, "thr_bob").find((d) => d.extensionKind === "bb/provider-model-catalog")!;
+    expect(chip((catalog.payload as { models: Record<string, any>[] }).models)).toMatchObject({ value: "bob", values: [{ id: "bob" }, { id: "default" }, { id: "alex" }] });
+    await startThread(rig, "thr_alex", opts("alex"));
+    await rig.waitFor(() => deltas(rig, "thr_alex").length >= 2);
+    const alexCatalog = deltas(rig, "thr_alex").find((d) => d.extensionKind === "bb/provider-model-catalog")!;
+    expect(chip((alexCatalog.payload as { models: Record<string, any>[] }).models).values.map((v) => v.id)).toEqual(["default", "alex"]);
+    // No served bot: no chip, as with no bot on.
+    unserve("default", "alex");
+    const none = (await rig.call("model/list", {})).result as { models: Record<string, any>[] };
+    expect(none.models).toEqual([expect.objectContaining({ id: PLACEHOLDER_MODEL })]);
+    expect(none.models[0]!.sessionOptions).toBeUndefined();
+  });
+});
+
 describe("thread/start", () => {
   it("publishes the one-value bot chip and the bot's models, each with the chip of every switched-on bot", async () => {
     await startThread(rig, "thr_ch", opts("bob"));
@@ -106,7 +144,7 @@ describe("thread/start", () => {
     expect(catalog).toMatchObject({ extensionKind: "bb/provider-model-catalog", payload: { models: [{ id: PLACEHOLDER_MODEL, isDefault: true }, { id: "stub/stub" }] } });
     // Research 13 §6: a project's New Thread reads this catalog (its scope is the project's folder), so each model
     // carries the chip with every switched-on bot, this thread's bot picked, as `model/list` answers.
-    const values = [{ id: "default", label: "Hermes" }, { id: "alex", label: "Alex" }, { id: "bob", label: "Bob" }];
+    const values = [{ id: "default", label: "Hermes bot", description: "Default profile" }, { id: "alex", label: "Alex" }, { id: "bob", label: "Bob" }];
     for (const model of (catalog!.payload as { models: Record<string, unknown>[] }).models)
       expect(model.sessionOptions).toEqual([{ id: "profile", label: "Bot", category: "mode", type: "select", value: "bob", values }]);
     expect(rig.fake.requests.filter((r) => r.method.startsWith("session."))).toEqual([]);
