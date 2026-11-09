@@ -134,7 +134,7 @@ AC (two-client harness, then the real app):
   - your messages are your bubbles tagged `[Outside bb · Oct 12] …` (never an app's name); bb's own earlier messages carry no tag;
   - title: Hermes' title, else your first message cut to 60 characters;
   - archived in Hermes → archived in bb. Hermes' pin is never copied.
-- **Live:** new outside turns appear in their thread within ~3 s (A13); a new outside chat becomes a new thread.
+- **Live:** new outside turns appear in their thread within ~3 s (A13); a new outside chat becomes a new thread, unread and with no push. Its first turn arrives as an import (what Hermes has stored so far, the rest when the turn ends); later turns stream.
   - CLI, TUI and Desktop turns stream (A19); Conduit's own turns arrive in two steps (§6).
   - A turn whose user message Hermes hides (e.g. a Conduit Pulse report) shows the reply only.
   - Each turn shows once across re-lists and compaction (A8).

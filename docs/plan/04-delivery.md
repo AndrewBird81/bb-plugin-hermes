@@ -140,7 +140,7 @@ Each approval is logged in `docs/operations.md` §Approvals (date, item, answer)
 - Approvals needed: pushes, tags and releases; the live install; each live bot switch-on (it writes a skill into a live profile and runs `refresh-prompts`).
 - P0: install on live bb; machine = `$HERMES_HOST`; folder default. ACP Hermes stays as it is (retirement Later). While bb's provider-acp is enabled, installing or updating the plugin can make it probe `acp-hermes-agent` and create one empty `acp` session in live Hermes (seen at the P0 install, 1 s after the maintenance bridge started; not our code, the owner accepted it).
 - P1: one bot on first (e.g. Neo), then the others one at a time. Left as is: that bot's own bb skills (`~/src/hermes-config`), `compression.in_place: false` in `default` (D50), hermes-webui (D45).
-- P2: on the upgrade, each bot already on imports its chats from the 30 days before the upgrade, once (02 flow 1 step 6). No re-switching.
+- P2: on the upgrade, each bot already on imports, once and read, its chats active since 30 days before its switch-on (02 flow 1 step 6). No re-switching.
 - No gateway restart on live. Restart behaviour is tested on isolated Hermes only.
 
 ## Rollback
