@@ -100,7 +100,7 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; disc
         fail(errorCode(error, "describe_failed"));
       }
     }
-    if (described) return described.profiles.map(row);
+    if (described) return described.profiles.map((p) => row(p));
     // On record only: offline, never claim a bot unserved (a switch-on fails with "Hermes isn't connected").
     return allBots(db).map((b) => row({ name: b.name, home: b.profile_home, handle: b.handle, terminal_cwd: b.cwd, served: true }));
   }

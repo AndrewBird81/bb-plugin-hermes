@@ -392,6 +392,29 @@ describe("T2.1–T2.2: discovery and 30-day import", () => {
     expect(bindingByLineage(w.db, NEO, "c3")).toMatchObject({ kind: "mirror", state: "live" });
   });
 
+  it("not_supported pauses discovery and import; the count is null while not connected", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "c1");
+    w.state.online = false;
+    await w.connect();
+    expect(await countRow(w)).toBeNull();
+    w.state.online = true;
+    await w.connect();
+    await on(w);
+    await drain(w);
+    w.state.supported = false;
+    await w.connect();
+    chat(w, "c2");
+    await w.changed(NEO);
+    await drain(w);
+    expect(bindingByLineage(w.db, NEO, "c2")).toBeNull();
+    w.state.supported = true;
+    await w.connect();
+    await w.changed(NEO);
+    await drain(w);
+    expect(bindingByLineage(w.db, NEO, "c2")).toMatchObject({ state: "live" });
+  });
+
   it("wakes into a mirrored thread work as for bound threads (flow 6)", async () => {
     const w = await botChatWorld([]);
     chat(w, "c1");
