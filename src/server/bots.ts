@@ -47,7 +47,11 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; disc
   const fail = (code: string) => connection.recordError(code);
   let described: { uid: number; profiles: HermesProfile[] } | null = null;
   const held = new Map<string, { attempt: number; timer: ReturnType<typeof setTimeout> }>();
-  bb.onDispose(() => held.forEach((h) => clearTimeout(h.timer)));
+  let disposed = false;
+  bb.onDispose(() => {
+    disposed = true;
+    held.forEach((h) => clearTimeout(h.timer));
+  });
 
   const publish = () => bb.realtime.publish(BOTS_CHANNEL, null);
   const isEnabled = (home: string) => botRecord(db, home)?.enabled === true;
@@ -205,6 +209,7 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; disc
   function scheduleHeld(profileHome: string): void {
     const attempt = held.get(profileHome)?.attempt ?? 0;
     clearTimeout(held.get(profileHome)?.timer);
+    if (disposed) return;
     const delay = HELD_RETRY_MS[Math.min(attempt, HELD_RETRY_MS.length - 1)]!;
     const timer = setTimeout(() => {
       void enqueue(async () => {

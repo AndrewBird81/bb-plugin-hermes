@@ -28,7 +28,11 @@ export function createNotify(bb: BbPluginApi, db: Db, onError: (code: string) =>
   /** threadId → the level held now; a released thread leaves this map at once (its restore waits). */
   const held = new Map<string, QuietLevel>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
-  bb.onDispose(() => timers.forEach(clearTimeout));
+  let disposed = false;
+  bb.onDispose(() => {
+    disposed = true;
+    timers.forEach(clearTimeout);
+  });
 
   const saved = (): Record<string, Own> => (getKv(db, KV) as Record<string, Own> | null) ?? {};
   const save = (map: Record<string, Own>) => setKv(db, KV, map);
@@ -78,7 +82,7 @@ export function createNotify(bb: BbPluginApi, db: Db, onError: (code: string) =>
   /** The thread's turns are over: back to the user's level, after `RESTORE_DELAY_MS` (a new hold cancels it). */
   function release(threadId: string): void {
     held.delete(threadId);
-    if (!(threadId in saved())) return;
+    if (disposed || !(threadId in saved())) return;
     clearTimeout(timers.get(threadId));
     timers.set(
       threadId,

@@ -118,7 +118,12 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
   const readCheck = new Map<string, number>();
   const READ_CHECKS = 2;
   const readTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  bb.onDispose(() => [...confirmTimers.values(), ...readTimers.values()].forEach(clearTimeout));
+  /** Jobs still queued at dispose arm no timer (review 14). */
+  let disposed = false;
+  bb.onDispose(() => {
+    disposed = true;
+    [...confirmTimers.values(), ...readTimers.values()].forEach(clearTimeout);
+  });
   /** Imports that haven't sent every turn yet: they stay `replaying` at idle and resume at the next reconcile. */
   const unfinished = new Set<string>();
   /**
@@ -471,6 +476,7 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
   /** A read-confirmed thread: once quiet, still read? Else marked read again, at most `READ_CHECKS` times. */
   function checkReadLater(threadId: string): void {
     clearTimeout(readTimers.get(threadId));
+    if (disposed) return;
     readTimers.set(
       threadId,
       setTimeout(() => {
@@ -493,6 +499,7 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
   /** After `SETTLE_QUIET_MS`, on the queue; a later idle finalize starts the wait again. */
   function confirmLater(threadId: string, attentionAt: number): void {
     clearTimeout(confirmTimers.get(threadId));
+    if (disposed) return;
     confirmTimers.set(
       threadId,
       setTimeout(() => {

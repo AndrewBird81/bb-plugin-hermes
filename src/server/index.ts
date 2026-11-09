@@ -142,13 +142,18 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
 
   const changed = new Set<string>();
   let changedTimer: ReturnType<typeof setTimeout> | undefined;
-  bb.onDispose(() => clearTimeout(changedTimer));
+  let disposed = false;
+  bb.onDispose(() => {
+    disposed = true;
+    clearTimeout(changedTimer);
+  });
 
   const isTarget = (hostId: string) => savedMachine(db) === hostId;
   host.experimental_onSignal("changed", ({ hostId, payload }) => {
     if (!isTarget(hostId)) return;
     for (const home of payload.profile_homes) changed.add(home);
     clearTimeout(changedTimer);
+    if (disposed) return;
     changedTimer = setTimeout(() => {
       const homes = [...changed].filter(bots.isEnabled);
       changed.clear();

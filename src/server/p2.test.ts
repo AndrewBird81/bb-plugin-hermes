@@ -954,3 +954,18 @@ describe("review 12 and 13", () => {
     expect(w.levelCalls.at(-1)).toEqual({ threadId: "thr_1", level: "inherit" });
   });
 });
+
+describe("review 14: dispose", () => {
+  it("jobs still queued at dispose arm no timer", async () => {
+    const w = await botChatWorld([turn("u1")]);
+    await on(w);
+    w.render("thr_1");
+    const t = w.thread("thr_1");
+    Object.assign(t, { status: "idle", queued: 0, latestAttentionAt: ++w.state.clock });
+    // The idle's finalize (markRead, then a confirm timer) is still on the queue when the plugin goes.
+    await w.harness.behavior.emitThreadEvent("thread.idle", { thread: w.dto("thr_1"), lastAssistantText: null });
+    await w.harness.lifecycle.dispose();
+    await w.flush();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
