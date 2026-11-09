@@ -618,6 +618,15 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     expect(bindingByThread(w.db, bot)?.kind).toBe("bot");
   });
 
+  it("bb's New Thread binds at thread.created from the chip's selection, before its first turn (research 13 §3)", async () => {
+    const w = await world();
+    await w.connect();
+    await on(w);
+    const chat = await w.newThread("neo", { via: "newThread" });
+    expect(bindingByThread(w.db, chat)).toMatchObject({ kind: "chat", state: "pending", profile_home: NEO });
+    expect(await w.rpc<Record<string, ThreadInfo | null>>("threadInfo", { keys: [chat] })).toEqual({ [chat]: { kind: "chat", profile_home: NEO, bot_label: "Neo", enabled: true } });
+  });
+
   it("stopHosted stops idle threads now and busy ones at their idle", async () => {
     const w = await world();
     await w.connect();

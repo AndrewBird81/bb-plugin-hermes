@@ -388,13 +388,18 @@ export async function world({ profiles = [neo, bob], seed, threads: before = [] 
       events.set(threadId, list);
     },
     /**
-     * A Hermes chat bb made itself (`bb thread spawn --option profile=<bot>`): its recorded start, then
-     * `thread.created`. Its id comes from the same counter as the server's spawns.
+     * A Hermes chat bb made itself, then `thread.created`: `bb thread spawn --option profile=<bot>` records it in its
+     * start; bb's New Thread records the chip as `bb/session-option-selections` (its start's params are empty,
+     * research 13 §3). Its id comes from the same counter as the server's spawns.
      */
-    async newThread(profile: string) {
+    async newThread(profile: string, { via = "spawn" }: { via?: "spawn" | "newThread" } = {}) {
       const id = `thr_${++state.ids}`;
       threads.set(id, { id, title: null, status: "idle", archivedAt: null, deletedAt: null, pinned: false, queued: 0, lastReadAt: null, latestAttentionAt: ++state.clock, visibility: "visible", originPluginId: null, spawn: null, inputs: [] });
-      this.event(id, "client/thread/start", { request: { method: "thread/start", params: { options: { sessionOptions: { profile } } } } });
+      if (via === "spawn") this.event(id, "client/thread/start", { request: { method: "thread/start", params: { options: { sessionOptions: { profile } } } } });
+      else {
+        this.event(id, "thread/extensionState/updated", { providerThreadId: "", kind: "bb/session-option-selections", payload: { selections: { profile } } });
+        this.event(id, "client/thread/start", { request: { method: "thread/start", params: {} } });
+      }
       await this.emit("thread.created", id);
       return id;
     },

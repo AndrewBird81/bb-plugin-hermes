@@ -174,7 +174,7 @@ Hermes events → bb deltas:
    - On needs a connected Hermes; off works offline, and the skill removal is retried at the next reconnect.
    - Off: `bots.enabled = 0`; `threads.stop` each hosted thread of the bot; archive its unarchived threads with `archived_by_switch = 1`; worker deletes the skill dir (only with our marker) and the wrapper if no bot is on, then `refresh-prompts`; watch and wakes skip the profile.
 2. **Side chat**
-   1. bb's New Thread with the Bot chip (D51), or `bb thread spawn --provider hermes --option profile=<bot>` (A18) → `thread.created` → binding `chat`/`pending` with `expected_id`. bb names the thread.
+   1. bb's New Thread with the Bot chip (D51), or `bb thread spawn --provider hermes --option profile=<bot>` (A18) → `thread.created` → binding `chat`/`pending` with `expected_id`, before the first turn: the bot from the chip's `bb/session-option-selections`, else the recorded `thread/start` (r13 §3). bb names the thread.
    2. First visible turn: model check → `session.create` → `prompt.submit` → stream → boundary → identity.
 3. **Bot thread send** (S8 §Recommended protocol; also legacy Conduit chats from step 3 on)
    1. Resolve each send: `session.list{profile, title:"Bot Chat", include_hidden:true}`. It adopts an unheld legacy Bot Chat (`resolve_titled_session` → `adopt_legacy_session`, T1.7 isolated), so only a bb send uses it; re-lists use the read-only `findBotChat`. `profiles.list.canonical_session: null` doesn't mean none (S8 E6). Cache `chat_id` for dedupe and reads only.

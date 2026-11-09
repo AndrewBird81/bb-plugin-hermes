@@ -18,6 +18,16 @@ export function titleFrom(message: string): string | null {
   return line ? Array.from(line).slice(0, TITLE_MAX).join("").trimEnd() : null;
 }
 
+/** The bot bb's New Thread chip picked: `bb/session-option-selections`, seeded at create (research 13 §3). */
+function selectedProfile(events: readonly { type: string; data: unknown }[]): string | null {
+  for (const event of events) {
+    const data = event.data as { kind?: unknown; payload?: { selections?: { profile?: unknown } } } | null;
+    const profile = event.type === "thread/extensionState/updated" && data?.kind === "bb/session-option-selections" ? data.payload?.selections?.profile : null;
+    if (typeof profile === "string" && profile) return profile;
+  }
+  return null;
+}
+
 /** `sessionOptions.profile` anywhere in a recorded `thread/start` request. */
 function profileOption(value: unknown, depth = 0): string | null {
   if (!value || typeof value !== "object" || depth > 6) return null;
@@ -59,9 +69,9 @@ export function createChats(deps: SyncDeps & { describe: (target: Target) => Pro
   }
 
   /**
-   * `bb thread spawn --provider hermes --option profile=<bot>` (A18): bound like a side chat. Our own
-   * spawns (`pluginMetadata.hermes.origin`) are skipped. With no profile on record yet, the
-   * `persisted-turn` state binds it after its first turn.
+   * bb's New Thread with the Bot chip, or `bb thread spawn --provider hermes --option profile=<bot>` (A18): bound as a
+   * side chat before its first turn. Our own spawns (`pluginMetadata.hermes.origin`) are skipped. With no profile on
+   * record yet, the `persisted-turn` state binds it after its first turn.
    */
   async function onCreatedNow(thread: { id: string; providerId: string; originPluginId: string | null }): Promise<void> {
     if (thread.providerId !== "hermes" || thread.originPluginId === bb.pluginId || bindingByThread(db, thread.id)) return;
@@ -69,8 +79,13 @@ export function createChats(deps: SyncDeps & { describe: (target: Target) => Pro
     if (JSON.stringify(meta ?? {}).includes('"hermes":{"origin"')) return;
     const target = targetOf(connection);
     if (!target) return;
-    const events = await bb.sdk.threads.events.list({ threadId: thread.id, types: ["client/thread/start", "client/turn/requested"], order: "asc", limit: "5" });
-    const name = profileOption(events);
+    const events = await bb.sdk.threads.events.list({
+      threadId: thread.id,
+      types: ["thread/extensionState/updated", "client/thread/start", "client/turn/requested"],
+      order: "asc",
+      limit: "10",
+    });
+    const name = selectedProfile(events) ?? profileOption(events);
     const bot = name ? botByName(db, name) : null;
     if (!bot?.enabled) return;
     insertBinding(db, chatBinding(thread.id, bot.profile_home, await workerUid(target)));
