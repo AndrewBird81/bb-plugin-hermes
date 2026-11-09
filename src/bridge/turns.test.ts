@@ -99,6 +99,14 @@ describe("side chat", () => {
     expect(deltas(rig, "thr_tag").filter((d) => d.kind === "provider.warning").map((d) => d.summary)).toEqual(["Remove the [Outside bb] tag to send."]);
   });
 
+  it("a recalled [Outside bb] part merged after or before the user's own: only it is refused, the user's part goes (review-2 4)", async () => {
+    await startThread(rig, "thr_tag2", opts());
+    await turn(rig, "thr_tag2", [text("thanks"), text("[Outside bb] old line")], opts());
+    await turn(rig, "thr_tag2", [text("[Outside bb · Oct 12] older line"), text("and this")], opts());
+    expect(rig.requests("prompt.submit").map((r) => r.params.text)).toEqual(["thanks", "and this"]);
+    expect(warnings("thr_tag2")).toEqual(["Remove the [Outside bb] tag to send.", "Remove the [Outside bb] tag to send."]);
+  });
+
   it("an unbound thread uses its profile option (A18)", async () => {
     await startThread(rig, "thr_u", opts("bob", null));
     await turn(rig, "thr_u", [text("hi")], { ...opts("bob", null), sessionOptions: { profile: "bob" } });

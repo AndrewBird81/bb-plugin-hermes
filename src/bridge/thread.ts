@@ -340,7 +340,12 @@ export class HostedThread {
 
   // ---- bb's own sends ----------------------------------------------------------------------------------
 
-  private async submitPrompt(turn: BbTurn, ctx: ThreadContext, parts: PromptInput[], params: TurnParams, requestId: string): Promise<Outcome> {
+  private async submitPrompt(turn: BbTurn, ctx: ThreadContext, input: PromptInput[], params: TurnParams, requestId: string): Promise<Outcome> {
+    // D15: a recalled `[Outside bb]` line never reaches Hermes, also when bb merged it with a wake the server's
+    // dispatch hook let through. Per part, as bb merges queued rows: the user's other parts still go (review-2 4).
+    const recalled = (p: PromptInput) => p.type === "text" && p.visibility !== "agent-only" && OUTSIDE_TAG_PREFIX.test(p.text);
+    if (input.some(recalled)) this.emit([{ kind: "provider.warning", summary: OUTSIDE_TAG_REFUSAL }]);
+    const parts = input.filter((p) => !recalled(p));
     const text = parts
       .filter((p): p is Extract<PromptInput, { type: "text" }> => p.type === "text")
       .map((p) => p.text)
@@ -348,12 +353,6 @@ export class HostedThread {
       .trim();
     if (/^\/(new|reset)(\s|$)/.test(text)) {
       await this.compress(turn, ctx);
-      return { status: "completed" };
-    }
-    // D15: a recalled `[Outside bb]` line never reaches Hermes, also when bb merged it with a wake the server's
-    // dispatch hook let through.
-    if (OUTSIDE_TAG_PREFIX.test(text)) {
-      this.emit([{ kind: "provider.warning", summary: OUTSIDE_TAG_REFUSAL }]);
       return { status: "completed" };
     }
     const { attachments, warnings } = prepareAttachments(parts, ctx.profileHome);
