@@ -37,7 +37,8 @@ describe("switches (T1.9)", () => {
     await w.connect();
     const { bots } = await w.rpc<{ bots: BotRow[] }>("bots");
     expect(bots).toEqual([
-      { profile: "neo", profile_home: NEO, bot_label: "Neo", served: true, enabled: false, thread_id: null, import_count: null },
+      // A served, off bot counts what its switch-on would import (none here: no chats).
+      { profile: "neo", profile_home: NEO, bot_label: "Neo", served: true, enabled: false, thread_id: null, import_count: 0 },
       { profile: "bob", profile_home: BOB, bot_label: "Bob", served: false, enabled: false, thread_id: null, import_count: null },
     ]);
     expect(w.access).toEqual([]);

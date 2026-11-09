@@ -5,6 +5,7 @@ import type { HermesProfile } from "../shared/host-contract.js";
 import { encodeMarker, type Marker, spawnStart } from "../shared/marker.js";
 import { BOTS_CHANNEL, type BotRow } from "../shared/rpc-contract.js";
 import { errorCode } from "./connection.js";
+import type { Discovery } from "./discovery.js";
 import {
   allBots,
   bindingsOf,
@@ -41,8 +42,8 @@ export async function spawnPlacement(bb: BbPluginApi, machine: string) {
 
 export const labelOf = (bot: Pick<BotRecord, "name" | "handle">) => botLabel(bot.name, bot.handle);
 
-export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
-  const { bb, db, host, connection, notify, sync, enqueue } = deps;
+export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; discovery: Discovery }) {
+  const { bb, db, host, connection, notify, sync, enqueue, discovery } = deps;
   const fail = (code: string) => connection.recordError(code);
   let described: { uid: number; profiles: HermesProfile[] } | null = null;
   const held = new Map<string, { attempt: number; timer: ReturnType<typeof setTimeout> }>();
@@ -65,7 +66,7 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
     return answer;
   }
 
-  function row(profile: HermesProfile): BotRow {
+  function row(profile: HermesProfile, importCount: number | null = null): BotRow {
     return {
       profile: profile.name,
       profile_home: profile.home,
@@ -73,8 +74,19 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
       served: profile.served,
       enabled: isEnabled(profile.home),
       thread_id: botBinding(db, profile.home)?.thread_id ?? null,
-      import_count: null,
+      import_count: importCount,
     };
+  }
+
+  /** A served, off bot's row counts what its switch-on would import (01 §2); null on failure. */
+  async function countedRow(profile: HermesProfile, target: Target): Promise<BotRow> {
+    if (!profile.served || isEnabled(profile.home)) return row(profile);
+    try {
+      return row(profile, await discovery.importCount(profile.home, target));
+    } catch (error) {
+      fail(errorCode(error, "import_count_failed"));
+      return row(profile);
+    }
   }
 
   /** The worker's profiles; while it can't describe, the last answer, else the bots on record (so an on bot can go off offline). */
@@ -82,7 +94,8 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
     const target = targetOf(connection);
     if (target) {
       try {
-        return (described ?? (await describe(target))).profiles.map(row);
+        const { profiles } = described ?? (await describe(target));
+        return await Promise.all(profiles.map((p) => countedRow(p, target)));
       } catch (error) {
         fail(errorCode(error, "describe_failed"));
       }
@@ -226,11 +239,22 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
     // Errors stay per binding: a chat deleted in Hermes (its thread stays, 01 §7) never stops the others.
     for (const b of bindingsOf(db, profileHome)) {
       try {
-        if (b.state === "replaying") await sync.importNow(b, bot.enabled_at ?? Date.now(), target);
-        else await sync.reconcileNow(b, target);
+        if (b.state !== "replaying") await sync.reconcileNow(b, target);
+        else if (b.kind !== "mirror") await sync.importNow(b, bot.enabled_at ?? Date.now(), target);
+        // A mirrored chat's import: this process's resumes its sends; one it isn't running was interrupted (flow 9).
+        else if (sync.importing.has(b.thread_id)) {
+          if (sync.unfinished.has(b.thread_id)) await sync.importNow(b, bot.enabled_at ?? Date.now(), target);
+        } else if (full) await discovery.redoNow(b);
       } catch (error) {
         fail(errorCode(error, "reconcile_failed"));
       }
+    }
+    // T2.1: after the bot thread and the bound threads, the chats with no thread yet.
+    try {
+      await discovery.discoverNow(profileHome, target);
+      await discovery.startImportsNow(target);
+    } catch (error) {
+      fail(errorCode(error, "discovery_failed"));
     }
   }
 
@@ -282,6 +306,7 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
   async function switchOffNow(profileHome: string): Promise<void> {
     setBotEnabled(db, profileHome, false, Date.now());
     clearHeld(profileHome);
+    await discovery.dropProfileNow(profileHome);
     for (const b of bindingsOf(db, profileHome)) {
       try {
         const thread = await liveThread(b.thread_id);
@@ -304,6 +329,7 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
     const profile = (described ?? (target ? await describe(target) : null))?.profiles.find((p) => p.home === profileHome);
     if (!profile && on) throw new Error("Unknown bot.");
     if (on && !profile!.served) throw new Error("Not served by this machine's gateway.");
+    discovery.forgetCount(profileHome);
     await enqueue(async () => (on ? switchOnNow(profileHome, targetOf(connection) ?? target!) : switchOffNow(profileHome)));
     // The worker learns the new `enabled_bots` (watch, prewarm, worker.json) at once.
     await connection.ensureNow();

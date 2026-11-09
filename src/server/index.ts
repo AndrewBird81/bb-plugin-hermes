@@ -7,6 +7,7 @@ import { BOTS_CHANNEL, rpcContract, type Diagnostics } from "../shared/rpc-contr
 import type { SettingsHandle } from "../shared/settings.js";
 import { createBots } from "./bots.js";
 import { createChats } from "./chats.js";
+import { createDiscovery } from "./discovery.js";
 import { type ConnectionSource, createConnection, errorCode, KEEPALIVE_MS, type OnConnected } from "./connection.js";
 import { MACHINE_FOLDER_KEY, machineFolder } from "./provider-options.js";
 import { addTombstone, bindingByThread, bindingCounts, type Db, deleteBinding, getKv, openMappingDb, setKv } from "./db.js";
@@ -57,7 +58,8 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
   const notify = createNotify(bb, db, fail);
   const deps = { bb, db, host, connection, notify };
   const sync = createSync({ ...deps, enqueue });
-  const bots = createBots({ ...deps, sync, enqueue });
+  const discovery = createDiscovery({ ...deps, sync });
+  const bots = createBots({ ...deps, sync, enqueue, discovery });
   const chats = createChats({ ...deps, sync, enqueue, describe: bots.describe });
   const run = (code: string, job: () => Promise<void>) => void enqueue(job).catch((error) => fail(errorCode(error, code)));
   const isHermes = (thread: { providerId: string }) => thread.providerId === PROVIDER_ID;
@@ -102,6 +104,7 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
     const id = binding.lineage_root ?? binding.expected_id;
     if (binding.kind !== "bot" && id) addTombstone(db, binding.profile_home, id, Date.now());
     deleteBinding(db, thread.id);
+    sync.importing.delete(thread.id);
     invalidateThreadInfo(bb);
     if (binding.kind === "bot") bb.realtime.publish(BOTS_CHANNEL, null);
   });

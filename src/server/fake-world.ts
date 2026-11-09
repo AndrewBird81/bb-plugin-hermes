@@ -140,10 +140,12 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
         const at = after ? turns.findIndex((t) => t.anchor_uid === after) : -1;
         if (at >= 0) turns = turns.slice(at + 1);
         const since = input.since;
+        const all = turns.length;
         if (since !== undefined) turns = turns.filter((t) => t.ts >= since);
         if (chat.pageSize !== undefined && after !== undefined && turns.length > chat.pageSize)
           return { session_id: chat.session_id, turns: turns.slice(0, chat.pageSize), truncated: true };
-        return { session_id: chat.session_id, turns, truncated: chat.truncated ?? false };
+        // As the worker: `since` leaving older turns out is `truncated`.
+        return { session_id: chat.session_id, turns, truncated: chat.truncated ?? turns.length < all };
       }
       default:
         throw new Error(`unexpected host call ${call.method}`);

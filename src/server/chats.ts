@@ -12,7 +12,7 @@ import { type Enqueue, expectedId, invalidateThreadInfo, type Sync, type SyncDep
 
 export const TITLE_MAX = 60;
 
-const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
+export const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 
 /** The first visible message, cut to 60 characters (S7 finding 4). */
 export function titleFrom(message: string): string | null {

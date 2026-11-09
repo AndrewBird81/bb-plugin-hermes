@@ -113,6 +113,12 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
   bb.onDispose(() => confirmTimers.forEach(clearTimeout));
   /** Imports that haven't sent every turn yet: they stay `replaying` at idle and resume at the next reconcile. */
   const unfinished = new Set<string>();
+  /**
+   * Mirrored chats this server process is importing (hidden threads, flow 5): `replaying` until the import is
+   * confirmed over, then `onImportOver` shows them. A `replaying` mirror binding not in here was interrupted.
+   */
+  const importing = new Map<string, { archived: boolean }>();
+  let onImportOver: (threadId: string) => Promise<void> = async () => {};
   const persistedKind = `${bb.pluginId}/${EXTENSION_KINDS.persistedTurn}`;
   const statusKind = `${bb.pluginId}/${EXTENSION_KINDS.status}`;
   /** `threadId \0 requestId` of dead cards already handled (memory: one stop per dead card set). */
@@ -166,21 +172,31 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
   }
 
   /**
-   * Flow 5 for a `replaying` binding (the bot thread in P1): turns since `enabled_at − 30 d`, oldest
-   * first; the first carries `bind` (with `since` when older turns stay in Hermes), the rest `replay`.
-   * Resumable: turns already in `turns` are skipped, so an interrupted import continues (flow 9).
+   * The turns an import shows: those since `since`, `truncated` when older ones stay in Hermes. A mirrored chat
+   * with no turn since then (its listed activity is a turn that spans the window's start) shows its newest turn alone.
    */
-  async function importNow(binding: Binding, enabledAt: number, target: Target): Promise<void> {
-    if (paused() || !binding.lineage_root) return;
+  async function readImportTurns(profileHome: string, lineageRoot: string, since: number, target: Target, newestAlone: boolean) {
+    const read = await host.call("readTurns", { root: target.root, profile_home: profileHome, lineage_root: lineageRoot, since }, { hostId: target.machine });
+    if (read.turns.length || !read.truncated || !newestAlone) return read;
+    const all = await host.call("readTurns", { root: target.root, profile_home: profileHome, lineage_root: lineageRoot }, { hostId: target.machine });
+    return { session_id: all.session_id, turns: all.turns.slice(-1), truncated: all.turns.length > 1 || all.truncated };
+  }
+
+  /**
+   * Flow 5 for a `replaying` binding (the bot thread, or a mirrored chat's hidden thread): turns since
+   * `enabled_at − 30 d`, oldest first; the first carries `bind` (with `since` when older turns stay in Hermes),
+   * the rest `replay`. Resumable: turns already in `turns` are skipped, so an interrupted import continues
+   * (flow 9). `read`: the turns the caller already read. Returns the number of turns sent.
+   */
+  async function importNow(binding: Binding, enabledAt: number, target: Target, read?: Awaited<ReturnType<typeof readImportTurns>>): Promise<number> {
+    if (paused() || !binding.lineage_root) return 0;
     unfinished.add(binding.thread_id);
     const since = enabledAt - IMPORT_WINDOW_MS;
-    const read = await host.call(
-      "readTurns",
-      { root: target.root, profile_home: binding.profile_home, lineage_root: binding.lineage_root, since },
-      { hostId: target.machine },
-    );
+    const mirror = binding.kind === "mirror";
+    read ??= await readImportTurns(binding.profile_home, binding.lineage_root, since, target, mirror);
     if (read.session_id !== binding.session_id) updateBinding(db, binding.thread_id, { session_id: read.session_id });
     let bound = hasTurns(db, binding.thread_id, "replay");
+    let sent = 0;
     for (const turn of read.turns) {
       if (turnRow(db, binding.thread_id, turn.anchor_uid)) continue;
       if (!claimTurn(db, { thread_id: binding.thread_id, anchor_uid: turn.anchor_uid, kind: "replay", at: turn.ts, reply_uids: turn.reply_uids })) continue;
@@ -194,9 +210,11 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
             anchor_uid: turn.anchor_uid,
             ...(read.truncated ? { since } : {}),
           };
-      readAtIdle.add(binding.thread_id);
-      if (!(await sendClaimed(binding, turn.anchor_uid, turnInput(turn, true, marker), "muted"))) return;
+      // A mirrored chat's import decided at its start whether it ends read (01 §8).
+      if (!mirror) readAtIdle.add(binding.thread_id);
+      if (!(await sendClaimed(binding, turn.anchor_uid, turnInput(turn, true, marker), "muted"))) return sent;
       bound = true;
+      sent++;
     }
     unfinished.delete(binding.thread_id);
     // Imported turns are shown once their bb turns end: the cursor may pass them now.
@@ -205,7 +223,10 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
       if (!turn.complete) break;
       cursor = turn.anchor_uid;
     }
-    updateBinding(db, binding.thread_id, { cursor_uid: cursor, ...(queuedTurnsOf(db, binding.thread_id).length ? {} : { state: "live" }) });
+    // A mirrored chat goes live only once its import is confirmed over (`onImportOver`).
+    const over = !mirror && !queuedTurnsOf(db, binding.thread_id).length;
+    updateBinding(db, binding.thread_id, { cursor_uid: cursor, ...(over ? { state: "live" } : {}) });
+    return sent;
   }
 
   /**
@@ -269,7 +290,8 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
         { hostId: target.machine },
       );
       turns.push(...read.turns);
-      if (!read.truncated || !read.turns.length || page === MAX_TURN_PAGES) return { session_id: read.session_id, turns };
+      // With `since`, `truncated` means older turns left out: nothing newer to read on.
+      if (!after || !read.truncated || !read.turns.length || page === MAX_TURN_PAGES) return { session_id: read.session_id, turns };
       after = read.turns.at(-1)!.anchor_uid;
     }
   }
@@ -415,13 +437,14 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
     if (binding?.state === "replaying" && unfinished.has(threadId)) {
       // An import still to send (a bot thread bound by bb's own first send): send it; its idle finalizes.
       const enabledAt = botRecord(db, binding.profile_home)?.enabled_at;
-      if (target && enabledAt != null && enabled(binding.profile_home)) await importNow(binding, enabledAt, target);
-      if (bindingByThread(db, threadId)?.state === "replaying") return;
+      const sent = target && enabledAt != null && enabled(binding.profile_home) ? await importNow(binding, enabledAt, target) : 0;
+      // Turns just sent haven't run: their idle finalizes.
+      if (sent > 0 || unfinished.has(threadId)) return;
     }
     for (const row of binding ? queuedTurnsOf(db, threadId) : []) if (row.kind === "replay") settleTurn(db, threadId, row.anchor_uid, "done");
-    if (binding?.state === "replaying" && !unfinished.has(threadId)) updateBinding(db, threadId, { state: "live" });
-    if (readAtIdle.has(threadId)) {
-      await bb.sdk.threads.markRead({ threadId });
+    if (binding?.state === "replaying" && binding.kind !== "mirror" && !unfinished.has(threadId)) updateBinding(db, threadId, { state: "live" });
+    if (readAtIdle.has(threadId) || importing.has(threadId)) {
+      if (readAtIdle.has(threadId)) await bb.sdk.threads.markRead({ threadId });
       confirmLater(threadId, thread.latestAttentionAt);
     } else notify.release(threadId);
     const live = bindingByThread(db, threadId);
@@ -445,11 +468,12 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
    * was) and read. Otherwise a turn is still coming, and its idle finalize tries again.
    */
   async function confirmNow(threadId: string, attentionAt: number): Promise<void> {
-    if (!readAtIdle.has(threadId)) return;
+    if (!readAtIdle.has(threadId) && !importing.has(threadId)) return;
     const thread = await bb.sdk.threads.get({ threadId });
     if (thread.status !== "idle" && thread.status !== "error") return;
     if (thread.queuedMessageCount > 0 || thread.latestAttentionAt !== attentionAt) return;
-    if ((thread.lastReadAt ?? -Infinity) < thread.latestAttentionAt) return;
+    if (readAtIdle.has(threadId) && (thread.lastReadAt ?? -Infinity) < thread.latestAttentionAt) return;
+    if (importing.has(threadId)) await onImportOver(threadId);
     readAtIdle.delete(threadId);
     notify.release(threadId);
   }
@@ -495,7 +519,15 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
     }
   }
 
-  return { active, readAtIdle, sendInit, importNow, reconcileNow, applyPersisted, ingestPersistedNow, finalizeNow, recoverQueuedNow };
+  return {
+    active,
+    readAtIdle,
+    importing,
+    unfinished,
+    setImportOver: (handler: typeof onImportOver) => void (onImportOver = handler),
+    readImportTurns,
+    sendInit,
+    importNow, reconcileNow, applyPersisted, ingestPersistedNow, finalizeNow, recoverQueuedNow };
 }
 
 export type Sync = ReturnType<typeof createSync>;

@@ -1,8 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BotRow } from "../shared/rpc-contract.js";
-import { bindingByThread } from "./db.js";
-import { NEO, turn, world, type World } from "./fake-world.js";
+import type { BotRow, Diagnostics } from "../shared/rpc-contract.js";
+import { outsideTag } from "../shared/sources.js";
+import { allBindings, bindingByLineage, bindingByThread, botRecord, insertBinding } from "./db.js";
+import { MAX_IMPORTS } from "./discovery.js";
+import { type FakeThread, NEO, session, turn, world, type World } from "./fake-world.js";
 import { RESTORE_DELAY_MS } from "./notify.js";
+import { IMPORT_WINDOW_MS } from "./sync.js";
+
+const DAY = 86_400_000;
 
 beforeEach(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }));
 afterEach(() => vi.useRealTimers());
@@ -14,6 +19,49 @@ const isRead = (w: World, threadId: string) => {
   return (t.lastReadAt ?? -1) >= t.latestAttentionAt;
 };
 const tombstones = (w: World) => w.db.prepare(`SELECT profile_home, lineage_root FROM tombstones ORDER BY lineage_root`).all();
+
+/** Rows the import should make threads of, each with its history. */
+function chat(w: World, id: string, rowOver: Parameters<typeof session>[1] = {}, turns = [turn(`${id}-1`), turn(`${id}-2`)]) {
+  const row = session(id, rowOver);
+  w.sessions.set(NEO, [...(w.sessions.get(NEO) ?? []), row]);
+  w.history.set(row.lineage_root, { session_id: row.session_id, turns });
+  return row;
+}
+
+const ran = new WeakMap<World, Map<string, number>>();
+/**
+ * bb runs every turn sent so far, thread by thread, then stays quiet; until nothing new is sent. `gap`: each
+ * thread's idle comes first while bb still dispatches its last turn (02 P1 finding). Returns the most hidden
+ * import threads seen at once.
+ */
+async function drain(w: World, { gap = false } = {}): Promise<number> {
+  const seen = ran.get(w) ?? new Map<string, number>();
+  ran.set(w, seen);
+  let peak = hidden(w).length;
+  for (let round = 0; round < 30; round++) {
+    let moved = false;
+    for (const t of [...w.threads.values()]) {
+      if (t.deletedAt || t.inputs.length === (seen.get(t.id) ?? 0)) continue;
+      seen.set(t.id, t.inputs.length);
+      moved = true;
+      if (gap) {
+        await w.idle(t.id);
+        await w.active(t.id);
+      }
+      await w.idle(t.id);
+      peak = Math.max(peak, hidden(w).length);
+    }
+    await w.quiet();
+    peak = Math.max(peak, hidden(w).length);
+    if (!moved) return peak;
+  }
+  throw new Error("drain never settled");
+}
+/** A thread bb holds from before this test's server. */
+const fakeThread = (id: string): FakeThread => ({ id, title: null, status: "idle", archivedAt: null, deletedAt: null, pinned: false, queued: 0, lastReadAt: null, latestAttentionAt: 1, visibility: "hidden", originPluginId: "hermes", spawn: null, inputs: [] });
+const hidden = (w: World) => [...w.threads.values()].filter((t) => !t.deletedAt && t.visibility === "hidden");
+const mirrors = (w: World): FakeThread[] => allBindings(w.db).filter((b) => b.kind === "mirror").map((b) => w.thread(b.thread_id));
+const countRow = async (w: World) => (await w.rpc<{ bots: BotRow[] }>("bots")).bots.find((b) => b.profile_home === NEO)!.import_count;
 
 /** A connected world with neo's Bot Chat found, holding `turns`. */
 async function botChatWorld(turns = [turn("u1"), turn("u2")]) {
@@ -115,5 +163,244 @@ describe("P1 follow-ups: tombstones (Q1)", () => {
       await w.emit("thread.deleted", id);
     }
     expect(tombstones(w)).toEqual([sid, pendingId].sort().map((lineage_root) => ({ profile_home: NEO, lineage_root })));
+  });
+});
+
+describe("T2.1–T2.2: discovery and 30-day import", () => {
+  it("01 §3 AC: a Bot Chat, 2 side chats and 3 CLI chats → 1 pinned + 5 others; badges by kind", async () => {
+    const w = await botChatWorld();
+    for (const id of ["c1", "c2", "c3"]) chat(w, id);
+    await on(w);
+    await drain(w);
+    const sides: string[] = [];
+    for (const n of [1, 2]) {
+      const { thread_id } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+      const sid = bindingByThread(w.db, thread_id)!.expected_id!;
+      // bb's own side chats list as `local`/`desktop` rows, first turn bb's.
+      chat(w, sid, { created_source: "desktop" }, [turn(`s${n}`, { submission_id: `bb:${thread_id}:1` })]);
+      if (n === 1) w.persisted(thread_id, { profile_home: NEO, lineage_root: sid, session_id: sid, turns: [{ submission_id: `bb:${thread_id}:1`, anchor_uids: [`s${n}`], reply_uids: [], at: 1 }] });
+      sides.push(thread_id);
+    }
+    await drain(w);
+    await w.changed(NEO);
+    await drain(w);
+    const live = [...w.threads.values()].filter((t) => !t.deletedAt && t.visibility === "visible");
+    expect(live.filter((t) => t.pinned).map((t) => t.id)).toEqual(["thr_1"]);
+    expect(live.filter((t) => !t.pinned)).toHaveLength(5);
+    expect(allBindings(w.db).map((b) => b.kind).sort()).toEqual(["bot", "chat", "chat", "mirror", "mirror", "mirror"]);
+    expect(mirrors(w).map((t) => t.title).sort()).toEqual(["Chat c1", "Chat c2", "Chat c3"]);
+  });
+
+  it("count == imported; spawned hidden with spawnStart(), bound right after, tagged and dated; 0 unread, 0 pushes, also through bb's dispatch gap; a re-run imports 0", async () => {
+    const w = await botChatWorld([]);
+    const ts = Date.now() - 3 * DAY;
+    for (const id of ["c1", "c2"]) chat(w, id, { last_activity_at: Date.now() - (id === "c1" ? 2 : 1) * DAY }, [turn(`${id}-1`, { ts }), turn(`${id}-2`, { ts, submission_id: "bb:thr_9:1", user_text: "mine" })]);
+    chat(w, "c3", { archived: true, created_source: "tui" });
+    chat(w, "c4", { source: "desktop", created_source: null, legacy: true });
+    expect(await countRow(w)).toBe(4);
+    // Cached ≤ 60 s; the only call naming an off bot (02 §Invariants).
+    expect(await countRow(w)).toBe(4);
+    const named = w.harness.inspection.experimental_hostRpcCalls.filter((c) => JSON.stringify(c.input).includes(NEO));
+    expect(named.map((c) => [c.method, (c.input as { since?: number }).since !== undefined])).toEqual([["listSessions", true]]);
+    await on(w);
+    expect(await countRow(w)).toBeNull();
+    // Oldest first, at most 2 at once, each hidden until its import is over.
+    const spawns = () => calls(w, "threads.spawn").filter((a) => a.visibility === "hidden");
+    expect(spawns().map((a) => a.title)).toEqual(["Chat c1", "Chat c2"]);
+    expect(spawns()[0]).toMatchObject({ visibility: "hidden", sessionOptions: { profile: "neo" }, pluginMetadata: { hermes: { origin: "import" } } });
+    expect(spawns()[0]!.pinned).toBeUndefined();
+    const c1 = bindingByLineage(w.db, NEO, "c1")!;
+    expect(c1).toMatchObject({ kind: "mirror", state: "replaying", source: "cli", legacy: false });
+    expect(w.markers(c1.thread_id)).toEqual([
+      { op: "bind", profile_home: NEO, lineage_root: "c1", legacy: false, anchor_uid: "c1-1", labeled: true },
+      { op: "replay", anchor_uid: "c1-2", labeled: true },
+    ]);
+    expect(w.texts(c1.thread_id)).toEqual([`${outsideTag(new Date(ts))}text c1-1`, "mine"]);
+
+    expect(await drain(w, { gap: true })).toBeLessThanOrEqual(MAX_IMPORTS);
+    expect(mirrors(w)).toHaveLength(4);
+    for (const t of mirrors(w)) {
+      expect(t.visibility).toBe("visible");
+      expect(isRead(w, t.id)).toBe(true);
+      expect(bindingByThread(w.db, t.id)?.state).toBe("live");
+    }
+    expect(isRead(w, "thr_1")).toBe(true);
+    expect(bindingByLineage(w.db, NEO, "c4")).toMatchObject({ legacy: true, source: "desktop" });
+    // Archived in Hermes → archived in bb; never pinned.
+    expect(mirrors(w).map((t) => [t.title, t.archivedAt !== null, t.pinned])).toEqual(
+      expect.arrayContaining([["Chat c3", true, false], ["Chat c1", false, false]]),
+    );
+    // Each import thread stops once shown (its bridge process goes).
+    for (const t of mirrors(w)) expect(calls(w, "threads.stop").map((a) => a.threadId)).toContain(t.id);
+    // 0 pushes: every level the plugin set is muted (then the user's own level back).
+    expect(new Set(w.levelCalls.map((c) => c.level))).toEqual(new Set(["muted", "inherit"]));
+    for (const spawn of calls(w, "threads.spawn")) expect(JSON.stringify(spawn.input)).not.toContain("<hermes-bb>");
+
+    const before = w.threads.size;
+    await w.changed(NEO);
+    await drain(w);
+    expect(w.threads.size).toBe(before);
+    const diagnostics = await w.rpc<Diagnostics>("diagnostics");
+    expect(diagnostics.bindings).toEqual({ total: 5, duplicates: 0 });
+    expect(diagnostics.errors).toEqual([]);
+  });
+
+  it("a later new chat (started while the bot is on) imports unread, with 0 pushes", async () => {
+    const w = await botChatWorld([]);
+    await on(w);
+    await drain(w);
+    chat(w, "c9", { last_activity_at: Date.now() + 1 });
+    await w.changed(NEO);
+    await drain(w);
+    const [t] = mirrors(w);
+    expect(t).toMatchObject({ visibility: "visible", title: "Chat c9" });
+    expect(isRead(w, t!.id)).toBe(false);
+    expect(w.levelCalls.filter((c) => c.threadId === t!.id).map((c) => c.level)).toEqual(["muted", "inherit"]);
+  });
+
+  it("the P2 upgrade: a bot already on imports its chats once, read", async () => {
+    const w = await world({
+      seed: (db) => db.prepare(`INSERT INTO bots (profile_home, name, enabled, enabled_at) VALUES (?, 'neo', 1, ?)`).run(NEO, Date.now() - 5 * DAY),
+    });
+    chat(w, "c1");
+    await w.connect();
+    await drain(w);
+    expect(mirrors(w)).toHaveLength(1);
+    expect(isRead(w, mirrors(w)[0]!.id)).toBe(true);
+  });
+
+  it("stays out: cron, oneshot, acp, chat-app, hidden, empty, a visible Bot Chat, bb-created (expected_id, first turn bb:) and tombstoned", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "cron", { created_source: "cron" });
+    chat(w, "one", { source: "oneshot", created_source: null });
+    chat(w, "acp", { created_source: "acp" });
+    chat(w, "dis", { source: "discord", created_source: null });
+    chat(w, "hid", { hidden: true });
+    chat(w, "emp", { message_count: 0 });
+    chat(w, "bc", { title: "Bot Chat" });
+    chat(w, "pend", { created_source: "desktop" });
+    chat(w, "mine", { created_source: "desktop" }, [turn("m1", { submission_id: "bb:thr_gone:1" }), turn("m2")]);
+    chat(w, "tomb");
+    w.db.prepare(`INSERT INTO tombstones (profile_home, lineage_root, at) VALUES (?, 'tomb', 1)`).run(NEO);
+    w.threads.set("thr_pend", { ...fakeThread("thr_pend"), visibility: "visible" });
+    insertBinding(w.db, { thread_id: "thr_pend", profile_home: NEO, lineage_root: null, session_id: null, expected_id: "pend", kind: "chat", source: null, tag: null, state: "pending", legacy: false, archived_by_switch: false, title_set: null });
+    // The count may read only the list (02 §Invariants): a side chat bb made counts until its first turn was read.
+    expect(await countRow(w)).toBe(1);
+    await on(w);
+    await drain(w);
+    await w.changed(NEO);
+    await drain(w);
+    expect(mirrors(w)).toEqual([]);
+    expect(w.threads.size).toBe(2);
+    // Off again: the first turn is known now, so the count is exact.
+    await w.rpc("setBot", { profile_home: NEO, on: false });
+    expect(await countRow(w)).toBe(0);
+  });
+
+  it("a chat whose listed activity spans the window's start imports its newest turn alone, with the note", async () => {
+    const w = await botChatWorld([]);
+    const old = Date.now() - 40 * DAY;
+    chat(w, "long", { last_activity_at: Date.now() - DAY }, [turn("l1", { ts: old - 1 }), turn("l2", { ts: old })]);
+    await on(w);
+    const t = bindingByLineage(w.db, NEO, "long")!;
+    const since = botRecord(w.db, NEO)!.enabled_at! - IMPORT_WINDOW_MS;
+    expect(w.markers(t.thread_id)).toEqual([{ op: "bind", profile_home: NEO, lineage_root: "long", legacy: false, anchor_uid: "l2", since, labeled: true }]);
+  });
+
+  it("title: Hermes' title, else the first visible message cut to 60 characters, else '<bot> chat'", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "t1", { title: null, last_activity_at: Date.now() - 3 * DAY }, [turn("h", { user_hidden: true, user_text: null }), turn("x", { user_text: "  Plan   my week: " + "x".repeat(80) })]);
+    chat(w, "t2", { title: null, last_activity_at: Date.now() - 2 * DAY }, [turn("y", { user_hidden: true, user_text: null })]);
+    await on(w);
+    await drain(w);
+    expect(mirrors(w).map((t) => t.title)).toEqual([("Plan my week: " + "x".repeat(80)).slice(0, 60), "Neo chat"]);
+  });
+
+  it("interrupted import (flow 9): the hidden thread a previous process left is deleted with its rows, no tombstone, imported again once", async () => {
+    const w = await world({
+      seed: (db) => {
+        db.prepare(`INSERT INTO bots (profile_home, name, enabled, enabled_at) VALUES (?, 'neo', 1, ?)`).run(NEO, Date.now());
+        insertBinding(db, { thread_id: "thr_old", profile_home: NEO, lineage_root: "c1", session_id: "c1", expected_id: null, kind: "mirror", source: "cli", tag: null, state: "replaying", legacy: false, archived_by_switch: false, title_set: null });
+        db.prepare(`INSERT INTO turns (thread_id, anchor_uid, kind, state, at) VALUES ('thr_old', 'c1-1', 'replay', 'done', 1)`).run();
+      },
+    });
+    w.threads.set("thr_old", { ...fakeThread("thr_old"), title: "Chat c1" });
+    chat(w, "c1");
+    await w.connect();
+    await w.flush();
+    expect(w.thread.bind(null, "thr_old")).toThrow("404");
+    expect(calls(w, "threads.delete")).toEqual([{ threadId: "thr_old", childThreadsConfirmed: true }]);
+    expect(tombstones(w)).toEqual([]);
+    expect(w.db.prepare(`SELECT COUNT(*) AS n FROM turns WHERE thread_id = 'thr_old'`).get()).toEqual({ n: 0 });
+    await drain(w);
+    expect(mirrors(w)).toHaveLength(1);
+    expect(mirrors(w)[0]).toMatchObject({ title: "Chat c1", visibility: "visible" });
+    expect(w.markers(mirrors(w)[0]!.id).map((m) => m.op)).toEqual(["bind", "replay"]);
+    // A new worker boot while this process imports keeps its own import.
+    chat(w, "c2");
+    await w.changed(NEO);
+    const c2 = bindingByLineage(w.db, NEO, "c2")!.thread_id;
+    w.state.boot = "boot_2";
+    await w.connect();
+    expect(w.thread(c2).deletedAt).toBeNull();
+    await drain(w);
+    expect(mirrors(w)).toHaveLength(2);
+  });
+
+  it("at most 2 imports at once; the next starts from a previous one's end", async () => {
+    const w = await botChatWorld([]);
+    for (let i = 1; i <= 5; i++) chat(w, `c${i}`, { last_activity_at: Date.now() - (10 - i) * DAY });
+    await on(w);
+    expect(hidden(w)).toHaveLength(2);
+    expect(await drain(w)).toBe(2);
+    expect(mirrors(w).map((t) => t.title)).toEqual(["Chat c1", "Chat c2", "Chat c3", "Chat c4", "Chat c5"]);
+  });
+
+  it("switch-off mid-import: the import stops (thread and binding go, no tombstone) and runs again at switch-on", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "c1");
+    await on(w);
+    const first = bindingByLineage(w.db, NEO, "c1")!.thread_id;
+    await w.rpc("setBot", { profile_home: NEO, on: false });
+    expect(w.thread.bind(null, first)).toThrow("404");
+    expect(bindingByLineage(w.db, NEO, "c1")).toBeNull();
+    expect(tombstones(w)).toEqual([]);
+    await on(w);
+    await drain(w);
+    expect(mirrors(w)).toHaveLength(1);
+  });
+
+  it("D48: off archives mirrored threads, on unarchives and catches them up; a chat started while off imports at the switch-on; Hermes-archived stays archived", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "c1");
+    chat(w, "c2", { archived: true });
+    await on(w);
+    await drain(w);
+    const [c1, c2] = ["c1", "c2"].map((id) => bindingByLineage(w.db, NEO, id)!.thread_id);
+    await w.rpc("setBot", { profile_home: NEO, on: false });
+    expect([w.thread(c1!).archivedAt, w.thread(c2!).archivedAt].map((a) => a !== null)).toEqual([true, true]);
+    expect(bindingByThread(w.db, c2!)?.archived_by_switch).toBe(false);
+    w.history.get("c1")!.turns.push(turn("c1-3", { ts: Date.now() }));
+    chat(w, "c3", { last_activity_at: Date.now() });
+    await on(w);
+    expect(w.thread(c1!).archivedAt).toBeNull();
+    expect(w.thread(c2!).archivedAt).not.toBeNull();
+    expect(w.markers(c1!).at(-1)).toEqual({ op: "mirror", anchor_uid: "c1-3", labeled: true });
+    await drain(w);
+    expect(bindingByLineage(w.db, NEO, "c3")).toMatchObject({ kind: "mirror", state: "live" });
+  });
+
+  it("wakes into a mirrored thread work as for bound threads (flow 6)", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "c1");
+    await on(w);
+    await drain(w);
+    const t = bindingByLineage(w.db, NEO, "c1")!.thread_id;
+    expect(bindingByThread(w.db, t)?.cursor_uid).toBe("c1-2");
+    w.history.get("c1")!.turns.push(turn("c1-3"));
+    await w.changed(NEO);
+    await w.changed(NEO);
+    expect(w.markers(t).filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "c1-3", labeled: true }]);
+    expect(w.texts(t).at(-1)).toBe("[Outside bb] text c1-3");
   });
 });
