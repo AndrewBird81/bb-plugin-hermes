@@ -283,10 +283,10 @@ await ctl("outsideTurn", { profile: "alex", session_id: ids.cli, text: "cli thre
 ids.whileOff = await chat({ profile: "alex", kind: "tui", turns: ["started while off"] });
 await sleep(2000);
 setBot("alex", true);
-await until("alex back", () => allLive("alex", 8), 120_000);
+await until("alex back", () => allLive("alex", alexBefore.length + 1), 120_000);
 await sleep(8000);
 const alexAfter = bindings("alex");
-check("5 the same threads back, no duplicates, the new chat imported", alexBefore.every((id) => alexAfter.some((b) => b.thread_id === id)) && alexAfter.length === 8 && diagnostics().bindings.duplicates === 0);
+check("5 the same threads back, no duplicates, the new chat imported", alexBefore.every((id) => alexAfter.some((b) => b.thread_id === id)) && alexAfter.length === alexBefore.length + 1 && diagnostics().bindings.duplicates === 0);
 check("5 the Hermes-archived chat stays archived; the others unarchived", alexAfter.every((b) => (thread(b.thread_id).archivedAt !== null) === (b.lineage_root === ids.archived)));
 check("5 the turn made while off shows", sends(bindingOf(ids.cli).thread_id).some((s) => s.startsWith("[Outside bb] cli three while off")));
 const woT = thread(bindingOf(ids.whileOff).thread_id);
