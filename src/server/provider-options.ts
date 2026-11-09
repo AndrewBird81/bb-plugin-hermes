@@ -48,7 +48,19 @@ function threadView(db: Db, threadId: string): ThreadView | null {
   };
 }
 
-export function deriveProviderOptions(db: Db, { settings, threadId }: Pick<PluginProviderOptionsContext, "settings" | "threadId">): ProviderOptions {
+/** kv: the personal project's id ("No project"), as `projects.list` gives it. */
+export const PERSONAL_PROJECT_KEY = "personal_project";
+
+/** A thread whose project isn't the personal one (unknown until the server has listed projects: none is). */
+function inProject(db: Db, projectId: string | undefined): boolean {
+  const personal = getKv(db, PERSONAL_PROJECT_KEY);
+  return typeof personal === "string" && projectId !== undefined && projectId !== personal;
+}
+
+export function deriveProviderOptions(
+  db: Db,
+  { settings, threadId, projectId }: Pick<PluginProviderOptionsContext, "settings" | "threadId"> & { projectId?: string },
+): ProviderOptions {
   const folder = typeof settings.folder === "string" && settings.folder !== "" ? settings.folder : DEFAULT_FOLDER;
-  return { folder, machine: hermesMachine(db, folder), thread: threadView(db, threadId) };
+  return { folder, machine: hermesMachine(db, folder), thread: threadView(db, threadId), project: inProject(db, projectId) };
 }

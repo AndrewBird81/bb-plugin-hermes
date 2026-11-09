@@ -6,12 +6,14 @@ import { encodeMarker, type Marker, spawnStart } from "../shared/marker.js";
 import { BOTS_CHANNEL, type BotRow } from "../shared/rpc-contract.js";
 import { errorCode } from "./connection.js";
 import type { Discovery } from "./discovery.js";
+import { PERSONAL_PROJECT_KEY } from "./provider-options.js";
 import {
   allBots,
   bindingsOf,
   botBinding,
   botRecord,
   type BotRecord,
+  type Db,
   deleteBinding,
   enabledBots,
   getKv,
@@ -28,13 +30,19 @@ export const HELD_RETRY_MS = [2_000, 5_000, 10_000, 30_000, 60_000];
 const ACCESS_PENDING = "access_pending";
 const PROVIDER_ID = "hermes";
 
-/** Where every Hermes thread is spawned: the personal project, the Hermes machine's personal workspace (S1-S3 §S3b). */
-export async function spawnPlacement(bb: BbPluginApi, machine: string) {
+/** The personal project ("No project"), remembered for `deriveProviderOptions` (D54). */
+export async function personalProject(bb: BbPluginApi, db: Db): Promise<string> {
   const projects = await bb.sdk.projects.list({ includePersonal: true });
   const personal = projects.find((p) => p.kind === "personal");
   if (!personal) throw Object.assign(new Error("no personal project"), { code: "no_personal_project" });
+  if (getKv(db, PERSONAL_PROJECT_KEY) !== personal.id) setKv(db, PERSONAL_PROJECT_KEY, personal.id);
+  return personal.id;
+}
+
+/** Where every Hermes thread the plugin spawns goes: the personal project, the Hermes machine's personal workspace (S1-S3 §S3b). */
+export async function spawnPlacement(bb: BbPluginApi, db: Db, machine: string) {
   return {
-    projectId: personal.id,
+    projectId: await personalProject(bb, db),
     providerId: PROVIDER_ID,
     environment: { type: "host" as const, hostId: machine, workspace: { type: "personal" as const } },
   };
@@ -138,7 +146,7 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; disc
   async function spawnBotThreadNow(bot: BotRecord, target: Target): Promise<void> {
     const init: Marker = { op: "init", profile: bot.name, bot: true };
     const thread = await bb.sdk.threads.spawn({
-      ...(await spawnPlacement(bb, target.machine)),
+      ...(await spawnPlacement(bb, db, target.machine)),
       sessionOptions: { profile: bot.name },
       title: botThreadTitle(labelOf(bot)),
       pinned: true,

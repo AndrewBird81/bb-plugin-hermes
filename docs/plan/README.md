@@ -66,6 +66,7 @@ Later (out of v1):
 | D51 | bb's native New Thread, with the Bot chip, is the way to start a chat. The rail panel is gone (owner, 2026-11-09: "it's not providing any value") |
 | D52 | The Hermes icon is the Hermes Agent icon bb's provider-acp uses (taken from LobeHub's MIT `@lobehub/icons-static-svg`); the winged H goes |
 | D53 | A new chat uses its bot's own model unless the user picks one in that chat: "The bot's model" is every model list's default |
+| D54 | A Hermes chat in a project works in that project's folder, as Codex, Claude and Pi do; with "No project", in its bot's `terminal.cwd` |
 | Q1 default | No cross-delete. bb delete → tombstone (mirrored chats and side chats; a bot thread is re-created instead), never re-imported. Deleted in Hermes → the thread stays; sends fail "Deleted in Hermes" |
 | Q7 default | Imported bubbles carry the outside tag and date (`[Outside bb · Oct 12]`), never an app's name; oldest first; item times are import time |
 

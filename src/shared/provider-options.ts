@@ -18,7 +18,7 @@ export const threadViewSchema = z
     session_id: z.string().nullable(),
     /** Not gateway-owned yet: adopted only by the first bb send (D16, A23). */
     legacy: z.boolean(),
-    /** The bot's `terminal.cwd`, for `session.create` (null → `~`, R1 S10). */
+    /** The bot's `terminal.cwd`, for `session.create` outside a project (null → `~`, R1 S10). */
     cwd: z.string().nullable(),
   })
   .strict();
@@ -36,6 +36,8 @@ export const providerOptionsSchema = z
     machine: z.object({ id: z.string(), name: z.string().nullable() }).strict().nullable(),
     /** Null when the server has no binding (yet) for this thread, e.g. a `bb thread spawn` whose `thread.created` hasn't run. */
     thread: threadViewSchema.nullable(),
+    /** The thread is in a project, not "No project": it works in bb's folder for it, not the bot's (D54). */
+    project: z.boolean().default(false),
   })
   .strip();
 export type ProviderOptions = z.infer<typeof providerOptionsSchema>;

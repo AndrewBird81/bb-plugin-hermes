@@ -25,7 +25,7 @@ export interface ThreadContext {
   lineageRoot: string | null;
   sessionId: string | null;
   legacy: boolean;
-  /** `terminal.cwd`, else null (→ `~`). */
+  /** Where the chat works: bb's folder in a project (D54), else the bot's `terminal.cwd`, else null (→ `~`). */
   cwd: string | null;
   /** The server hasn't bound this thread yet: the bridge derived it. */
   derived: boolean;
@@ -37,6 +37,8 @@ export interface ResolveInput {
   /** What the bridge remembers for this thread (the `init` marker's profile). */
   saved?: ThreadEntry | undefined;
   dataDir: string;
+  /** bb's folder for the thread (`thread/start`, `thread/resume`). */
+  cwd?: string | undefined;
 }
 
 /** The server's options, or a refusal. Checks the machine before anything touches Hermes. */
@@ -50,6 +52,7 @@ export function resolveContext(input: ResolveInput): ThreadContext {
   }
   const root = expandHome(options.folder);
   const view = options.thread;
+  const project = options.project && input.cwd ? input.cwd : null;
   if (view) {
     if (!view.enabled) throw new UserFacingError(switchedOffText(view.bot_label));
     return {
@@ -61,7 +64,7 @@ export function resolveContext(input: ResolveInput): ThreadContext {
       lineageRoot: view.lineage_root,
       sessionId: view.session_id,
       legacy: view.legacy,
-      cwd: view.cwd,
+      cwd: project ?? view.cwd,
       derived: false,
     };
   }
@@ -77,7 +80,7 @@ export function resolveContext(input: ResolveInput): ThreadContext {
     lineageRoot: null,
     sessionId: null,
     legacy: false,
-    cwd: bot.cwd,
+    cwd: project ?? bot.cwd,
     derived: true,
   };
 }

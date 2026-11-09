@@ -92,6 +92,7 @@ const options = (profile: string, view: Partial<ThreadView>): { providerOptions:
     folder: H,
     machine: { id: "host-e2e", name: "hermes-mac" },
     thread: { kind: "chat", profile, profile_home: h.profileHome(profile), bot_label: botLabel(profile), enabled: true, lineage_root: null, session_id: null, legacy: false, cwd: null, ...view },
+    project: false,
   },
 });
 const bot = (profile: string) => options(profile, { kind: "bot" });

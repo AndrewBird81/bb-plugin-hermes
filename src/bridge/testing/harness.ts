@@ -101,7 +101,7 @@ export async function startRig(opts: { profiles?: string[]; enabled?: string[]; 
               cwd: null,
               ...view,
             };
-      return { folder: fake.folder, machine: { id: "host-1", name: "hermes-mac" }, thread };
+      return { folder: fake.folder, machine: { id: "host-1", name: "hermes-mac" }, thread, project: false };
     },
     async call(method, params) {
       const id = nextId++;

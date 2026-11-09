@@ -153,7 +153,7 @@ export function createDiscovery(deps: SyncDeps & { sync: Sync }) {
     const firstText = turns.turns.find((t) => !t.user_hidden && t.user_text !== null && titleFrom(t.user_text) !== null)?.user_text;
     const title = row.title ?? (firstText ? titleFrom(firstText) : null) ?? `${labelOf(bot)} chat`;
     const thread = await bb.sdk.threads.spawn({
-      ...(await spawnPlacement(bb, target.machine)),
+      ...(await spawnPlacement(bb, db, target.machine)),
       visibility: "hidden",
       sessionOptions: { profile: bot.name },
       title,

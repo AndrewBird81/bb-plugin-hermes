@@ -75,7 +75,7 @@ AC:
 - **Approvals and `clarify`** (D11): a bb card with Hermes' choices only and the request's deadline (`timeout_s`: `approvals.timeout`, 60 s on the owner's setup, R6; 600 s for `clarify`). A push goes out. Timed out → "Timed out in Hermes"; answered in another app → "Answered elsewhere". bb never answers for you (A2).
 - **Steer:** into bb's own running turn; otherwise queued as the next message.
 - **`/new`, `/reset`:** a compaction of the same chat, never a new session (S8 step 7; README confirm item 7). Hermes keeps a chat's first and last messages, so a short chat's `/new` compacts nothing: bb says so.
-- **Working folder:** the bot's `terminal.cwd`, else `~` (R1 S10).
+- **Working folder:** in a project, bb's folder for the chat (the project root with Project checkout), as Codex, Claude and Pi (D54); with "No project", the bot's `terminal.cwd`, else `~` (R1 S10). Hermes' terminal follows the session's folder on its local backend.
 - **Phone** (D19): the bot thread works as any thread. New side chats come from bb's New Thread, as on desktop.
 
 AC:

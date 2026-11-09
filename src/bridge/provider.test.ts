@@ -4,7 +4,7 @@ import { EXTENSION_KINDS } from "../shared/extension-state.js";
 import type { ProviderOptions } from "../shared/provider-options.js";
 import { PROVIDER_ID, REASONING_LEVELS, registerProvider } from "./provider.js";
 
-const OPTIONS: ProviderOptions = { folder: "/srv/hermes", machine: null, thread: null };
+const OPTIONS: ProviderOptions = { folder: "/srv/hermes", machine: null, thread: null, project: false };
 
 // The fake host validates the declaration with the production validator.
 function register() {

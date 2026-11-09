@@ -21,6 +21,25 @@ const home = (profile: string) => rig.fake.profiles.find((p) => p.name === profi
 const warnings = (threadId: string) => deltas(rig, threadId).filter((d) => d.kind === "provider.warning").map((d) => d.summary);
 
 describe("side chat", () => {
+  it("D54: in a project it works in bb's folder for it, after a resume too; with no project in its bot's terminal.cwd", async () => {
+    const root = rig.fake.folder; // any existing folder stands for the project root
+    const project = (profile: string, view: object | null = {}) => ({ providerOptions: { ...rig.options(profile, view as never), project: true } });
+    const start = (threadId: string, cwd: string, options: object) => rig.call("thread/start", { threadId, cwd, options: { ...AUTO, ...options }, instructionMode: "append" });
+    await start("thr_proj", root, project("alex", { cwd: "/w/alex" }));
+    await turn(rig, "thr_proj", [text("hi")], project("alex", { cwd: "/w/alex" }));
+    // Not bound yet (bb's New Thread): the same.
+    await start("thr_new", root, { ...project("bob", null), sessionOptions: { profile: "bob" } });
+    await turn(rig, "thr_new", [text("hi")], { ...project("bob", null), sessionOptions: { profile: "bob" } });
+    // A new bridge process: bb resumes the thread with its folder before the first turn.
+    rig.restartBridge();
+    await rig.call("thread/resume", { threadId: "thr_res", cwd: root, providerThreadId: "pending:thr_res", options: { ...AUTO, ...project("alex") }, instructionMode: "append" });
+    await turn(rig, "thr_res", [text("hi")], project("alex"));
+    // No project: bb's personal workspace is ignored.
+    await start("thr_none", "/x/workspaces/thr_none", opts("alex", { cwd: "/w/alex" }));
+    await turn(rig, "thr_none", [text("hi")], opts("alex", { cwd: "/w/alex" }));
+    expect(rig.requests("session.create").map((r) => r.params.cwd)).toEqual([root, root, root, "/w/alex"]);
+  });
+
   it("creates the session lazily, submits with bb's ids, streams, then announces identity after the boundary", async () => {
     await startThread(rig, "thr_a", opts());
     expect(rig.requests("session.create")).toHaveLength(0);

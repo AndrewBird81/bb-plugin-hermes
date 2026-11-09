@@ -176,6 +176,8 @@ export class HostedThread {
   private persisted: PersistedTurnState["turns"];
   private mirrored: PersistedTurnState["mirrored"];
   private banner: StatusState["banner"] = null;
+  /** bb's folder for this thread, from `thread/start` or `thread/resume`. */
+  cwd: string | undefined;
 
   constructor(
     readonly threadId: string,
@@ -323,7 +325,7 @@ export class HostedThread {
   private resolve(params: TurnParams): ThreadContext {
     this.noteOptions(params.options.providerOptions);
     const saved = readThread(this.host.dataDir, this.threadId);
-    const ctx = resolveContext({ providerOptions: params.options.providerOptions, sessionOptions: params.options.sessionOptions, saved, dataDir: this.host.dataDir });
+    const ctx = resolveContext({ providerOptions: params.options.providerOptions, sessionOptions: params.options.sessionOptions, saved, dataDir: this.host.dataDir, cwd: this.cwd });
     // The server's view lags a session this process created (until it reads `persisted-turn`): keep ours.
     if (this.ctx && this.ctx.profileHome === ctx.profileHome && !ctx.lineageRoot && this.ctx.lineageRoot) {
       ctx.lineageRoot = this.ctx.lineageRoot;

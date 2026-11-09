@@ -5,12 +5,12 @@ import pkg from "../../package.json" with { type: "json" };
 import { hostContract, hostSignals } from "../shared/host-contract.js";
 import { BOTS_CHANNEL, rpcContract, type Diagnostics } from "../shared/rpc-contract.js";
 import type { SettingsHandle } from "../shared/settings.js";
-import { createBots } from "./bots.js";
+import { createBots, personalProject } from "./bots.js";
 import { createChats } from "./chats.js";
 import { createDiscovery } from "./discovery.js";
 import { dispatchDecision, hasUserMessage } from "./dispatch.js";
 import { type ConnectionSource, createConnection, errorCode, KEEPALIVE_MS, type OnConnected } from "./connection.js";
-import { hermesMachine, MACHINE_FOLDER_KEY, machineFolder } from "./provider-options.js";
+import { hermesMachine, MACHINE_FOLDER_KEY, machineFolder, PERSONAL_PROJECT_KEY } from "./provider-options.js";
 import { addTombstone, allBindings, bindingByThread, bindingCounts, type Db, deleteBinding, getKv, openMappingDb, queuedTurnsOf, setKv, updateBinding } from "./db.js";
 import { createNotify } from "./notify.js";
 import { createQueue, createSync, invalidateThreadInfo, targetOf } from "./sync.js";
@@ -192,6 +192,8 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
   bb.background.service("keepalive", {
     async start(signal) {
       while (!signal.aborted) {
+        // Until known, every thread works in its bot's folder (D54).
+        if (getKv(db, PERSONAL_PROJECT_KEY) === null) await personalProject(bb, db).catch((error) => fail(errorCode(error, "projects_failed")));
         await connection.ensureNow();
         await sleep(KEEPALIVE_MS, signal);
       }

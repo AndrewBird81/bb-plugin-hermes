@@ -651,8 +651,13 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
         legacy: false,
         cwd: "/w/neo",
       },
+      project: false,
     });
     expect(deriveProviderOptions(w.db, { settings: {}, threadId: "thr_other" }).thread).toBeNull();
+    // D54: a thread in a project (not the personal one, "No project") works in bb's folder for it.
+    expect(deriveProviderOptions(w.db, { settings: {}, threadId: "thr_1", projectId: "proj_personal" }).project).toBe(false);
+    expect(deriveProviderOptions(w.db, { settings: {}, threadId: "thr_1", projectId: "proj_demo" }).project).toBe(true);
+    expect(deriveProviderOptions(w.db, { settings: {}, threadId: "thr_other", projectId: "proj_demo" }).project).toBe(true);
     await off(w);
     expect(deriveProviderOptions(w.db, { settings: {}, threadId: "thr_1" }).thread?.enabled).toBe(false);
   });

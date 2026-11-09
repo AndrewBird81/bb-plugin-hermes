@@ -126,7 +126,7 @@ bb → bridge → Hermes:
 | `model/list` | legacy `model.options{profile}`, 2 s | Last-known list on timeout. Never creates a session (r09 M6) |
 | `thread/start` | — | Identity `pending:<threadId>`; publish `bb/session-options` (the chat's bot only) and `bb/provider-model-catalog` (reasoning from `capabilities`, r11 §1) |
 | `thread/resume` | — | Records identity only (R4 M4) |
-| `turn/start`, side chat, `pending` | `session.create{profile, request_id:"bb:<threadId>", source:"gui", cwd, model, provider, reasoning?}` | `cwd` = `terminal.cwd`, else `~`. `gui`, not `cli`: `hermes chat -c` continues a `cli` chat (A20 failed) |
+| `turn/start`, side chat, `pending` | `session.create{profile, request_id:"bb:<threadId>", source:"gui", cwd, model, provider, reasoning?}` | `cwd` = in a project (provider options `project`: the thread's project isn't the personal one), bb's `thread/start` folder (D54); else `terminal.cwd`, else `~`. `gui`, not `cli`: `hermes chat -c` continues a `cli` chat (A20 failed) |
 | `turn/start`, bot thread | flow 3 | S8 steps 1–4 |
 | `turn/start`, legacy binding | `session.resume{omit_messages:true}` adopts once (D16) | `runtime_coordination_required` → flow 3 step 4 |
 | `turn/start`, any | then `prompt.submit{session_id, text, attachments?, submission_id:"bb:<threadId>:<clientRequestId>", turn_author:{id:"bb:<threadId>", name:"bb"}}` | One `submission_id` per message; never auto-resend (S8 step 4) |
