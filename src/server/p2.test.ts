@@ -782,3 +782,21 @@ describe("review 3: a server restart mid-import", () => {
     expect(w.levelCalls).toEqual([{ threadId: "thr_bot", level: "all" }]);
   });
 });
+
+describe("review 8: the first pass across a restart", () => {
+  it("keeps its start: a chat begun after it (before the restart) ends unread, an older one read", async () => {
+    const enabledAt = Date.now() - 3 * DAY;
+    const w = await world({
+      seed: (db) => {
+        db.prepare(`INSERT INTO bots (profile_home, name, enabled, enabled_at) VALUES (?, 'neo', 1, ?)`).run(NEO, enabledAt);
+        db.prepare(`INSERT INTO kv (key, value) VALUES ('discovered', ?)`).run(JSON.stringify({ [NEO]: { enabled_at: enabledAt, started_at: Date.now() - 2 * DAY, finished: false } }));
+      },
+    });
+    chat(w, "old", { last_activity_at: Date.now() - 2.5 * DAY }, [turn("o1", { ts: Date.now() - 2.5 * DAY })]);
+    chat(w, "new", { last_activity_at: Date.now() - DAY });
+    await w.connect();
+    await drain(w);
+    expect(isRead(w, bindingByLineage(w.db, NEO, "old")!.thread_id)).toBe(true);
+    expect(isRead(w, bindingByLineage(w.db, NEO, "new")!.thread_id)).toBe(false);
+  });
+});

@@ -14,8 +14,16 @@ import { IMPORT_WINDOW_MS, invalidateThreadInfo, type Sync, type SyncDeps, type 
 export const MAX_IMPORTS = 2;
 /** The switch row's count is read at most this often per bot (02 §Invariants: the only call for an off bot). */
 export const COUNT_TTL_MS = 60_000;
-/** kv: profile home → the `enabled_at` whose first discovery pass finished (its chats ended read). */
+/**
+ * kv: profile home → the bot's first discovery pass after its switch-on (or the P2 upgrade): when it began (a chat
+ * active after that is news) and whether it finished (its chats ended read). Kept across restarts.
+ */
 const FIRST_PASS = "discovered";
+interface Pass {
+  enabled_at: number;
+  started_at: number;
+  finished: boolean;
+}
 
 interface Candidate {
   profile_home: string;
@@ -40,13 +48,19 @@ export function createDiscovery(deps: SyncDeps & { sync: Sync }) {
   const firstTurnBb = new Map<string, boolean>();
   /** Listed chats with no turn to import, until their activity moves. */
   const empty = new Set<string>();
-  /** When this process's first pass of each bot began: a chat active after it is news, not import. */
-  const passStart = new Map<string, number>();
   const counts = new Map<string, { at: number; count: number }>();
 
   const tombstoned = (profileHome: string, id: string) =>
     db.prepare(`SELECT 1 FROM tombstones WHERE profile_home = ? AND lineage_root = ?`).get(profileHome, id) !== undefined;
-  const firstPasses = () => (getKv(db, FIRST_PASS) as Record<string, number> | null) ?? {};
+  const passes = () => (getKv(db, FIRST_PASS) as Record<string, Pass> | null) ?? {};
+  /** The bot's first pass for this switch-on, begun now if none is on record. */
+  function passOf(profileHome: string, enabledAt: number): Pass {
+    const pass = passes()[profileHome];
+    if (pass?.enabled_at === enabledAt) return pass;
+    const fresh = { enabled_at: enabledAt, started_at: Date.now(), finished: false };
+    setKv(db, FIRST_PASS, { ...passes(), [profileHome]: fresh });
+    return fresh;
+  }
 
   /**
    * The 02 §Invariants allow-list for unbound rows: bb-created by a binding's `expected_id` (session id or lineage
@@ -95,8 +109,8 @@ export function createDiscovery(deps: SyncDeps & { sync: Sync }) {
     const bot = botRecord(db, profileHome);
     if (!bot?.enabled || bot.enabled_at == null || connection.health().state === "not_supported") return;
     const { sessions } = await host.call("listSessions", { root: target.root, profile_home: profileHome, since: bot.enabled_at - IMPORT_WINDOW_MS }, { hostId: target.machine });
-    const firstPass = firstPasses()[profileHome] !== bot.enabled_at;
-    if (firstPass && !passStart.has(profileHome)) passStart.set(profileHome, Date.now());
+    const pass = passOf(profileHome, bot.enabled_at);
+    const firstPass = !pass.finished;
     for (const k of [...pending.keys()]) if (pending.get(k)!.profile_home === profileHome) pending.delete(k);
     for (const row of sessions) {
       const binding = bindingByLineage(db, profileHome, row.lineage_root);
@@ -107,14 +121,13 @@ export function createDiscovery(deps: SyncDeps & { sync: Sync }) {
     if (unknown.length) await learnFirstNow(profileHome, unknown, target);
     for (const { row, verdict, unknown } of verdicts(profileHome, unbound)) {
       if (verdict.kind !== "chat" || unknown) continue;
-      const read = firstPass && row.last_activity_at !== null && row.last_activity_at <= passStart.get(profileHome)!;
+      const read = firstPass && row.last_activity_at !== null && row.last_activity_at <= pass.started_at;
       pending.set(key(profileHome, row.lineage_root), { profile_home: profileHome, row, surface: verdict.surface, read });
     }
     const busy = [...sync.importing.keys()].some((id) => bindingByThread(db, id)?.profile_home === profileHome);
     const undecided = verdicts(profileHome, unbound).some((v) => v.unknown);
     if (firstPass && !busy && !undecided && ![...pending.values()].some((c) => c.profile_home === profileHome)) {
-      setKv(db, FIRST_PASS, { ...firstPasses(), [profileHome]: bot.enabled_at });
-      passStart.delete(profileHome);
+      setKv(db, FIRST_PASS, { ...passes(), [profileHome]: { ...pass, finished: true } });
     }
   }
 
@@ -162,7 +175,7 @@ export function createDiscovery(deps: SyncDeps & { sync: Sync }) {
       archived_by_switch: false,
       title_set: sha256(title),
     });
-    sync.importing.set(thread.id, { archived: row.archived, cutoff: read ? (passStart.get(profile_home) ?? Date.now()) : Infinity });
+    sync.importing.set(thread.id, { archived: row.archived, cutoff: read ? passOf(profile_home, bot.enabled_at).started_at : Infinity });
     if (read) sync.readAtIdle.add(thread.id);
     invalidateThreadInfo(bb);
     await notify.hold(thread.id, "muted");
