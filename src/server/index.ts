@@ -10,7 +10,7 @@ import { createChats } from "./chats.js";
 import { createDiscovery } from "./discovery.js";
 import { dispatchDecision } from "./dispatch.js";
 import { type ConnectionSource, createConnection, errorCode, KEEPALIVE_MS, type OnConnected } from "./connection.js";
-import { MACHINE_FOLDER_KEY, machineFolder } from "./provider-options.js";
+import { hermesMachine, MACHINE_FOLDER_KEY, machineFolder } from "./provider-options.js";
 import { addTombstone, bindingByThread, bindingCounts, type Db, deleteBinding, getKv, openMappingDb, setKv } from "./db.js";
 import { createNotify } from "./notify.js";
 import { createQueue, createSync, invalidateThreadInfo, targetOf } from "./sync.js";
@@ -80,7 +80,8 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
       await bots.onConnectedNow(target, { newBoot, reconnected });
     });
   void notify.restoreAll();
-  bb.experimental_hooks.on("message.dispatch", dispatchDecision);
+  // The folder as of the last check (the hook can't await settings).
+  bb.experimental_hooks.on("message.dispatch", (context) => dispatchDecision(context, hermesMachine(db, connection.health().folder)));
 
   bb.events.on("thread.active", ({ thread }) => {
     if (isHermes(thread)) sync.active.add(thread.id);

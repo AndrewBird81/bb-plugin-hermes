@@ -5,6 +5,7 @@ import type { EnsureWatchOutput, HostContract, hostSignals } from "../shared/hos
 import { HEALTH_CHANNEL, type Health, type HealthState } from "../shared/rpc-contract.js";
 import type { ConnectionSettings } from "../shared/settings.js";
 import { enabledBots, getKv, setKv, type Db } from "./db.js";
+import { MACHINE_NAME_KEY, machineName } from "./provider-options.js";
 
 export const KEEPALIVE_MS = 60_000;
 const ERROR_RING = 20;
@@ -100,6 +101,8 @@ export function createConnection(bb: BbPluginApi, settings: ConnectionSource, db
     try {
       const listed = (await bb.sdk.hosts.list()).find((h) => h.id === current.machine);
       machine = { id: current.machine, name: listed?.name ?? null, online: listed?.status === "connected" };
+      // For "Hermes runs on <machine>" (bridges and the dispatch hook read it synchronously).
+      if (listed?.name && machineName(db, current.machine) !== listed.name) setKv(db, MACHINE_NAME_KEY, { id: current.machine, name: listed.name });
     } catch (error) {
       const code = errorCode(error, "hosts_list_failed");
       recordError(code);

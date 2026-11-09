@@ -2,10 +2,12 @@ import { makeMessageDispatchHookContext, makeQueueEntry } from "@get-bb/plugin-s
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeMarker } from "../shared/marker.js";
 import type { BotRow, Diagnostics } from "../shared/rpc-contract.js";
+import { otherMachineText } from "../shared/provider-options.js";
 import { OUTSIDE_TAG_REFUSAL, outsideTag } from "../shared/sources.js";
 import { allBindings, bindingByLineage, bindingByThread, botRecord, insertBinding } from "./db.js";
 import { MAX_IMPORTS } from "./discovery.js";
-import { type FakeThread, NEO, session, turn, world, type World } from "./fake-world.js";
+import { type FakeThread, MACHINE, NEO, session, turn, world, type World } from "./fake-world.js";
+import { deriveProviderOptions } from "./provider-options.js";
 import { RESTORE_DELAY_MS } from "./notify.js";
 import { IMPORT_WINDOW_MS } from "./sync.js";
 
@@ -542,5 +544,31 @@ describe("T2.3: dispatch hook (D15)", () => {
     expect(await decide([wake, [text("[Outside bb] recalled")]])).toEqual(refused);
     expect(await decide([wake, [text("my reply")]])).toEqual({ action: "proceed" });
     expect(await decide([wake, wake])).toEqual({ action: "proceed" });
+  });
+});
+
+describe("BUG 4: another machine", () => {
+  const hook = (w: World) => w.harness.inspection.registrations.hooks["message.dispatch"]!;
+  const send = (w: World, host: { id: string } | null, providerId = "hermes") =>
+    hook(w)(makeMessageDispatchHookContext({ thread: { providerId }, host, input: { blocks: [{ type: "text", mentions: [], text: "hi" }], text: "hi" } }));
+
+  it("provider options carry the Hermes machine's name as hosts.list gave it", async () => {
+    const w = await world();
+    expect(deriveProviderOptions(w.db, { settings: {}, threadId: "thr_x" }).machine).toEqual({ id: MACHINE, name: null });
+    await w.connect();
+    expect(deriveProviderOptions(w.db, { settings: {}, threadId: "thr_x" }).machine).toEqual({ id: MACHINE, name: "hermes-mac" });
+    // Another machine saved: no stale name.
+    w.db.prepare(`UPDATE kv SET value = '"host_other"' WHERE key = 'machine'`).run();
+    expect(deriveProviderOptions(w.db, { settings: {}, threadId: "thr_x" }).machine).toEqual({ id: "host_other", name: null });
+  });
+
+  it("the dispatch hook refuses a Hermes thread on another machine with its name; the Hermes machine, an unknown host and other providers pass", async () => {
+    const w = await world();
+    await w.connect();
+    expect(await send(w, { id: "host_work" })).toEqual({ action: "reject", message: otherMachineText("hermes-mac") });
+    expect(otherMachineText("hermes-mac")).toBe("Hermes runs on hermes-mac: add `--machine hermes-mac`.");
+    expect(await send(w, { id: MACHINE })).toEqual({ action: "proceed" });
+    expect(await send(w, null)).toEqual({ action: "proceed" });
+    expect(await send(w, { id: "host_work" }, "codex")).toEqual({ action: "proceed" });
   });
 });

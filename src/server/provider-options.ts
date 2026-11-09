@@ -14,6 +14,23 @@ export function machineFolder(db: Db): string | null {
   return typeof value === "string" ? value : null;
 }
 
+/** kv: `{id, name}` of the Hermes machine as `hosts.list` last named it, for "Hermes runs on <machine>". */
+export const MACHINE_NAME_KEY = "machine_name";
+
+/** The saved name of machine `id`; null if never seen (or another machine's). */
+export function machineName(db: Db, id: string): string | null {
+  const value = getKv(db, MACHINE_NAME_KEY) as { id?: unknown; name?: unknown } | null;
+  return value?.id === id && typeof value.name === "string" ? value.name : null;
+}
+
+/** The saved Hermes machine with its name, if it is valid for this folder (a moved folder means no Hermes I/O, R8). */
+export function hermesMachine(db: Db, folder: string): { id: string; name: string | null } | null {
+  const machine = getKv(db, "machine");
+  const saved = machineFolder(db);
+  if (typeof machine !== "string" || !machine || (saved !== null && saved !== folder)) return null;
+  return { id: machine, name: machineName(db, machine) };
+}
+
 function threadView(db: Db, threadId: string): ThreadView | null {
   const binding = bindingByThread(db, threadId);
   const bot = binding ? botRecord(db, binding.profile_home) : null;
@@ -33,12 +50,5 @@ function threadView(db: Db, threadId: string): ThreadView | null {
 
 export function deriveProviderOptions(db: Db, { settings, threadId }: Pick<PluginProviderOptionsContext, "settings" | "threadId">): ProviderOptions {
   const folder = typeof settings.folder === "string" && settings.folder !== "" ? settings.folder : DEFAULT_FOLDER;
-  const machine = getKv(db, "machine");
-  const saved = machineFolder(db);
-  const matches = saved === null || saved === folder;
-  return {
-    folder,
-    machine: typeof machine === "string" && machine && matches ? { id: machine, name: null } : null,
-    thread: threadView(db, threadId),
-  };
+  return { folder, machine: hermesMachine(db, folder), thread: threadView(db, threadId) };
 }

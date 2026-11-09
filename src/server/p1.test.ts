@@ -661,7 +661,8 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     const options: ProviderOptions = deriveProviderOptions(w.db, { settings: {}, threadId: "thr_1" });
     expect(options).toEqual({
       folder: "~/.hermes",
-      machine: { id: MACHINE, name: null },
+      // The name as hosts.list gave it at the last check, for "Hermes runs on <machine>".
+      machine: { id: MACHINE, name: "hermes-mac" },
       thread: {
         kind: "bot",
         profile: "neo",
@@ -744,7 +745,7 @@ describe("folder guard (R8)", () => {
     expect(w.harness.inspection.experimental_hostRpcCalls).toEqual([]);
     expect(deriveProviderOptions(w.db, { settings: { folder: "~/.hermes" }, threadId: "thr_x" }).machine).toBeNull();
     expect(await w.connect()).toMatchObject({ state: "connected" });
-    expect(deriveProviderOptions(w.db, { settings: { folder: "~/.hermes" }, threadId: "thr_x" }).machine).toEqual({ id: MACHINE, name: null });
+    expect(deriveProviderOptions(w.db, { settings: { folder: "~/.hermes" }, threadId: "thr_x" }).machine).toEqual({ id: MACHINE, name: "hermes-mac" });
   });
 
   it("a P0 db (machine, no folder) counts as matching; a folder saved in bb's settings keeps the machine", async () => {
