@@ -14,7 +14,7 @@ export function machineFolder(db: Db): string | null {
   return typeof value === "string" ? value : null;
 }
 
-/** kv: `{id, name}` of the Hermes machine as `hosts.list` last named it, for "Hermes runs on <machine>". */
+/** kv: `{id, name}` of the Hermes machine as `hosts.list` last named it, for "Start the thread on <machine>". */
 export const MACHINE_NAME_KEY = "machine_name";
 
 /** The saved name of machine `id`; null if never seen (or another machine's). */

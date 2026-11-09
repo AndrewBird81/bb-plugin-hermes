@@ -647,7 +647,7 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     const options: ProviderOptions = deriveProviderOptions(w.db, { settings: {}, threadId: "thr_1" });
     expect(options).toEqual({
       folder: "~/.hermes",
-      // The name as hosts.list gave it at the last check, for "Hermes runs on <machine>".
+      // The name as hosts.list gave it at the last check, for "Start the thread on <machine>".
       machine: { id: MACHINE, name: "hermes-mac" },
       thread: {
         kind: "bot",

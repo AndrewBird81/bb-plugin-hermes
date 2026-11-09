@@ -2,8 +2,8 @@
 // 10 s box under a server-wide lock.
 // - D15 (01 §7): a message that starts with the outside tag and carries no marker, a recalled `[Outside bb] …`
 //   line, is refused. Wakes and imports carry markers and pass.
-// - 01 §9: a thread on another machine than the Hermes machine is refused "Hermes runs on <machine>: add
-//   `--machine <machine>`" (bb answers `bb thread spawn` 409 `dispatch_rejected` with it).
+// - 01 §9: a thread on another machine than the Hermes machine is refused "Hermes isn't on <this machine>. Start
+//   the thread on <machine> (--machine <machine>)." (bb answers `bb thread spawn` 409 `dispatch_rejected` with it).
 import type { MessageDispatchHookContext, MessageDispatchHookDecision } from "@get-bb/plugin-sdk";
 import type { PromptInput } from "@get-bb/plugin-sdk/provider-bridge";
 import { decodeMarker } from "../shared/marker.js";
@@ -40,7 +40,8 @@ const messagesOf = (context: MessageDispatchHookContext, pluginId = ""): { parts
  */
 export function dispatchDecision(context: MessageDispatchHookContext, hermes: { id: string; name: string | null } | null): MessageDispatchHookDecision {
   if (context.thread.providerId !== "hermes") return { action: "proceed" };
-  if (hermes && context.host && context.host.id !== hermes.id) return { action: "reject", message: otherMachineText(hermes.name ?? "the Hermes machine") };
+  if (hermes && context.host && context.host.id !== hermes.id)
+    return { action: "reject", message: otherMachineText(hermes.name ?? hermes.id, context.host.name || null) };
   const messages = messagesOf(context);
   if (messages.some((m) => m.parts.some(isMarker))) return { action: "proceed" };
   return messages.some((m) => tagged(m.parts)) ? { action: "reject", message: OUTSIDE_TAG_REFUSAL } : { action: "proceed" };

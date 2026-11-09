@@ -32,7 +32,7 @@ export const providerOptionsSchema = z
   .object({
     /** The folder setting as configured (`~/…`); the bridge expands `~` on the Hermes machine. */
     folder: z.string(),
-    /** The Hermes machine (mapping db `kv`); null when unset: no Hermes I/O. The name is for "Hermes runs on <machine>". */
+    /** The Hermes machine (mapping db `kv`); null when unset: no Hermes I/O. The name is for "Start the thread on <machine>". */
     machine: z.object({ id: z.string(), name: z.string().nullable() }).strict().nullable(),
     /** Null when the server has no binding (yet) for this thread, e.g. a `bb thread spawn` whose `thread.created` hasn't run. */
     thread: threadViewSchema.nullable(),
@@ -50,5 +50,9 @@ export function readProviderOptions(raw: unknown): ProviderOptions | null {
 
 /** 01 §2: the error a switched-off bot's thread shows. */
 export const switchedOffText = (botLabel: string) => `${botLabel} is switched off in the Hermes plugin settings.`;
-/** 01 §9, 02 §Protocol mapping: a turn on a machine that doesn't run Hermes. */
-export const otherMachineText = (machine: string) => `Hermes runs on ${machine}: add \`--machine ${machine}\`.`;
+/**
+ * 01 §9, 02 §Protocol mapping, ux-v1.1 §2: a turn on a machine that doesn't run Hermes. No backticks: bb's toast
+ * prints them. `here` is this machine's name, "this machine" when unknown; `hermes` its name, else its id.
+ */
+export const otherMachineText = (hermes: string, here: string | null = null) =>
+  `Hermes isn't on ${here ?? "this machine"}. Start the thread on ${hermes} (--machine ${hermes}).`;

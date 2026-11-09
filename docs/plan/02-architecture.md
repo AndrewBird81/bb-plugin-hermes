@@ -104,7 +104,7 @@ Signals (worker → server): `changed{profile_homes[]}`, debounced; `watch{state
 ### Bridge state (`<bridge dataDir>/`)
 
 - `threads/<threadId>.json`: `{profile, bot, …}`, one file per thread so bridge processes never overwrite each other, for `model/list`, which runs with no provider options (cwd → threadId → profile, S7 1c).
-- `worker.json` (written by the worker, `src/shared/bridge-files.ts`): `{root, worker_boot_id, written_at, enabled[{profile, profile_home, bot_label, cwd}]}`. Present = this machine runs the worker; absent → turns fail "Hermes runs on <machine>" (the server sends the machine's name in provider options and refuses the dispatch itself, `message.dispatch`), and `model/list` (absent, or no bot on) answers one placeholder default, never sent to Hermes, so `bb thread spawn` on another machine reaches that refusal instead of bb's "catalog is empty". `enabled` feeds `model/list`'s `profile` session option (A18).
+- `worker.json` (written by the worker, `src/shared/bridge-files.ts`): `{root, worker_boot_id, written_at, enabled[{profile, profile_home, bot_label, cwd, served}]}`. Present = this machine runs the worker; absent → turns fail "Hermes isn't on this machine. Start the thread on <machine> (--machine <machine>)." (the server sends the machine's name in provider options and refuses the dispatch itself, `message.dispatch`), and `model/list` (absent, or no bot on) answers one placeholder default, never sent to Hermes, so `bb thread spawn` on another machine reaches that refusal instead of bb's "catalog is empty". `enabled` feeds `model/list`'s `profile` session option (A18).
 - `bridges/<pid>.json`: `{build, threadId, startedAt}` for `diagnostics`. bb gives bridges `…/plugins/hermes/bridge-data` and the worker `…/host-data` (A22 false), so the worker reads the sibling `bridge-data/bridges/`. `build` is `<plugin version>+<host artifact digest>`, the same for the worker and bridges of one deploy; the bundled version makes every release a new artifact, even with unchanged host code (A26).
 - `models/<sha256(profile_home)[:16]>.json`: last-known catalog, written by the worker's prewarm and by bridges.
 
@@ -121,7 +121,7 @@ bb → bridge → Hermes:
 |---|---|---|
 | `initialize` | — | `sessionRestore`, `approvalEnforcedBy:"provider"`, grammar v3, `permissionModes:["auto"]` (A2, D17), reasoning levels, `supportsNativeUserQuestion:true`. No fork, manual compaction, archive or rename support (Later) |
 | `provider/health` | — | `not_installed` always: hides Hermes from pickers (S1-S3 §S3a) |
-| any turn on another host | — | `provider.error` "Hermes runs on <machine>: add `--machine <machine>`" |
+| any turn on another host | — | `provider.error` "Hermes isn't on this machine. Start the thread on <machine> (--machine <machine>)."; the dispatch hook refuses first, naming this machine |
 | any turn, bot switched off | — | `provider.error` "<bot> is switched off in the Hermes plugin settings" |
 | `model/list` | legacy `model.options{profile}`, 2 s | Last-known list on timeout. Never creates a session (r09 M6) |
 | `thread/start` | — | Identity `pending:<threadId>`; publish `bb/session-options` (the chat's bot only) and `bb/provider-model-catalog` (reasoning from `capabilities`, r11 §1; each model with the bot option of every switched-on bot, this chat's picked, because a project's New Thread reads the project's catalog, r13 §6) |

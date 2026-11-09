@@ -585,7 +585,7 @@ describe("T2.3: dispatch hook (D15)", () => {
 
 describe("BUG 4: another machine", () => {
   const hook = (w: World) => w.harness.inspection.registrations.hooks["message.dispatch"]!;
-  const send = (w: World, host: { id: string } | null, providerId = "hermes") =>
+  const send = (w: World, host: { id: string; name?: string } | null, providerId = "hermes") =>
     hook(w)(makeMessageDispatchHookContext({ thread: { providerId }, host, input: { blocks: [{ type: "text", mentions: [], text: "hi" }], text: "hi" } }));
 
   it("provider options carry the Hermes machine's name as hosts.list gave it", async () => {
@@ -600,9 +600,13 @@ describe("BUG 4: another machine", () => {
 
   it("the dispatch hook refuses a Hermes thread on another machine with its name; the Hermes machine, an unknown host and other providers pass", async () => {
     const w = await world();
+    // Not named yet (no hosts.list answer): its id, which `--machine` takes too.
+    expect(await send(w, { id: "host_work", name: "work-mac" })).toEqual({ action: "reject", message: `Hermes isn't on work-mac. Start the thread on ${MACHINE} (--machine ${MACHINE}).` });
     await w.connect();
-    expect(await send(w, { id: "host_work" })).toEqual({ action: "reject", message: otherMachineText("hermes-mac") });
-    expect(otherMachineText("hermes-mac")).toBe("Hermes runs on hermes-mac: add `--machine hermes-mac`.");
+    // ux-v1.1 §2: this machine by name, else "this machine"; no backticks (bb's toast prints them).
+    expect(await send(w, { id: "host_work", name: "work-mac" })).toEqual({ action: "reject", message: "Hermes isn't on work-mac. Start the thread on hermes-mac (--machine hermes-mac)." });
+    expect(await send(w, { id: "host_work", name: "" })).toEqual({ action: "reject", message: otherMachineText("hermes-mac") });
+    expect(otherMachineText("hermes-mac")).toBe("Hermes isn't on this machine. Start the thread on hermes-mac (--machine hermes-mac).");
     expect(await send(w, { id: MACHINE })).toEqual({ action: "proceed" });
     expect(await send(w, null)).toEqual({ action: "proceed" });
     expect(await send(w, { id: "host_work" }, "codex")).toEqual({ action: "proceed" });
@@ -616,7 +620,7 @@ describe("BUG 4: another machine", () => {
     w.event("thr_cli", "client/thread/start", { request: { method: "thread/start", params: { options: { sessionOptions: { profile: "neo" } } } } });
     // As bb: `thread.created`, the refused dispatch, the thread deleted; `thread.deleted` comes after the created job's reads.
     const created = w.harness.behavior.emitThreadEvent("thread.created", { thread: w.dto("thr_cli") } as never);
-    expect(await send(w, { id: "host_work" })).toEqual({ action: "reject", message: otherMachineText("hermes-mac") });
+    expect(await send(w, { id: "host_work", name: "work-mac" })).toEqual({ action: "reject", message: otherMachineText("hermes-mac", "work-mac") });
     w.thread("thr_cli").deletedAt = 1;
     await created;
     await w.flush();

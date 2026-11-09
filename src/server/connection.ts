@@ -110,7 +110,7 @@ export function createConnection(bb: BbPluginApi, settings: ConnectionSource, db
     try {
       const listed = (await bb.sdk.hosts.list()).find((h) => h.id === current.machine);
       machine = { id: current.machine, name: listed?.name ?? null, online: listed?.status === "connected" };
-      // For "Hermes runs on <machine>" (bridges and the dispatch hook read it synchronously).
+      // For "Start the thread on <machine>" (bridges and the dispatch hook read it synchronously).
       if (listed?.name && machineName(db, current.machine) !== listed.name) setKv(db, MACHINE_NAME_KEY, { id: current.machine, name: listed.name });
     } catch (error) {
       const code = errorCode(error, "hosts_list_failed");
