@@ -923,3 +923,34 @@ describe("review 10: the bot thread follows a new Bot Chat", () => {
     expect(mirrors(w)).toEqual([]);
   });
 });
+
+describe("review 12 and 13", () => {
+  it("a side chat's title never comes from a wake's label (an entry with a marker)", async () => {
+    const w = await botChatWorld([]);
+    await on(w);
+    await drain(w);
+    const { thread_id: chat } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+    w.prompts.set(chat, [
+      { createdAt: 1, id: "p1", input: [{ type: "image", url: "x" } as never] },
+      { createdAt: 2, id: "p2", input: [{ type: "text", mentions: [], text: "[Outside bb] from the CLI" }, encodeMarker({ op: "mirror", anchor_uid: "s2", labeled: true })] },
+    ]);
+    await w.idle(chat);
+    expect(w.thread(chat).title).toBe("New Neo chat");
+    w.prompts.get(chat)!.push({ createdAt: 3, id: "p3", input: [{ type: "text", mentions: [], text: "my own words" }] });
+    await w.idle(chat);
+    expect(w.thread(chat).title).toBe("my own words");
+  });
+
+  it("a failed wake send releases its input-only hold when nothing else holds the thread", async () => {
+    const w = await botChatWorld([turn("u1")]);
+    await on(w);
+    await drain(w);
+    await w.elapse(RESTORE_DELAY_MS);
+    w.history.get("root_bc")!.turns.push(turn("u2"));
+    w.state.failSend = 1;
+    await w.changed(NEO);
+    expect(turnRow(w.db, "thr_1", "u2")).toBeNull();
+    await w.elapse(RESTORE_DELAY_MS);
+    expect(w.levelCalls.at(-1)).toEqual({ threadId: "thr_1", level: "inherit" });
+  });
+});

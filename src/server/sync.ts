@@ -166,6 +166,8 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
       return true;
     } catch (error) {
       releaseTurn(db, binding.thread_id, anchorUid);
+      // Nothing to run quietly any more, unless an init or import still holds the thread.
+      if (level === "input-only" && !readAtIdle.has(binding.thread_id) && !importing.has(binding.thread_id)) notify.release(binding.thread_id);
       // bb takes no send into an archived thread (A49): not an error; `thread.unarchived` wakes it.
       const archived = await bb.sdk.threads.get({ threadId: binding.thread_id }).then((t) => t.archivedAt !== null, () => false);
       if (!archived) fail(errorCode(error, "send_failed"));

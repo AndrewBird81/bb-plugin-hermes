@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { newChatTitle } from "../shared/bots.js";
-import { spawnStart } from "../shared/marker.js";
+import { decodeMarker, spawnStart } from "../shared/marker.js";
 import type { ThreadInfo } from "../shared/rpc-contract.js";
 import { labelOf, spawnPlacement } from "./bots.js";
 import { errorCode } from "./connection.js";
@@ -116,8 +116,20 @@ export function createChats(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; des
     const thread = await bb.sdk.threads.get({ threadId });
     if (thread.title !== placeholder) return;
     const history = await bb.sdk.threads.promptHistory({ threadId });
+    const hasMarker = (entry: (typeof history)[number]) =>
+      entry.input.some((part) => {
+        if (part.type !== "text" || (part as { visibility?: string }).visibility !== "agent-only") return false;
+        try {
+          return decodeMarker(part.text) !== null;
+        } catch {
+          return true;
+        }
+      });
+    // A plugin turn (a wake's `[Outside bb] …` label) never names the chat.
     const visible = (entry: (typeof history)[number]) =>
-      entry.input.flatMap((part) => (part.type === "text" && (part as { visibility?: string }).visibility !== "agent-only" ? [part.text] : [])).join(" ");
+      hasMarker(entry)
+        ? ""
+        : entry.input.flatMap((part) => (part.type === "text" && (part as { visibility?: string }).visibility !== "agent-only" ? [part.text] : [])).join(" ");
     // The first entry with visible text: an agent-only `init`, if bb records one, never names the chat.
     const message = [...history].sort((a, b) => a.createdAt - b.createdAt).map(visible).find((t) => titleFrom(t) !== null);
     const title = message ? titleFrom(message) : null;
