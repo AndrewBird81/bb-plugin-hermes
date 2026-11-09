@@ -103,17 +103,37 @@ async function cdp(expression) {
   ws.close();
   return out;
 }
+const HOOK = `window.__notes = window.__notes ?? []; window.Notification = class { static permission = "granted"; static requestPermission() { return Promise.resolve("granted"); } constructor(t, o) { window.__notes.push({ t, body: o?.body ?? "", at: Date.now() }); } close() {} addEventListener() {} }; window.__hookedAt = window.__hookedAt ?? Date.now(); true`;
 async function openPage() {
   const pages = await (await fetch("http://127.0.0.1:49222/json/list")).json();
   if (!pages.some((p) => p.type === "page" && p.url.startsWith("http://127.0.0.1:48886"))) await fetch("http://127.0.0.1:49222/json/new?http://127.0.0.1:48886/", { method: "PUT" });
   await sleep(4000);
-  await cdp(`window.__notes = window.__notes ?? []; window.Notification = class { static permission = "granted"; static requestPermission() { return Promise.resolve("granted"); } constructor(t, o) { window.__notes.push({ t, body: o?.body ?? "", at: Date.now() }); } close() {} addEventListener() {} }; true`);
+  await cdp(HOOK);
 }
-const pushes = async (since = 0) => JSON.parse((await cdp("JSON.stringify(window.__notes ?? [])")) ?? "[]").filter((p) => p.at >= since);
+/** The page reloads when bb restarts, and the hook goes with it: install it again as soon as the page is back. */
+async function rehook() {
+  for (const end = Date.now() + 60_000; Date.now() < end; await sleep(250)) {
+    try {
+      if ((await cdp("document.readyState")) === "complete") {
+        if (!(await cdp("!!window.__hookedAt"))) await cdp(HOOK);
+        return cdp("window.__hookedAt");
+      }
+    } catch {}
+  }
+  throw new Error("bb page not back after the restart");
+}
+/** Pushes since `since`, counted from the hook's install when that is later (after a bb restart): see `hookGap`. */
+async function pushes(since = 0) {
+  if ((await cdp("window.__hookedAt ?? null")) === null) throw new Error("push hook missing");
+  return JSON.parse((await cdp("JSON.stringify(window.__notes ?? [])")) ?? "[]").filter((p) => p.at >= since);
+}
+/** How long after `since` the hook was installed (ms; 0 when before): pushes in that gap are unseen. */
+const hookGap = async (since) => Math.max(0, (await cdp("window.__hookedAt")) - since);
 
 // ---- bb-app restart (the fake keeps running)
 async function restartBb(note) {
   const pid = Number(readFileSync(`${RUN}/bb-app.pid`, "utf8"));
+  const stopAt = Date.now();
   process.kill(pid, "SIGINT");
   await until(`bb-app ${pid} exits`, () => {
     try {
@@ -126,6 +146,8 @@ async function restartBb(note) {
   sh("rm", ["-f", `${RUN}/bb-app.pid`]);
   console.log(`      (${note}: bb-app stopped, starting again)`);
   sh(path.join(E2E, "bb-e2e.sh"), ["start"]);
+  const hookedAt = await rehook();
+  console.log(`      (push hook back ${hookedAt - stopAt} ms after the stop)`);
   await until("plugin connected to the fake", () => {
     try {
       return diagnostics().instance_id === JSON.parse(readFileSync(`${RUN}/fake.json`, "utf8")).instance_id;
@@ -141,6 +163,8 @@ check("fake connected (instance_id)", diagnostics().instance_id === JSON.parse(r
 
 // ---- 0. a clean isolated bb: every bot off, no Hermes thread
 for (const p of ["default", "alex", "bob"]) setBot(p, false);
+// Bots of another folder left on by an earlier run (the isolated Hermes): off too.
+for (const b of db("SELECT profile_home FROM bots WHERE enabled = 1")) rpc("setBot", { profile_home: b.profile_home, on: false });
 await sleep(2000);
 for (const t of hermesThreads()) sbb("thread", "delete", t.id, "--yes");
 await until("no bindings", () => db("SELECT count(*) AS n FROM bindings")[0].n === 0);
@@ -263,7 +287,7 @@ await sleep(5000);
 const defSends = sends(defLive.thread_id).filter((s) => /default bot chat turn \d+/.test(s));
 const defT = thread(defLive.thread_id);
 check("bb restart mid-import of a bot thread: same thread, 45 turns once each", defLive.thread_id === defBot.thread_id && defSends.length === 45 && new Set(defSends).size === 45, `${before} sends before the restart, ${defSends.length} turn sends after`);
-check("… ends read, 0 pushes", isRead(defT) && (await pushes(defPushStart)).length === 0, `lastReadAt − latestAttentionAt = ${(defT.lastReadAt ?? 0) - (defT.latestAttentionAt ?? 0)} ms; pushes ${JSON.stringify(await pushes(defPushStart))}`);
+check("… ends read, 0 pushes", isRead(defT) && (await pushes(defPushStart)).length === 0, `lastReadAt − latestAttentionAt = ${(defT.lastReadAt ?? 0) - (defT.latestAttentionAt ?? 0)} ms; pushes ${JSON.stringify(await pushes(defPushStart))}; unseen gap ${await hookGap(defPushStart)} ms (bb down, page reloading)`);
 
 // A 45-turn Bot Chat import, then one user send: no reply twice, and the send's reply pushes once.
 const defUser = Date.now();
