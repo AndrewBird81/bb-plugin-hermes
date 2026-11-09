@@ -80,6 +80,7 @@ Recordings and screenshots run in UTC (`TZ=UTC` for Hermes, bb and the browser):
 6. **Before any check:** `diagnostics.instance_id` must equal the fake's; else abort (R3 M3).
 7. Assert with `sbb thread log|history|options`, `sbb plugin rpc call hermes …`, `sbb push-notifications thread`; check the UI with agent-browser screenshots against the DOM.
 8. Teardown: `kill -INT <bb-app pid>`; keep or `rm -rf ~/.bb-hermes-e2e`.
+- P2: `e2e/checks/p2-fake.mjs` runs the P2 checks on the fake (PASS/FAIL each); `e2e/hermes-ctl.ts` makes real outside chats on the isolated Hermes with Hermes' own clients; `e2e/eligibility.ts` counts a switch-on's import from `state.db` alone (`sqlite3 -readonly`, safe on live); `e2e/threads.mjs` lists every Hermes thread's read state, archive, pin, push level and `titleFallback`.
 - Scripted in `e2e/bb-e2e.sh` (`preflight|start|install|dev|fake|hermes|connect|check|stop`) and `e2e/sbb`. Install only with the server up and no host daemon, folder set under the test root first: `bb plugin remove` keeps `data.db` (the machine) but drops the folder, so a reinstall with a daemon running reached the live gateway once for 0.4 s on 2026-11-08 (read-only, no session; the server's folder guard now refuses I/O until the connection is saved again).
 - Dogfood-only: a remote bb server, host RPC limits (A16), worker lifetime, two-machine spawns (A18), the phone (A30), the real Conduit app (A-S8a–c).
 
