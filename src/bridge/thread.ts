@@ -12,7 +12,7 @@ import { DEAD_REQUESTS_KEPT, EXTENSION_KINDS, PERSISTED_TURNS_KEPT, type Persist
 import { type Marker, type Segment, segmentInput } from "../shared/marker.js";
 import { BOT_CHAT_TITLE, OUTSIDE_TAG_PREFIX, OUTSIDE_TAG_REFUSAL } from "../shared/sources.js";
 import { botIdentity, chatIdentity, isPending, resolveContext, type ThreadContext, UserFacingError } from "./context.js";
-import { readThread, updateThread } from "./files.js";
+import { readThread, readWorkerFile, updateThread } from "./files.js";
 import { readProviderOptions } from "../shared/provider-options.js";
 import { findTurn, type History, type HermesLink } from "./hermes.js";
 import { chooseModel, composerStates, fetchCatalog, type ModelChoice, prepareAttachments } from "./composer.js";
@@ -452,7 +452,8 @@ export class HostedThread {
 
   /** The chip and the bot's models for this thread (`thread/start`, `init`; S7 1a, 1c). */
   async publishComposer(ctx: ThreadContext): Promise<void> {
-    this.emit(composerStates({ profile: ctx.profile, bot_label: ctx.botLabel }, await this.catalog(ctx)));
+    const enabled = readWorkerFile(this.host.dataDir)?.enabled ?? [];
+    this.emit(composerStates({ profile: ctx.profile, bot_label: ctx.botLabel }, await this.catalog(ctx), enabled));
   }
 
   private remember(choice: ModelChoice | null): void {

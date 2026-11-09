@@ -105,41 +105,60 @@ export function availableModels(catalog: Catalog | null, sessionOptions?: Return
 export const STATE_MAX_BYTES = 64 * 1024;
 
 /**
- * The `bb/provider-model-catalog` payload within `STATE_MAX_BYTES`: bb's schema has no shared ladder, and a big
- * provider's full ladders don't fit. "The bot's model" and the current model first, then the catalog's order, keep
- * theirs while they fit; the rest go `reasoningDiscovery: "unknown"`, which bb fills by asking
- * `model/list{selectedModel}` when one is picked (`refineSelectedModel`). Models that don't fit even so are left
- * out, the last in that order first; the first two never are.
+ * The `bb/provider-model-catalog` payload within `STATE_MAX_BYTES`: bb's schema has no shared ladder or option, and
+ * a big provider's full entries don't fit. Every model is listed bare first, the last in order left out if even that
+ * doesn't fit; the first two never are. Then, in order while they fit: "The bot's model" and the current model in
+ * full, every other model's chip (bb's New Thread draws it from the picked model), then its ladder. A model without
+ * its ladder goes `reasoningDiscovery: "unknown"`, which bb fills by asking `model/list{selectedModel}` when it is
+ * picked (`refineSelectedModel`); bb refines no chip.
  */
-export function catalogState(catalog: Catalog): { models: AvailableModel[]; selectedOnlyModels: [] } {
-  const full = availableModels(catalog);
+export function catalogState(catalog: Catalog, sessionOptions?: ReturnType<typeof botOption>[]): { models: AvailableModel[]; selectedOnlyModels: [] } {
+  const full = availableModels(catalog, sessionOptions);
   const kept = (i: number) => full[i]!.id === PLACEHOLDER_MODEL || full[i]!.id === catalog.current;
   const order = [...full.keys()].sort((a, b) => Number(kept(b)) - Number(kept(a)));
   const bytes = (v: unknown) => Buffer.byteLength(JSON.stringify(v));
-  const models: (AvailableModel | null)[] = full.map((m) => (m.supportedReasoningEfforts.length ? { ...m, reasoningDiscovery: "unknown", supportedReasoningEfforts: [] } : m));
+  const ladderless = (m: AvailableModel): AvailableModel => (m.supportedReasoningEfforts.length ? { ...m, reasoningDiscovery: "unknown", supportedReasoningEfforts: [] } : m);
+  const bare = (m: AvailableModel): AvailableModel => {
+    const { sessionOptions: _, ...rest } = ladderless(m);
+    return rest;
+  };
+  // Each model's entries, smallest first: bare, with the chip, in full.
+  const steps = full.map((m) => [bare(m), ladderless(m), m]);
+  const level = full.map(() => 0);
+  const models: (AvailableModel | null)[] = steps.map((s) => s[0]!);
   // The array's JSON: its entries, a comma between two, and the wrapper.
   let size = bytes({ models: [], selectedOnlyModels: [] }) + models.reduce((n, m) => n + bytes(m) + 1, -1);
-  // Room for the first two's ladders before any other model's.
   const room = order.filter(kept).reduce((n, i) => n + bytes(full[i]) - bytes(models[i]), 0);
   for (const i of [...order].reverse()) {
     if (size + room <= STATE_MAX_BYTES || kept(i)) break;
     size -= bytes(models[i]) + 1;
     models[i] = null;
   }
-  for (const i of order) {
-    if (!models[i] || models[i] === full[i]) continue;
-    const grown = size + bytes(full[i]) - bytes(models[i]);
-    if (grown > STATE_MAX_BYTES) break;
-    models[i] = full[i]!;
-    size = grown;
-  }
+  const grow = (step: number, only: (i: number) => boolean = () => true) => {
+    for (const i of order) {
+      if (!models[i] || level[i]! >= step || !only(i)) continue;
+      const grown = size + bytes(steps[i]![step]) - bytes(models[i]);
+      if (grown > STATE_MAX_BYTES) break;
+      models[i] = steps[i]![step]!;
+      level[i] = step;
+      size = grown;
+    }
+  };
+  grow(2, kept);
+  grow(1);
+  grow(2);
   return { models: models.filter((m) => m !== null), selectedOnlyModels: [] };
 }
 
-/** `bb/session-options` (the chip) and `bb/provider-model-catalog` (S7 1c) for one thread's bot. */
-export function composerStates(bot: { profile: string; bot_label: string }, catalog: Catalog | null): ThreadDelta[] {
+/**
+ * `bb/session-options` (the chip) and `bb/provider-model-catalog` (S7 1c) for one thread's bot. The catalog's models
+ * carry the chip with every switched-on bot, as `model/list` does: a project's threads share its catalog with the
+ * project's New Thread, which would lose the chip after the first chat there (research 13 §6).
+ */
+export function composerStates(bot: { profile: string; bot_label: string }, catalog: Catalog | null, enabled: readonly { profile: string; bot_label: string }[] = []): ThreadDelta[] {
   const states: ThreadDelta[] = [{ kind: "extension.state", extensionKind: "bb/session-options", payload: { options: [botOption(bot)] } }];
-  if (catalog) states.push({ kind: "extension.state", extensionKind: "bb/provider-model-catalog", payload: catalogState(catalog) as never });
+  const values = enabled.some((b) => b.profile === bot.profile) ? [...enabled] : [bot, ...enabled];
+  if (catalog) states.push({ kind: "extension.state", extensionKind: "bb/provider-model-catalog", payload: catalogState(catalog, [botOption(bot, values)]) as never });
   return states;
 }
 

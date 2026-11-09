@@ -98,12 +98,17 @@ describe("D53: a new chat runs its bot's own model unless the user picks one", (
 });
 
 describe("thread/start", () => {
-  it("publishes the one-value bot chip and the bot's models", async () => {
+  it("publishes the one-value bot chip and the bot's models, each with the chip of every switched-on bot", async () => {
     await startThread(rig, "thr_ch", opts("bob"));
     await rig.waitFor(() => deltas(rig, "thr_ch").length >= 2);
     const [chip, catalog] = deltas(rig, "thr_ch");
     expect(chip).toMatchObject({ extensionKind: "bb/session-options", payload: { options: [{ id: "profile", value: "bob", values: [{ id: "bob", label: "Bob" }] }] } });
     expect(catalog).toMatchObject({ extensionKind: "bb/provider-model-catalog", payload: { models: [{ id: PLACEHOLDER_MODEL, isDefault: true }, { id: "stub/stub" }] } });
+    // Research 13 §6: a project's New Thread reads this catalog (its scope is the project's folder), so each model
+    // carries the chip with every switched-on bot, this thread's bot picked, as `model/list` answers.
+    const values = [{ id: "default", label: "Hermes" }, { id: "alex", label: "Alex" }, { id: "bob", label: "Bob" }];
+    for (const model of (catalog!.payload as { models: Record<string, unknown>[] }).models)
+      expect(model.sessionOptions).toEqual([{ id: "profile", label: "Bot", category: "mode", type: "select", value: "bob", values }]);
     expect(rig.fake.requests.filter((r) => r.method.startsWith("session."))).toEqual([]);
   });
 });
@@ -134,6 +139,8 @@ describe("bb/provider-model-catalog under bb's 64 KiB state limit", () => {
     expect(current.reasoningDiscovery).toBe("known");
     expect(ladder(current)).toEqual(["default", "none", "low", "medium", "high", "xhigh", "max", "ultra"]);
     expect(ladder(models[0]!)).toEqual(ladder(current));
+    // Bare entries before any chip, chips before ladders: the first two carry the chip.
+    expect([models[0]!.sessionOptions, current.sessionOptions].every((o) => o?.[0]?.id === "profile")).toBe(true);
     // The rest: bb asks `model/list{selectedModel}` when one is picked (its selected-model discovery).
     const later = models.filter((m) => m.reasoningDiscovery === "unknown");
     expect(later.length).toBeGreaterThan(0);
