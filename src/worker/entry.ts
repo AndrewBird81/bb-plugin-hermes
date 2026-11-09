@@ -5,8 +5,8 @@ import { buildFromModuleUrl } from "../shared/bridge-registry.js";
 import { hostContract, hostSignals } from "../shared/host-contract.js";
 import { bbTarget, setBotAccess, writeWrapper, type AccessInput } from "./access.js";
 import { readBridgeRecords } from "./bridges.js";
-import { readChain } from "../hermes/history.js";
-import { findBotChat, isRunning, listProfileSessions, readHistoryTurns } from "./sessions.js";
+import { readChain, readMessages } from "../hermes/history.js";
+import { findBotChat, firstSubmissions, isRunning, listProfileSessions, readHistoryTurns } from "./sessions.js";
 import { expandRoot, Watcher, type WatcherOptions } from "./watch.js";
 
 export interface HostEntryOptions extends WatcherOptions {
@@ -75,6 +75,13 @@ export function createHostEntry(opts: HostEntryOptions = {}) {
           running: () => isRunning(watcher.client(), profile, [chain.session_id, lineage_root]),
           maxBytes: opts.turnsMaxBytes,
         });
+      },
+      firstSubmissions: async ({ root, profile_home, lineage_roots }, context) => {
+        bindLifecycle(context.lifecycle.signal);
+        await watcher.ensure(root, context.signal);
+        const profile = watcher.profileName(profile_home);
+        const read = (id: string, query: Parameters<typeof readMessages>[3]) => readMessages(expandRoot(root), profile, id, query, { waitMs: 10_000 });
+        return { submissions: await firstSubmissions(read, lineage_roots) };
       },
       findBotChat: async ({ root, profile_home }, context) => {
         bindLifecycle(context.lifecycle.signal);

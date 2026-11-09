@@ -9,7 +9,7 @@ import { removeDir, tempDir } from "../../test/fake-hermes/wire.js";
 import type { SessionsPage } from "../hermes/history.js";
 import { bridgeDataDir, modelsFile, WORKER_FILE } from "../shared/bridge-files.js";
 import { createHostEntry, type HostEntryOptions } from "./entry.js";
-import { listAllSessions, readHistoryTurns, toSessionRow } from "./sessions.js";
+import { firstSubmissions, listAllSessions, readHistoryTurns, toSessionRow } from "./sessions.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function until(check: () => boolean, ms = 3000) {
@@ -332,5 +332,33 @@ describe("readHistoryTurns", () => {
   it("a failed running check counts as running: the last turn stays open", async () => {
     const { turns } = await readHistoryTurns(recorded("steer"), { running: () => Promise.reject(new Error("not_connected")) });
     expect(turns.at(-1)!.complete).toBe(false);
+  });
+});
+
+describe("firstSubmissions", () => {
+  const row = (role: string, submission_id?: string, display_kind?: string) => ({ role, display_kind: display_kind ?? null, display_metadata: submission_id ? { submission_id } : null });
+  it("is each chat's first user row submission id (bb: = bb created it), from its oldest rows; unreadable chats are left out", async () => {
+    const chats: Record<string, object[]> = {
+      bb: [row("user", "bb:thr_1:c1"), row("assistant"), row("user", "x")],
+      cli: [row("user"), row("assistant"), row("user", "bb:thr_2:c2")],
+      steer: [row("user", "bb:thr_3:c3", "steer"), row("user", "desktop-1")],
+      none: [row("assistant")],
+    };
+    const queries: object[] = [];
+    const read = async (id: string, q: object) => {
+      queries.push(q);
+      if (!chats[id]) throw new Error("history_http_404:not_found");
+      return { session_id: id, messages: chats[id], pagination: { limit: 10, offset: 0, order: "oldest", returned: chats[id].length } } as never;
+    };
+    expect(await firstSubmissions(read, ["bb", "cli", "steer", "none", "gone"])).toEqual({ bb: "bb:thr_1:c1", cli: null, steer: "desktop-1", none: null });
+    expect(queries[0]).toEqual({ order: "oldest", limit: 10, include_compacted: true });
+  });
+
+  it("answers through the worker over REST, read-only", async () => {
+    const { fake, h, root, alex } = await setup();
+    const id = fake.legacySession("alex", { turns: ["hi"] });
+    const out = await h.experimental_call("firstSubmissions", { root, profile_home: alex, lineage_roots: [id, "local-gone"] });
+    expect(out.submissions).toEqual({ [id]: null });
+    expect(fake.requests.filter((r) => !["session.list", "profiles.list"].includes(r.method))).toEqual([]);
   });
 });

@@ -201,6 +201,17 @@ export const hostContract = defineRpcContract({
     experimental_retryable: true,
   },
   /**
+   * The first user row's `display_metadata.submission_id` of each chat (its oldest rows, compaction ancestors
+   * included), by lineage root: `bb:` = a chat bb created (A4: bb's submits persist it). Discovery excludes
+   * bb-created chats by this and `expected_id`, never by surface: Hermes stores bb's side chats as
+   * `local`/`desktop`, as it does Desktop's. A chat that can't be read now (deleted, a restart) is left out.
+   */
+  firstSubmissions: {
+    input: z.object({ root: folderSchema, profile_home: profileHome, lineage_roots: z.array(z.string().min(1)).max(100) }).strict(),
+    output: z.object({ submissions: z.record(z.string(), z.string().nullable()) }).strict(),
+    experimental_retryable: true,
+  },
+  /**
    * Read-only: `profiles.list{profile, include_sessions:true}` → `canonical_session`, which lists only a Bot Chat
    * Hermes has adopted. Never `session.list{title}`: on an unheld legacy Bot Chat that lookup adopts it (T1.7,
    * isolated), so only the bridge's send path uses it (the first bb send, D16).

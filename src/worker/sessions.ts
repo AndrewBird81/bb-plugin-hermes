@@ -2,7 +2,7 @@
 // Read-only Hermes routes; outputs hold ids, titles and bounded fields only (never `system_prompt`,
 // `model_config` or `origin_json`, 02 §bb access and security).
 import { HermesRpcError, type HermesClient } from "../hermes/client.js";
-import { groupTurns, listSessions, summarizeTurn, type RestMessage, type RestSessionRow, type SessionsPage } from "../hermes/history.js";
+import { groupTurns, listSessions, type MessagesPage, summarizeTurn, type RestMessage, type RestSessionRow, type SessionsPage } from "../hermes/history.js";
 import type { ProfileRow } from "../hermes/types.js";
 import type { BotChat, HistoryTurn, SessionRow } from "../shared/host-contract.js";
 
@@ -49,6 +49,28 @@ export async function listAllSessions(page: ListPage, since?: number): Promise<S
 
 export function listProfileSessions(rootHome: string, profile: string, since?: number): Promise<SessionRow[]> {
   return listAllSessions((q) => listSessions(rootHome, profile, q, { waitMs: 10_000 }), since);
+}
+
+/** How many oldest rows `firstSubmissions` reads per chat: enough to pass leading rows that aren't the user's. */
+export const FIRST_ROWS = 10;
+
+export type OldestRows = (sessionId: string, query: { order: "oldest"; limit: number; include_compacted: true }) => Promise<MessagesPage>;
+
+/**
+ * Each chat's first user row `submission_id` (02 §Contracts `firstSubmissions`); a steer is never a chat's first
+ * message. A chat that fails to read is left out, so the caller decides about it later.
+ */
+export async function firstSubmissions(read: OldestRows, lineageRoots: readonly string[]): Promise<Record<string, string | null>> {
+  const out: Record<string, string | null> = {};
+  for (const id of lineageRoots) {
+    try {
+      const { messages } = await read(id, { order: "oldest", limit: FIRST_ROWS, include_compacted: true });
+      out[id] = messages.find((m) => m.role === "user" && m.display_kind !== "steer")?.display_metadata?.submission_id ?? null;
+    } catch {
+      // Deleted meanwhile, or the gateway restarting: unknown for now.
+    }
+  }
+  return out;
 }
 
 /**

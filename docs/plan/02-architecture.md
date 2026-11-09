@@ -94,6 +94,7 @@ Every call carries `root` (the folder); profiles are named by `profile_home`, wh
 | `models` | `{root, profile_home}` → the normalized catalog (`src/shared/models.ts`); enabled bots prewarmed into `models/` |
 | `listSessions` | `{root, profile_home, since?}` → `{sessions[{session_id, lineage_root, title, source, created_source, hidden, archived, cwd, message_count, last_activity_at, legacy}]}`; `last_activity_at` is REST `last_active` (the raw column is heartbeats only) |
 | `readTurns` | `{root, profile_home, lineage_root, after_uid?, since?}` → `{session_id (tip), turns[{anchor_uid, user_text, user_hidden, surface, submission_id, reply_uids, ts, complete}], truncated}`, root to tip |
+| `firstSubmissions` | `{root, profile_home, lineage_roots[≤100]}` → `{submissions{<lineage_root>: submission_id \| null}}`: each chat's first user row, from its oldest page; `bb:` = bb created it. Discovery excludes bb-created chats by this and `expected_id`, never by surface (bb's side chats are stored `local`/`desktop`, like Desktop's) |
 | `findBotChat` | `{root, profile_home}` → `{state:"found", lineage_root, session_id, legacy}` · `{state:"none"}` · `{state:"held"}`. Read-only: `profiles.list` `canonical_session`, which lists only a Bot Chat Hermes has adopted |
 | `setBotAccess` | `{root, profile_home, on, enabled_bots}` → `{skill, wrapper, refreshed, detail}`: writes or deletes skill and wrapper (the wrapper goes when `enabled_bots` is empty), then `refresh-prompts` (flow 1) |
 | `diagnostics` | → pid, uptime, boot id, watch state, version check, bridge build registry |
@@ -207,7 +208,7 @@ Hermes events → bb deltas:
 
 - **One thread per Hermes chat** `(profile_home, lineage_root)`, checked before every spawn: bb accepts duplicates, then orphans one (S1-S3 fact 4). Imports, wakes and bot threads share one serial queue.
 - **One bot thread per enabled bot,** bound by title. A session titled `Bot Chat` never gets its own thread.
-- **Source allow-list fails closed:** `source` or, for `source=local`, `created_source` ∈ {`cli`, `tui`, `gui`, `desktop`}; not hidden (Bot Chat apart); ≥ 1 message; not bb-created; not tombstoned. Anything else, unknown labels included, stays out.
+- **Source allow-list fails closed:** `source` or, for `source=local`, `created_source` ∈ {`cli`, `tui`, `gui`, `desktop`}; not hidden (Bot Chat apart); ≥ 1 message; not bb-created (`expected_id`, or a `bb:` first submission: never by surface); not tombstoned. Anything else, unknown labels included, stays out.
 - **Reading never writes Hermes:** markers never `prompt.submit`; history is REST `read_only`; `thread/resume` and `model/list` never touch sessions; no session before the first visible message; no `session.resume` or `session.mutate` on a legacy row before the first bb send (A23).
 - **Events:** drop `replay_epoch == cursor.epoch && seq <= cursor.last` (S0-S4 §S4e). Steer and Stop act only on bb's own admission or a forwarded Conduit one.
 - **Turns:** one wake per anchor; bb's rows never mirror; approvals and `clarify` never filtered by admission.
