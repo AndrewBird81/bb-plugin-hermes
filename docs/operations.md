@@ -160,6 +160,15 @@ Live (2026-11-09, UTC): `v1.0.0` released (tag `9f9a436c`); the steps above, in 
 - provider-acp's `acp-hermes-agent` was listed beside ours on `$HERMES_HOST` with the same icon; disabled at the owner's request (`bb provider disable acp-hermes-agent`).
 - Test chat: `bb thread spawn --provider hermes --machine $HERMES_HOST` with no profile, model or level ("hello"). Bound to `default` (the fallback bot), replied; one new `default` session on the bot's own model, no reasoning effort. 1 push (a finished turn at bb's default level `all`). Archived in bb; no Hermes write. The UI's New Thread wasn't clicked on live.
 
+## v1.1.1 live update (2026-11-09, UTC)
+
+`v1.1.1` released (tag `54c4f9c3`): the `list-here` marker (D58).
+- `bb plugin update hermes --yes`, then `stopHosted` (16 stopped, none failed).
+- An empty `list-here` written on the primary (`$BB_SERVER_HOST`) with `bb file write --create-parents`, then `bb plugin reload hermes`.
+- After: worker and bridges `1.1.1+77ff80f085de`; health connected, supported; bindings 16, duplicates 0; errors none.
+- `bb provider list`: Hermes on the primary and `$HERMES_HOST`, not on `$WORK_HOST`, so Hermes rows get the icon. 0 Hermes writes; gateway pid unchanged; no Hermes turn ran.
+- Don't make Hermes the default in Settings → Providers while relying on `list-here` (guide).
+
 ## Approvals
 
 Gated steps (pushes, tags, releases, the live install, each live bot switch-on) check this log first (04 §Rollout).
@@ -185,3 +194,4 @@ Gated steps (pushes, tags, releases, the live install, each live bot switch-on) 
 | 2026-11-09 | Remote mode (research 15) | Dropped (D57: "we can punt entirely") |
 | 2026-11-09 | Release `v1.1.0`, its live update, one live test chat with `default` | Approved ("Approved") |
 | 2026-11-09 | Disable provider-acp's `acp-hermes-agent` on live bb | Done at the owner's request |
+| 2026-11-09 | Build `list-here` (D58), release `v1.1.1`, update live and write the marker on the primary | Approved ("Go for it (deploy and publish)") |
