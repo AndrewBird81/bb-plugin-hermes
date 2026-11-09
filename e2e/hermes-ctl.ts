@@ -6,6 +6,7 @@
 //   turn <profile> <id> <text>          `hermes chat --resume <id> -q <text>`        → a CLI turn in that chat
 //   conduit <profile> <text>            the dashboard's legacy socket (Conduit's path): create + send → desktop, no chat_id
 //   conduit-turn <profile> <id> <text>  a dashboard send into that chat
+//   botchat <profile> <text>            Conduit mints the profile's Bot Chat (hidden, legacy) and sends
 //   cron <profile> <text>               `hermes cron create` + `cron run` (the gateway's scheduler) → cron/cron (stays out)
 //   acp <profile> <text>                canonical `session.create{source:"acp"}` + a turn → local/acp (stays out)
 //   chat-app <profile> <platform>       no platform client here: a copy of the newest local/cli row and its messages,
@@ -15,7 +16,7 @@
 //   bb <profile> <text>                 created as bb does (`bb:` request id, `gui`, `bb:` submission) (stays out)
 //   title <profile> <id> <title>        `hermes sessions rename <id> <title>`
 //   archive|unarchive <profile> <id>    canonical `session.mutate{operation:"archive"}`, as Desktop archives
-//   compress <profile> <id>             canonical `session.mutate{operation:"compress"}`
+//   compress <profile> <id> [payload]   canonical `session.mutate{operation:"compress", payload}` (e.g. {"keep_last":1})
 import { execFileSync, spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import os from "node:os";
@@ -115,6 +116,12 @@ const ops: Record<string, () => Promise<unknown>> = {
       await d.send(profile, String(made.session_id), rest[0]!);
       return { session_id: String(made.stored_session_id) };
     }),
+  botchat: () =>
+    dashboard(async (d) => {
+      const made = await d.rpc("session.create", { profile, source: "desktop", title: "Bot Chat", hidden: true, follow_profile_config: true });
+      await d.send(profile, String(made.session_id), rest[0]!);
+      return { session_id: String(made.stored_session_id) };
+    }),
   "conduit-turn": () =>
     dashboard(async (d) => {
       const live = await d.open(profile, rest[0]!);
@@ -156,7 +163,7 @@ COMMIT;`]);
   },
   archive: () => mutate(profile, rest[0]!, "archive", { archived: true }),
   unarchive: () => mutate(profile, rest[0]!, "archive", { archived: false }),
-  compress: () => mutate(profile, rest[0]!, "compress", {}),
+  compress: () => mutate(profile, rest[0]!, "compress", rest[1] ? JSON.parse(rest[1]) : {}),
 };
 if (!op || !ops[op]) {
   console.error(`usage: npx tsx e2e/hermes-ctl.ts <${Object.keys(ops).join("|")}> <profile> [args…]`);
