@@ -8,7 +8,7 @@ import type { SettingsHandle } from "../shared/settings.js";
 import { createBots } from "./bots.js";
 import { createChats } from "./chats.js";
 import { createDiscovery } from "./discovery.js";
-import { dispatchDecision } from "./dispatch.js";
+import { dispatchDecision, hasUserMessage } from "./dispatch.js";
 import { type ConnectionSource, createConnection, errorCode, KEEPALIVE_MS, type OnConnected } from "./connection.js";
 import { hermesMachine, MACHINE_FOLDER_KEY, machineFolder } from "./provider-options.js";
 import { addTombstone, allBindings, bindingByThread, bindingCounts, type Db, deleteBinding, getKv, openMappingDb, queuedTurnsOf, setKv } from "./db.js";
@@ -92,7 +92,15 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
   for (const b of allBindings(db)) if (b.state === "replaying" && b.kind !== "mirror") sync.readAtIdle.add(b.thread_id);
   void notify.restoreAll((threadId) => queuedTurnsOf(db, threadId).length > 0);
   // The folder as of the last check (the hook can't await settings).
-  bb.experimental_hooks.on("message.dispatch", (context) => dispatchDecision(context, hermesMachine(db, connection.health().folder)));
+  bb.experimental_hooks.on("message.dispatch", (context) => {
+    const decision = dispatchDecision(context, hermesMachine(db, connection.health().folder));
+    // Review 5: the user's own turn behind an init or import pushes as usual, and isn't marked read for them.
+    if (decision.action === "proceed" && hasUserMessage(context)) {
+      sync.dropReadFlag(context.thread.id);
+      notify.release(context.thread.id);
+    }
+    return decision;
+  });
 
   bb.events.on("thread.active", ({ thread }) => {
     if (isHermes(thread)) sync.active.add(thread.id);

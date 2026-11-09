@@ -21,17 +21,28 @@ const isMarker = (part: Part) => {
   }
 };
 
-/** A visible text part starting with the tag, and no marker in the same message. */
-const recalled = (parts: readonly Part[]) =>
-  !parts.some(isMarker) && parts.some((p) => p.type === "text" && p.visibility !== "agent-only" && OUTSIDE_TAG_PREFIX.test(p.text ?? ""));
+/** A visible text part starting with the tag. */
+const tagged = (parts: readonly Part[]) => parts.some((p) => p.type === "text" && p.visibility !== "agent-only" && OUTSIDE_TAG_PREFIX.test(p.text ?? ""));
 
-/** `hermes`: the saved Hermes machine (null when unset). An unknown host (`context.host` null) passes. */
+/** The dispatch's messages: each queued row on its own, else the inline input. */
+const messagesOf = (context: MessageDispatchHookContext): { parts: readonly Part[]; user: boolean }[] =>
+  context.queuedMessages.length
+    ? context.queuedMessages.map((m) => ({ parts: m.content, user: m.initiator === "user" }))
+    : [{ parts: context.input.blocks as readonly PromptInput[], user: context.initiator === "user" }];
+
+/**
+ * `hermes`: the saved Hermes machine (null when unset). An unknown host (`context.host` null) passes. A group that
+ * holds a marker (a wake or import merged with the user's own rows) proceeds: refusing it would drop the plugin's
+ * turn, and the bridge refuses a tagged prompt segment itself.
+ */
 export function dispatchDecision(context: MessageDispatchHookContext, hermes: { id: string; name: string | null } | null): MessageDispatchHookDecision {
   if (context.thread.providerId !== "hermes") return { action: "proceed" };
   if (hermes && context.host && context.host.id !== hermes.id) return { action: "reject", message: otherMachineText(hermes.name ?? "the Hermes machine") };
-  // Each message on its own: bb may merge queued rows (a wake and a user's send) into one dispatch.
-  const messages: readonly (readonly Part[])[] = context.queuedMessages.length
-    ? context.queuedMessages.map((m) => m.content)
-    : [context.input.blocks as readonly PromptInput[]];
-  return messages.some(recalled) ? { action: "reject", message: OUTSIDE_TAG_REFUSAL } : { action: "proceed" };
+  const messages = messagesOf(context);
+  if (messages.some((m) => m.parts.some(isMarker))) return { action: "proceed" };
+  return messages.some((m) => tagged(m.parts)) ? { action: "reject", message: OUTSIDE_TAG_REFUSAL } : { action: "proceed" };
 }
+
+/** The user's own message (not a plugin marker) is in this dispatch: it must not run under an init's or import's hold. */
+export const hasUserMessage = (context: MessageDispatchHookContext) =>
+  context.thread.providerId === "hermes" && messagesOf(context).some((m) => m.user && !m.parts.some(isMarker));

@@ -566,7 +566,7 @@ describe("T2.3: dispatch hook (D15)", () => {
     expect(await decide([text("[Outside bb] hello")], { providerId: "codex" })).toEqual({ action: "proceed" });
   });
 
-  it("merged rows: each queued message on its own (a wake's marker never covers a user's recalled line)", async () => {
+  it("merged rows: a group holding a marker proceeds (the bridge refuses the tagged segment itself); otherwise any recalled row refuses", async () => {
     const w = await world();
     const wake = [text("[Outside bb] from the CLI"), encodeMarker({ op: "mirror", anchor_uid: "u1", labeled: true })];
     const decide = (rows: (typeof wake)[]) =>
@@ -577,7 +577,8 @@ describe("T2.3: dispatch hook (D15)", () => {
           queuedMessages: rows.map((content) => makeQueueEntry({ content })),
         }),
       );
-    expect(await decide([wake, [text("[Outside bb] recalled")]])).toEqual(refused);
+    expect(await decide([wake, [text("[Outside bb] recalled")]])).toEqual({ action: "proceed" });
+    expect(await decide([[text("my reply")], [text("[Outside bb] recalled")]])).toEqual(refused);
     expect(await decide([wake, [text("my reply")]])).toEqual({ action: "proceed" });
     expect(await decide([wake, wake])).toEqual({ action: "proceed" });
   });
@@ -813,5 +814,28 @@ describe("e2e: a legacy chat adopted by bb's first send", () => {
     await w.idle(t);
     expect(bindingByThread(w.db, t)?.legacy).toBe(false);
     expect(deriveProviderOptions(w.db, { settings: {}, threadId: t }).thread?.legacy).toBe(false);
+  });
+});
+
+describe("review 5: the user's own send behind an init or import", () => {
+  it("releases the hold (approvals push) and drops the read flag; a plugin wake doesn't", async () => {
+    const w = await botChatWorld([]);
+    await on(w);
+    await drain(w);
+    const { thread_id: chat } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+    expect(w.levels.get(chat)).toBe("muted");
+    const hook = w.harness.inspection.registrations.hooks["message.dispatch"]!;
+    const dispatch = (initiator: "user" | "system", blocks: ReturnType<typeof encodeMarker>[] | { type: "text"; mentions: never[]; text: string }[]) =>
+      hook(makeMessageDispatchHookContext({ thread: { id: chat, providerId: "hermes" }, initiator, input: { blocks, text: "" } }));
+    expect(await dispatch("system", [encodeMarker({ op: "mirror", anchor_uid: "x" })])).toEqual({ action: "proceed" });
+    await w.elapse(RESTORE_DELAY_MS);
+    expect(w.levels.get(chat)).toBe("muted");
+    expect(await dispatch("user", [{ type: "text", mentions: [], text: "plan my week" }])).toEqual({ action: "proceed" });
+    await w.elapse(RESTORE_DELAY_MS);
+    expect(w.levels.get(chat)).toBe("inherit");
+    // The init and the user's turn end: the user's reply stays unread (their own turn's attention is bb's).
+    await w.idle(chat);
+    await w.quiet();
+    expect(calls(w, "threads.markRead").map((a) => a.threadId)).not.toContain(chat);
   });
 });
