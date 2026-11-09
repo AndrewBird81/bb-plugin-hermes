@@ -162,7 +162,7 @@ export function createDiscovery(deps: SyncDeps & { sync: Sync }) {
       archived_by_switch: false,
       title_set: sha256(title),
     });
-    sync.importing.set(thread.id, { archived: row.archived });
+    sync.importing.set(thread.id, { archived: row.archived, cutoff: read ? (passStart.get(profile_home) ?? Date.now()) : Infinity });
     if (read) sync.readAtIdle.add(thread.id);
     invalidateThreadInfo(bb);
     await notify.hold(thread.id, "muted");

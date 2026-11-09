@@ -211,6 +211,8 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
           // bb 0.49.0 `ensureThreadIsWritable`: an archived thread takes no send.
           if (thread(threadId).archivedAt !== null) throw Object.assign(new Error("HTTP 409: Thread is archived"), { code: "thread_not_writable" });
           thread(threadId).inputs.push(input as PromptInput[]);
+          // Waiting to run until the test's `idle` (bb ran it).
+          thread(threadId).queued++;
           return { ok: true, delivery: "sent" };
         },
         get: async ({ threadId }) => dto(thread(threadId)),

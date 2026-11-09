@@ -409,6 +409,9 @@ describe("wakes (T1.11)", () => {
     w.state.boot = "boot_2";
     await w.connect();
     expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u2", labeled: true }]);
+    // u2's wake is queued now: everything settles at that idle.
+    w.render("thr_1");
+    await w.idle("thr_1");
     expect(turnRow(w.db, "thr_1", "u3")?.state).toBe("done");
   });
 

@@ -124,7 +124,7 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
    * Mirrored chats this server process is importing (hidden threads, flow 5): `replaying` until the import is
    * confirmed over, then `onImportOver` shows them. A `replaying` mirror binding not in here was interrupted.
    */
-  const importing = new Map<string, { archived: boolean }>();
+  const importing = new Map<string, { archived: boolean; cutoff: number }>();
   /** Threads the server deleted itself (an import redo, a failed init): their late jobs and events end silently. */
   const gone = new Set<string>();
   let onImportOver: (threadId: string) => Promise<void> = async () => {};
@@ -199,6 +199,9 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
    * `enabled_at − 30 d`, oldest first; the first carries `bind` (with `since` when older turns stay in Hermes),
    * the rest `replay`. Resumable: turns already in `turns` are skipped, so an interrupted import continues
    * (flow 9). `read`: the turns the caller already read. Returns the number of turns sent.
+   * A turn after the cutoff is news, not history: it wakes as an outside turn once the thread is live (unread,
+   * `[Outside bb]`). The bot thread's cutoff is `enabled_at`; a mirrored chat's, its discovery pass's start when it
+   * ends read, else none.
    */
   async function importNow(binding: Binding, enabledAt: number, target: Target, read?: Awaited<ReturnType<typeof readImportTurns>>): Promise<number> {
     if (paused() || !binding.lineage_root) return 0;
@@ -209,7 +212,9 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
     if (read.session_id !== binding.session_id) updateBinding(db, binding.thread_id, { session_id: read.session_id });
     let bound = hasTurns(db, binding.thread_id, "replay");
     let sent = 0;
+    const cutoff = mirror ? (importing.get(binding.thread_id)?.cutoff ?? Infinity) : enabledAt;
     for (const turn of read.turns) {
+      if (turn.ts > cutoff) break;
       if (turnRow(db, binding.thread_id, turn.anchor_uid)) continue;
       if (!claimTurn(db, { thread_id: binding.thread_id, anchor_uid: turn.anchor_uid, kind: "replay", at: turn.ts, reply_uids: turn.reply_uids })) continue;
       const marker: Exclude<Marker, { op: "init" }> = bound

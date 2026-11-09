@@ -642,7 +642,7 @@ describe("review 2: a failed render never loses its reply", () => {
     w.history.get("root_bc")!.turns.push(turn("u2"));
     await w.changed(NEO);
     // The bridge's history read timed out: the turn fails, no record.
-    w.thread("thr_1").status = "error";
+    Object.assign(w.thread("thr_1"), { status: "error", queued: 0 });
     await w.emit("thread.failed" as never, "thr_1");
     expect(turnRow(w.db, "thr_1", "u2")?.state).toBe("queued");
     await w.quiet();
@@ -722,5 +722,39 @@ describe("e2e: diagnostics after an A38 redo", () => {
     await drain(w);
     expect(mirrors(w)).toHaveLength(1);
     expect((await w.rpc<Diagnostics>("diagnostics")).errors).toEqual([]);
+  });
+});
+
+describe("review 4: a turn after the cutoff is news, not an import", () => {
+  it("a Bot Chat found after the switch-on imports only its turns from before enabled_at; later ones wake as outside turns, unread", async () => {
+    const w = await world();
+    await w.connect();
+    await on(w);
+    await drain(w);
+    const enabledAt = botRecord(w.db, NEO)!.enabled_at!;
+    // Another bot's DM creates the Bot Chat days later, then talks in it.
+    w.botChats.set(NEO, { state: "found", lineage_root: "root_bc", session_id: "root_bc", legacy: false });
+    w.history.set("root_bc", { session_id: "root_bc", turns: [turn("old", { ts: enabledAt - DAY }), turn("new", { ts: enabledAt + DAY })] });
+    await w.changed(NEO);
+    await drain(w);
+    expect(w.markers("thr_1").filter((m) => m.op !== "init")).toEqual([
+      { op: "bind", profile_home: NEO, lineage_root: "root_bc", legacy: false, anchor_uid: "old", labeled: true },
+      { op: "mirror", anchor_uid: "new", labeled: true },
+    ]);
+    expect(w.texts("thr_1")).toEqual([`${outsideTag(new Date(enabledAt - DAY))}text old`, "[Outside bb] text new"]);
+    expect(isRead(w, "thr_1")).toBe(false);
+  });
+
+  it("a first-pass chat's turn that comes while it waits for a slot wakes after its import, unread", async () => {
+    const w = await botChatWorld([]);
+    for (let i = 1; i <= 3; i++) chat(w, `c${i}`, { last_activity_at: Date.now() - (10 - i) * DAY });
+    await on(w);
+    w.history.get("c3")!.turns.push(turn("c3-3", { ts: Date.now() + 1 }));
+    await drain(w);
+    const t = bindingByLineage(w.db, NEO, "c3")!.thread_id;
+    expect(w.markers(t).map((m) => m.op)).toEqual(["bind", "replay", "mirror"]);
+    expect(w.texts(t).at(-1)).toBe("[Outside bb] text c3-3");
+    expect(isRead(w, t)).toBe(false);
+    expect(isRead(w, bindingByLineage(w.db, NEO, "c1")!.thread_id)).toBe(true);
   });
 });
