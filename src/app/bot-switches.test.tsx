@@ -3,6 +3,7 @@ import { renderSlot, type PluginRpcTestHandlers } from "@get-bb/plugin-sdk/testi
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { BOTS_CHANNEL, rpcContract, type BotRow, type RpcContract } from "../shared/rpc-contract.js";
+import { grantText } from "./bot-switches.js";
 import { bot, loadApp } from "./test-fixtures.js";
 
 const app = await loadApp();
@@ -27,6 +28,11 @@ describe("bot switches", () => {
     expect(slot.getByText(GRANT_NEO)).toBeTruthy();
     expect(neo.getAttribute("aria-describedby")).toBeTruthy();
     expect(document.getElementById(neo.getAttribute("aria-describedby")!)!.textContent).toBe(GRANT_NEO);
+  });
+
+  it("the default bot (Hermes) reads \"see its chats\", never Hermes's Hermes chats", () => {
+    expect(grantText("Hermes")).toContain("see its chats in bb");
+    expect(grantText("Hermes")).not.toContain("Hermes's");
   });
 
   it("shows the import count only when it is a number", async () => {

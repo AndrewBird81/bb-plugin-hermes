@@ -4,8 +4,9 @@ import { useRpc } from "@get-bb/plugin-sdk/app";
 import { BOTS_CHANNEL, type BotRow, type RpcContract } from "../shared/rpc-contract.js";
 import { errorText, useLive } from "./live.js";
 
+/** The `default` bot shows as "Hermes": "see its chats", never "Hermes's Hermes chats". */
 export const grantText = (bot: string) =>
-  `On: chat with ${bot} in bb, see ${bot}'s Hermes chats in bb, and let ${bot} operate bb: read, start, message, stop and archive any bb thread on any machine. Hermes doesn't ask before running bb commands. Restrictions come later.`;
+  `On: chat with ${bot} in bb, see ${bot === "Hermes" ? "its" : `${bot}'s Hermes`} chats in bb, and let ${bot} operate bb: read, start, message, stop and archive any bb thread on any machine. Hermes doesn't ask before running bb commands. Restrictions come later.`;
 
 export const importText = (count: number) => `Imports ${count} ${count === 1 ? "chat" : "chats"} from the last 30 days.`;
 
