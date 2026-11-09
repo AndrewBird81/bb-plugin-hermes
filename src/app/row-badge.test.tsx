@@ -5,7 +5,8 @@ import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { rpcContract, THREAD_INFO_TAG, type RpcContract, type ThreadInfo } from "../shared/rpc-contract.js";
-import { HERMES_PATHS } from "./hermes-icon.js";
+import { renderToStaticMarkup } from "react-dom/server";
+import { HERMES_PATHS, HermesIcon } from "./hermes-icon.js";
 import type { RowData } from "./row-badge.js";
 import { info, loadApp, thread } from "./test-fixtures.js";
 
@@ -40,6 +41,9 @@ describe("row badge", () => {
   it("the inline icon is assets/hermes.svg", () => {
     const asset = readFileSync("assets/hermes.svg", "utf8");
     expect([...asset.matchAll(/ d="([^"]+)"/g)].map((m) => m[1])).toEqual(HERMES_PATHS);
+    // The Hermes Agent mark needs even-odd filling: both draw with it.
+    expect(asset).toContain('fill-rule="evenodd"');
+    expect(renderToStaticMarkup(<HermesIcon />)).toContain('fill-rule="evenodd"');
   });
 
   it("bot thread, side chat and mirrored chat texts, with the icon; never an app's name", async () => {

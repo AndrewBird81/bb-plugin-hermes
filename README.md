@@ -8,3 +8,4 @@ A bb plugin that makes Hermes Agent chats first-class bb threads: chat with your
 - **Pictures:** [interactive version](https://andrewbird81.github.io/bb-plugin-hermes/), and [`docs/diagrams/`](docs/diagrams/README.md) with captions.
 - **Archive:** the old plan, the scope reset and reviews R1–R6 in [`docs/plan/archive/`](docs/plan/archive/README.md).
 - **Evidence:** research in [`docs/research/`](docs/research/), spike reports in [`docs/spikes/`](docs/spikes/).
+- **Credit:** the Hermes Agent icon (`assets/hermes.svg`) is `icons/hermesagent.svg` from LobeHub's `@lobehub/icons-static-svg` 1.102.0, MIT ([`assets/LICENSE-lobe-icons`](assets/LICENSE-lobe-icons)).
