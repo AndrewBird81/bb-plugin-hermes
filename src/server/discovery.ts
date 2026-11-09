@@ -209,14 +209,16 @@ export function createDiscovery(deps: SyncDeps & { sync: Sync }) {
 
   /**
    * The switch row's "Imports N chats" for an off bot (02 flow 1 "Before on"): the chats a switch-on now would
-   * import, by the same filter. Only `listSessions` (02 §Invariants): a chat counts as bb's by its first
-   * submission only if an earlier pass learnt it.
+   * import, by the same filter. Only `listSessions` and `firstSubmissions`, both read-only (02 §Invariants); a
+   * chat whose first submission stays unknown is left out, as the import leaves it.
    */
   async function importCount(profileHome: string, target: Target): Promise<number> {
     const cached = counts.get(profileHome);
     if (cached && Date.now() - cached.at < COUNT_TTL_MS) return cached.count;
     const { sessions } = await host.call("listSessions", { root: target.root, profile_home: profileHome, since: Date.now() - IMPORT_WINDOW_MS }, { hostId: target.machine });
-    const count = verdicts(profileHome, sessions).filter((v) => v.verdict.kind === "chat").length;
+    const unknown = verdicts(profileHome, sessions).flatMap((v) => (v.unknown ? [v.row.lineage_root] : []));
+    if (unknown.length) await learnFirstNow(profileHome, unknown, target);
+    const count = verdicts(profileHome, sessions).filter((v) => v.verdict.kind === "chat" && !v.unknown).length;
     counts.set(profileHome, { at: Date.now(), count });
     return count;
   }

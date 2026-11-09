@@ -225,10 +225,10 @@ describe("T2.1–T2.2: discovery and 30-day import", () => {
     chat(w, "c3", { archived: true, created_source: "tui" });
     chat(w, "c4", { source: "desktop", created_source: null, legacy: true });
     expect(await countRow(w)).toBe(4);
-    // Cached ≤ 60 s; the only call naming an off bot (02 §Invariants).
+    // Cached ≤ 60 s; the only calls naming an off bot, both read-only (02 §Invariants).
     expect(await countRow(w)).toBe(4);
     const named = w.harness.inspection.experimental_hostRpcCalls.filter((c) => JSON.stringify(c.input).includes(NEO));
-    expect(named.map((c) => [c.method, (c.input as { since?: number }).since !== undefined])).toEqual([["listSessions", true]]);
+    expect(named.map((c) => c.method)).toEqual(["listSessions", "firstSubmissions"]);
     await on(w);
     expect(await countRow(w)).toBeNull();
     // Oldest first, at most 2 at once, each hidden until its import is over.
@@ -313,33 +313,35 @@ describe("T2.1–T2.2: discovery and 30-day import", () => {
     w.db.prepare(`INSERT INTO tombstones (profile_home, lineage_root, at) VALUES (?, 'tomb', 1)`).run(NEO);
     w.threads.set("thr_pend", { ...fakeThread("thr_pend"), visibility: "visible" });
     insertBinding(w.db, { thread_id: "thr_pend", profile_home: NEO, lineage_root: null, session_id: null, expected_id: "pend", kind: "chat", source: null, tag: null, state: "pending", legacy: false, archived_by_switch: false, title_set: null });
-    // The count may read only the list (02 §Invariants): a side chat bb made counts until its first submission was learnt.
-    expect(await countRow(w)).toBe(2);
+    // The count reads first submissions too: bb's own chats are out of it, as of the import.
+    expect(await countRow(w)).toBe(0);
     await on(w);
     await drain(w);
     await w.changed(NEO);
     await drain(w);
     expect(mirrors(w)).toEqual([]);
     expect(w.threads.size).toBe(2);
-    // Off again: the first turn is known now, so the count is exact.
     await w.rpc("setBot", { profile_home: NEO, on: false });
     expect(await countRow(w)).toBe(0);
   });
 
-  it("first submissions: asked once per chat, in one batch, for every surface; a chat the worker can't read waits", async () => {
+  it("first submissions: asked once per chat, in one batch, for every surface; a chat the worker can't read waits, out of the count too", async () => {
     const w = await botChatWorld([]);
     chat(w, "c1");
     chat(w, "c2", { created_source: "desktop" });
     chat(w, "c3");
     w.state.unreadable = ["c3"];
+    expect(await countRow(w)).toBe(2);
     await on(w);
     await drain(w);
-    expect(w.hostCalls("firstSubmissions").map((c) => (c.input as { lineage_roots: string[] }).lineage_roots)).toEqual([["c1", "c2", "c3"]]);
+    // The count's answers are kept: the switch-on asks only for c3 again.
+    const asked = () => w.hostCalls("firstSubmissions").map((c) => (c.input as { lineage_roots: string[] }).lineage_roots);
+    expect(asked()).toEqual([["c1", "c2", "c3"], ["c3"]]);
     expect(bindingByLineage(w.db, NEO, "c3")).toBeNull();
     w.state.unreadable = [];
     await w.changed(NEO);
     await drain(w);
-    expect(w.hostCalls("firstSubmissions").map((c) => (c.input as { lineage_roots: string[] }).lineage_roots)).toEqual([["c1", "c2", "c3"], ["c3"]]);
+    expect(asked()).toEqual([["c1", "c2", "c3"], ["c3"], ["c3"]]);
     expect(mirrors(w)).toHaveLength(3);
     // The first pass waited for c3, so it ends read too.
     expect(isRead(w, bindingByLineage(w.db, NEO, "c3")!.thread_id)).toBe(true);
