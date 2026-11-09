@@ -127,7 +127,8 @@ async function rehook() {
 }
 /** Pushes since `since`, counted from the hook's install when that is later (after a bb restart): see `hookGap`. */
 async function pushes(since = 0) {
-  if ((await cdp("window.__hookedAt ?? null")) === null) throw new Error("push hook missing");
+  // bb may reload the page once more after `rehook` saw it back: install it again (`hookGap` reports the gap).
+  if ((await cdp("window.__hookedAt ?? null")) === null) await rehook();
   return JSON.parse((await cdp("JSON.stringify(window.__notes ?? [])")) ?? "[]").filter((p) => p.at >= since);
 }
 /** How long after `since` the hook was installed (ms; 0 when before): pushes in that gap are unseen. */
@@ -439,7 +440,8 @@ check("9 every Hermes thread's titleFallback is null or marker-free", fallbacks.
 await ctl("models", { count: 120 });
 const cat = spawnChat("bob", "big catalog");
 const catalog = await until("catalog", () => events(cat).filter((e) => e.type === "thread/extensionState/updated" && e.data.kind === "bb/provider-model-catalog").at(-1), 30_000);
-check("a 120-model catalog fits bb's 64 KiB state and reaches the thread", catalog.data.payload.models.length === 120 && JSON.stringify(catalog.data.payload).length < 65536 && !events(cat).some((e) => /unhandled/.test(e.type)), `${JSON.stringify(catalog.data.payload).length} bytes`);
+// D53: "The bot's model" first, then the 120.
+check("a 120-model catalog fits bb's 64 KiB state and reaches the thread", catalog.data.payload.models.length === 121 && catalog.data.payload.models[0].id === "hermes-bot-model" && JSON.stringify(catalog.data.payload).length < 65536 && !events(cat).some((e) => /unhandled/.test(e.type)), `${catalog.data.payload.models.length} models, ${JSON.stringify(catalog.data.payload).length} bytes`);
 await ctl("models", { count: 1 });
 
 // ---- 11. end
