@@ -11,6 +11,7 @@ import { THREAD_INFO_TAG } from "../shared/rpc-contract.js";
 import { outsideTag } from "../shared/sources.js";
 import { type Connection, errorCode, type HostClient } from "./connection.js";
 import {
+  addTombstone,
   bindingByLineage,
   bindingByThread,
   type Binding,
@@ -361,8 +362,10 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
       // bb's own send there adopted a legacy chat (D16): wakes may attach to its canonical turns from now on.
       if (binding.legacy && state.turns.length) updateBinding(db, threadId, { legacy: false });
     } else if (binding.kind === "bot") {
-      // The `Bot Chat` title moved to another chat (flow 3 step 6): follow it; its earlier turns aren't news.
+      // The `Bot Chat` title moved to another chat (flow 3 step 6): follow it; its earlier turns aren't news. The old
+      // chat's turns are in the bot thread already: it never imports as a mirrored chat (review 10).
       if (bindingByLineage(db, state.profile_home, state.lineage_root)) return fail("duplicate_binding");
+      addTombstone(db, state.profile_home, binding.lineage_root, Date.now());
       const last = state.turns.at(-1)?.anchor_uids.at(-1) ?? null;
       updateBinding(db, threadId, { lineage_root: state.lineage_root, session_id: state.session_id, cursor_uid: last });
     }

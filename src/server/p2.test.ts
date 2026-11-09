@@ -905,3 +905,21 @@ describe("review 7: D48 unarchive failures", () => {
     expect(bindingByThread(w.db, t)?.archived_by_switch).toBe(false);
   });
 });
+
+describe("review 10: the bot thread follows a new Bot Chat", () => {
+  it("tombstones the old one: renamed and visible in Hermes now, its turns are in the bot thread already and never import again", async () => {
+    const w = await botChatWorld([turn("u1")]);
+    await on(w);
+    await drain(w);
+    w.history.set("root_new", { session_id: "root_new", turns: [turn("b2", { submission_id: null })] });
+    w.persisted("thr_1", { profile_home: NEO, lineage_root: "root_new", session_id: "root_new", turns: [{ submission_id: "bb:thr_1:c2", anchor_uids: ["b2"], reply_uids: [], at: 2 }] });
+    await w.idle("thr_1");
+    expect(bindingByThread(w.db, "thr_1")?.lineage_root).toBe("root_new");
+    expect(tombstones(w)).toEqual([{ profile_home: NEO, lineage_root: "root_bc" }]);
+    // The old Bot Chat, renamed in Hermes, now lists.
+    chat(w, "root_bc", { title: "Old Bot Chat" }, [turn("u1")]);
+    await w.changed(NEO);
+    await drain(w);
+    expect(mirrors(w)).toEqual([]);
+  });
+});
