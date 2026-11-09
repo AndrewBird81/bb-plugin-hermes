@@ -56,7 +56,7 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
   const enqueue = createQueue((error) => fail(errorCode(error, "job_failed")));
   const notify = createNotify(bb, db, fail);
   const deps = { bb, db, host, connection, notify };
-  const sync = createSync(deps);
+  const sync = createSync({ ...deps, enqueue });
   const bots = createBots({ ...deps, sync, enqueue });
   const chats = createChats({ ...deps, sync, enqueue, describe: bots.describe });
   const run = (code: string, job: () => Promise<void>) => void enqueue(job).catch((error) => fail(errorCode(error, code)));
@@ -97,8 +97,10 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
   bb.events.on("thread.deleted", ({ thread }) => {
     const binding = bindingByThread(db, thread.id);
     if (!binding) return;
-    // Q1: a mirrored chat bb deleted is never imported again. A deleted bot thread is re-created at the next reconcile.
-    if (binding.kind === "mirror" && binding.lineage_root) addTombstone(db, binding.profile_home, binding.lineage_root, Date.now());
+    // Q1: a chat bb deleted is never imported again, a side chat's included (a pending one by the id its first
+    // send would create). A deleted bot thread is re-created at the next reconcile, bound by title (D44).
+    const id = binding.lineage_root ?? binding.expected_id;
+    if (binding.kind !== "bot" && id) addTombstone(db, binding.profile_home, id, Date.now());
     deleteBinding(db, thread.id);
     invalidateThreadInfo(bb);
     if (binding.kind === "bot") bb.realtime.publish(BOTS_CHANNEL, null);

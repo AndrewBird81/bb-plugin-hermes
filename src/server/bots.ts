@@ -2,7 +2,7 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { botLabel, botThreadTitle } from "../shared/bots.js";
 import type { HermesProfile } from "../shared/host-contract.js";
-import { encodeMarker, type Marker } from "../shared/marker.js";
+import { encodeMarker, type Marker, spawnStart } from "../shared/marker.js";
 import { BOTS_CHANNEL, type BotRow } from "../shared/rpc-contract.js";
 import { errorCode } from "./connection.js";
 import {
@@ -125,7 +125,7 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
       sessionOptions: { profile: bot.name },
       title: botThreadTitle(labelOf(bot)),
       pinned: true,
-      input: [encodeMarker(init)],
+      input: [spawnStart()],
       pluginMetadata: { hermes: { origin: "switch" } },
     });
     insertBinding(db, {
@@ -145,6 +145,7 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
     sync.readAtIdle.add(thread.id);
     invalidateThreadInfo(bb);
     await notify.hold(thread.id, "muted");
+    await sync.sendInit(thread.id, init);
     publish();
   }
 

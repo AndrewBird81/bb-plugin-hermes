@@ -2,13 +2,15 @@
 // findBotChat, readTurns, setBotAccess) around `createFakePluginHost`, for the server's P1 tests.
 import { createFakePluginHost, type ExperimentalFakeHostRpcCall, makeHostResponse, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import type { PromptInput } from "@get-bb/plugin-sdk/provider-bridge";
+import { vi } from "vitest";
 import type { z } from "zod";
 import { EXTENSION_KINDS, type persistedTurnStateSchema } from "../shared/extension-state.js";
-import type { BotChat, EnsureWatchOutput, HermesProfile, HistoryTurn } from "../shared/host-contract.js";
+import type { BotChat, EnsureWatchOutput, HermesProfile, HistoryTurn, SessionRow } from "../shared/host-contract.js";
 import { decodeMarker, type Marker } from "../shared/marker.js";
 import { settingsDescriptors } from "../shared/settings.js";
 import { openMappingDb, setKv } from "./db.js";
-import { startServer } from "./index.js";
+import { startServer, WAKE_DEBOUNCE_MS } from "./index.js";
+import { SETTLE_QUIET_MS } from "./sync.js";
 
 export const MACHINE = "host_hermes";
 export const NEO = "/h/profiles/neo";
@@ -25,6 +27,10 @@ export interface FakeThread {
   deletedAt: number | null;
   pinned: boolean;
   queued: number;
+  /** bb's read state: unread while `lastReadAt < latestAttentionAt`; a root thread's turn end moves `latestAttentionAt`. */
+  lastReadAt: number | null;
+  latestAttentionAt: number;
+  visibility: "visible" | "hidden";
   originPluginId: string | null;
   spawn: Record<string, unknown> | null;
   /** Every input bb got: the spawn's, then each send's. */
@@ -39,6 +45,24 @@ export interface WorldOptions {
 
 const neo: HermesProfile = { name: "neo", home: NEO, handle: null, terminal_cwd: "/w/neo", served: true };
 const bob: HermesProfile = { name: "bob", home: BOB, handle: null, terminal_cwd: null, served: false };
+
+/** A REST list row of a chat (`last_activity_at`: a day ago unless given). */
+export function session(id: string, over: Partial<SessionRow> = {}): SessionRow {
+  return {
+    session_id: id,
+    lineage_root: id,
+    title: `Chat ${id}`,
+    source: "local",
+    created_source: "cli",
+    hidden: false,
+    archived: false,
+    cwd: null,
+    message_count: 2,
+    last_activity_at: Date.now() - 86_400_000,
+    legacy: false,
+    ...over,
+  };
+}
 
 export function turn(anchor: string, over: Partial<HistoryTurn> = {}): HistoryTurn {
   return { anchor_uid: anchor, user_text: `text ${anchor}`, user_hidden: false, submission_id: null, reply_uids: [`${anchor}-r`], ts: Date.now() - 86_400_000, complete: true, ...over };
@@ -56,9 +80,11 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
   /** `pageSize`: an `after_uid` read returns at most this many turns, oldest first, `truncated` when more follow. */
   const history = new Map<string, { session_id: string; turns: HistoryTurn[]; truncated?: boolean; pageSize?: number }>();
   const botChats = new Map<string, BotChat>();
+  /** REST list rows per profile home (`listSessions`). */
+  const sessions = new Map<string, SessionRow[]>();
   const access: { profile_home: string; on: boolean; enabled_bots: string[] }[] = [];
   /** `root`: the folder these profiles live in. `outside`: the worker refuses every profile as outside the root. */
-  const state = { root: "~/.hermes", outside: false, failSpawn: 0, watched: [] as string[], failSend: 0, failAccess: false, refreshed: true, online: true, boot: "boot_1", supported: true, seq: 0, ids: 0 };
+  const state = { root: "~/.hermes", outside: false, failSpawn: 0, watched: [] as string[], failSend: 0, failAccess: false, refreshed: true, online: true, boot: "boot_1", supported: true, seq: 0, ids: 0, clock: 1_000 };
 
   const thread = (id: string) => {
     const t = threads.get(id);
@@ -75,6 +101,9 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
       deletedAt: t.deletedAt,
       pinnedAt: t.pinned ? 1 : null,
       queuedMessageCount: t.queued,
+      lastReadAt: t.lastReadAt,
+      latestAttentionAt: t.latestAttentionAt,
+      visibility: t.visibility,
       originPluginId: t.originPluginId,
     });
 
@@ -97,6 +126,10 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
         }
         access.push({ profile_home: input.profile_home, on: input.on, enabled_bots: input.enabled_bots });
         return { skill: input.on ? "written" : "removed", wrapper: "written", refreshed: state.refreshed, detail: state.refreshed ? null : "refresh_failed:1" };
+      case "listSessions": {
+        const since = input.since;
+        return { sessions: (sessions.get(input.profile_home) ?? []).filter((r) => since === undefined || (r.last_activity_at ?? -1) >= since) };
+      }
       case "findBotChat":
         return botChats.get(input.profile_home) ?? { state: "none" };
       case "readTurns": {
@@ -151,6 +184,9 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
             deletedAt: null,
             pinned: a.pinned === true,
             queued: 0,
+            lastReadAt: null,
+            latestAttentionAt: ++state.clock,
+            visibility: a.visibility === "hidden" ? "hidden" : "visible",
             originPluginId: "hermes",
             spawn: a,
             inputs: [a.input as PromptInput[]],
@@ -170,10 +206,17 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
         archive: async ({ threadId }) => ((thread(threadId).archivedAt = 1), dto(thread(threadId))),
         unarchive: async ({ threadId }) => ((thread(threadId).archivedAt = null), dto(thread(threadId))),
         stop: async ({ threadId }) => dto(thread(threadId)),
-        markRead: async ({ threadId }) => dto(thread(threadId)),
-        update: async ({ threadId, title }) => {
+        markRead: async ({ threadId }) => ((thread(threadId).lastReadAt = ++state.clock), dto(thread(threadId))),
+        update: async ({ threadId, title, visibility }) => {
           if (title !== undefined) thread(threadId).title = title ?? null;
+          if (visibility !== undefined) thread(threadId).visibility = visibility;
           return dto(thread(threadId));
+        },
+        delete: async ({ threadId }) => {
+          thread(threadId).deletedAt = ++state.clock;
+          // bb announces it after the delete answers.
+          setImmediate(() => void fake.harness.behavior.emitThreadEvent("thread.deleted", { thread: dto(threads.get(threadId)!) } as never));
+          return { ok: true };
         },
         promptHistory: async ({ threadId }) => prompts.get(threadId) ?? [],
         getPluginMetadata: async () => ({ metadata: {} }),
@@ -215,9 +258,15 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
     return out;
   };
 
-  /** A thread's marker inputs, in order. */
+  /** A thread's marker inputs, in order (`spawnStart()`'s empty part is none). */
   const markers = (threadId: string): Marker[] =>
-    thread(threadId).inputs.flatMap((input) => input.flatMap((p) => (p.type === "text" && p.visibility === "agent-only" ? [decodeMarker(p.text)!] : [])));
+    thread(threadId).inputs.flatMap((input) => input.flatMap((p) => (p.type === "text" && p.visibility === "agent-only" ? [decodeMarker(p.text)].filter((m) => m !== null) : [])));
+  /** Waits `ms` on the clock the test runs: fake timers advance, real ones elapse. */
+  const elapse = async (ms: number) => {
+    if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(ms);
+    else await new Promise((resolve) => setTimeout(resolve, ms));
+    await flush();
+  };
   /** A thread's visible text parts, in order. */
   const texts = (threadId: string): string[] =>
     thread(threadId).inputs.flatMap((input) => input.flatMap((p) => (p.type === "text" && p.visibility !== "agent-only" ? [p.text] : [])));
@@ -229,6 +278,7 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
     threads,
     history,
     botChats,
+    sessions,
     access,
     levels,
     levelCalls,
@@ -236,15 +286,19 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
     prompts,
     rpc,
     flush,
+    elapse,
+    /** bb stayed quiet long enough for an init or import to be confirmed over. */
+    quiet: () => elapse(SETTLE_QUIET_MS + 10),
     markers,
     texts,
     hostCalls: (method: string) => harness.inspection.experimental_hostRpcCalls.filter((c) => c.method === method),
     connect: () => rpc("setConnection", { machine: MACHINE }),
-    /** bb ran every queued turn of a thread: `thread.idle` with an empty queue. */
+    /** bb ran every queued turn of a thread: a turn ended (a root thread needs attention), `thread.idle` with an empty queue. */
     async idle(threadId: string) {
       const t = thread(threadId);
       t.status = "idle";
       t.queued = 0;
+      t.latestAttentionAt = ++state.clock;
       await harness.behavior.emitThreadEvent("thread.idle", { thread: dto(t), lastAssistantText: null });
       await flush();
     },
@@ -256,8 +310,7 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
     /** The worker's `changed` signal, past the debounce. */
     async changed(...homes: string[]) {
       await harness.behavior.experimental_emitHostSignal(MACHINE, "changed", { profile_homes: homes });
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      await flush();
+      await elapse(WAKE_DEBOUNCE_MS + 100);
     },
     /** The bridge published `persisted-turn` for this thread. */
     persisted(threadId: string, payload: z.input<typeof persistedTurnStateSchema>) {

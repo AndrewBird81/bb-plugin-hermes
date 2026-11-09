@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { newChatTitle } from "../shared/bots.js";
-import { encodeMarker } from "../shared/marker.js";
+import { spawnStart } from "../shared/marker.js";
 import type { ThreadInfo } from "../shared/rpc-contract.js";
 import { labelOf, spawnPlacement } from "./bots.js";
 import { errorCode } from "./connection.js";
@@ -74,7 +74,7 @@ export function createChats(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; des
         ...(await spawnPlacement(bb, target.machine)),
         sessionOptions: { profile: bot.name },
         title,
-        input: [encodeMarker({ op: "init", profile: bot.name })],
+        input: [spawnStart()],
         pluginMetadata: { hermes: { origin: "newChat" } },
       });
       // Right after the spawn, so a re-list never takes the new session for an outside chat (02 identity rules).
@@ -82,6 +82,7 @@ export function createChats(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; des
       invalidateThreadInfo(bb);
       sync.readAtIdle.add(thread.id);
       await notify.hold(thread.id, "muted");
+      await sync.sendInit(thread.id, { op: "init", profile: bot.name });
       return { thread_id: thread.id };
     });
   }

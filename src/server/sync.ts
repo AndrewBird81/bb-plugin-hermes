@@ -18,6 +18,7 @@ import {
   claimRest,
   claimTurn,
   type Db,
+  deleteBinding,
   getKv,
   hasTurns,
   insertBinding,
@@ -32,6 +33,12 @@ import {
 import type { Notify } from "./notify.js";
 
 export const IMPORT_WINDOW_MS = 30 * 86_400_000;
+/**
+ * An init or import is over only once bb stays quiet this long after an idle finalize: bb can report a thread idle
+ * with nothing queued while it still dispatches the last queued turn, whose own idle then moves `latestAttentionAt`
+ * past the `markRead` (P1 live dogfood).
+ */
+export const SETTLE_QUIET_MS = 3_000;
 /** Pages of a truncated wake read before the rest waits for the next reconcile. */
 const MAX_TURN_PAGES = 20;
 
@@ -93,11 +100,17 @@ function turnInput(turn: HistoryTurn, imported: boolean, marker: Exclude<Marker,
 
 const hasNew = (now: string[], shown: string[]) => now.some((uid) => !shown.includes(uid));
 
-export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
+export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDeps & { enqueue: Enqueue }) {
   /** Threads running a turn (`thread.active` … `thread.idle`): wakes wait for idle (bb's own turn may not be recorded yet). */
   const active = new Set<string>();
-  /** Threads whose init or import must end read (`markRead` at idle). */
+  /**
+   * Threads whose init or import must end read: `markRead` at each idle finalize, cleared (and the notification
+   * hold released) only once a quiet re-read confirms the thread read and over. A wake into it clears it: outside
+   * activity is unread (01 §8).
+   */
   const readAtIdle = new Set<string>();
+  const confirmTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  bb.onDispose(() => confirmTimers.forEach(clearTimeout));
   /** Imports that haven't sent every turn yet: they stay `replaying` at idle and resume at the next reconcile. */
   const unfinished = new Set<string>();
   const persistedKind = `${bb.pluginId}/${EXTENSION_KINDS.persistedTurn}`;
@@ -109,6 +122,23 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
 
   async function send(threadId: string, input: PromptInput[]): Promise<void> {
     await bb.sdk.threads.send({ threadId, mode: "queue-if-active", input });
+  }
+
+  /**
+   * A plugin spawn's marker, sent after `insertBinding` (the spawn input is `spawnStart()`, so bb's `titleFallback`
+   * is never a marker). A failed send takes the thread back (binding first: no tombstone), so a retry spawns again.
+   */
+  async function sendInit(threadId: string, init: Extract<Marker, { op: "init" }>): Promise<void> {
+    try {
+      await send(threadId, [encodeMarker(init)]);
+    } catch (error) {
+      deleteBinding(db, threadId);
+      readAtIdle.delete(threadId);
+      notify.release(threadId);
+      invalidateThreadInfo(bb);
+      await bb.sdk.threads.delete({ threadId, childThreadsConfirmed: true }).catch(() => fail("spawn_cleanup_failed"));
+      throw error;
+    }
   }
 
   /** Claims, then sends; a failed send releases the claim (R1 M1). False on failure. */
@@ -208,6 +238,8 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
           continue;
         }
         if (!claimTurn(db, { thread_id: binding.thread_id, anchor_uid: turn.anchor_uid, kind: "mirror", at: turn.ts, reply_uids: turn.reply_uids })) continue;
+        // Outside activity is unread: an init or import still settling no longer ends read, nor muted.
+        if (readAtIdle.delete(binding.thread_id)) notify.release(binding.thread_id);
         const input = turnInput(turn, false, { op: "mirror", anchor_uid: turn.anchor_uid });
         // Keep Hermes' order: stop at a failed send; the next re-list retries from there.
         if (!(await sendClaimed(binding, turn.anchor_uid, input, "input-only"))) break;
@@ -388,10 +420,38 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
     }
     for (const row of binding ? queuedTurnsOf(db, threadId) : []) if (row.kind === "replay") settleTurn(db, threadId, row.anchor_uid, "done");
     if (binding?.state === "replaying" && !unfinished.has(threadId)) updateBinding(db, threadId, { state: "live" });
-    if (readAtIdle.delete(threadId)) await bb.sdk.threads.markRead({ threadId });
-    notify.release(threadId);
+    if (readAtIdle.has(threadId)) {
+      await bb.sdk.threads.markRead({ threadId });
+      confirmLater(threadId, thread.latestAttentionAt);
+    } else notify.release(threadId);
     const live = bindingByThread(db, threadId);
     if (live && target && enabled(live.profile_home)) await reconcileNow(live, target, { settle: true });
+  }
+
+  /** After `SETTLE_QUIET_MS`, on the queue; a later idle finalize starts the wait again. */
+  function confirmLater(threadId: string, attentionAt: number): void {
+    clearTimeout(confirmTimers.get(threadId));
+    confirmTimers.set(
+      threadId,
+      setTimeout(() => {
+        confirmTimers.delete(threadId);
+        void enqueue(() => confirmNow(threadId, attentionAt)).catch((error) => fail(errorCode(error, "confirm_failed")));
+      }, SETTLE_QUIET_MS),
+    );
+  }
+
+  /**
+   * The init or import is over: idle, nothing queued, no turn ended since the finalize (`latestAttentionAt` as it
+   * was) and read. Otherwise a turn is still coming, and its idle finalize tries again.
+   */
+  async function confirmNow(threadId: string, attentionAt: number): Promise<void> {
+    if (!readAtIdle.has(threadId)) return;
+    const thread = await bb.sdk.threads.get({ threadId });
+    if (thread.status !== "idle" && thread.status !== "error") return;
+    if (thread.queuedMessageCount > 0 || thread.latestAttentionAt !== attentionAt) return;
+    if ((thread.lastReadAt ?? -Infinity) < thread.latestAttentionAt) return;
+    readAtIdle.delete(threadId);
+    notify.release(threadId);
   }
 
   /**
@@ -435,7 +495,7 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
     }
   }
 
-  return { active, readAtIdle, importNow, reconcileNow, applyPersisted, ingestPersistedNow, finalizeNow, recoverQueuedNow };
+  return { active, readAtIdle, sendInit, importNow, reconcileNow, applyPersisted, ingestPersistedNow, finalizeNow, recoverQueuedNow };
 }
 
 export type Sync = ReturnType<typeof createSync>;

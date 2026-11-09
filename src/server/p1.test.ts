@@ -243,7 +243,8 @@ describe("Bot Chat import (T1.11)", () => {
     ]);
     expect(w.texts("thr_1")).toEqual([`${outsideTag(new Date(ts))}text u1`, "mine"]);
     // The bridge never takes a label for a prompt: bb's own untagged message is never submitted again.
-    const segments = w.thread("thr_1").inputs.slice(1).flatMap((input) => segmentInput(input));
+    // inputs: the spawn's `spawnStart()`, the init, then the import.
+    const segments = w.thread("thr_1").inputs.slice(2).flatMap((input) => segmentInput(input));
     expect(segments.map((s) => s.kind)).toEqual(["marker", "marker", "marker"]);
     expect(segments.map((s) => (s.kind === "marker" ? s.label : null))).toEqual([`${outsideTag(new Date(ts))}text u1`, "mine", null]);
     expect(bindingByThread(w.db, "thr_1")).toMatchObject({ state: "replaying", cursor_uid: "u3" });
@@ -266,7 +267,9 @@ describe("Bot Chat import (T1.11)", () => {
     w.botChats.set(NEO, { state: "found", lineage_root: "root_bc", session_id: "tip_bc", legacy: false });
     w.history.set("root_bc", { session_id: "tip_bc", turns: [turn("u1"), turn("u2")] });
     w.state.failSend = 0;
-    w.harness.inspection.sdk.stub("threads.send", async () => {
+    // The init goes through; every import send fails.
+    w.harness.inspection.sdk.stub("threads.send", async ({ threadId, input }: { threadId: string; input: { text?: string }[] }) => {
+      if (input.some((p) => p.text?.includes('"op":"init"'))) return (w.thread(threadId).inputs.push(input as never), { ok: true, delivery: "sent" });
       throw Object.assign(new Error("HTTP 503"), { code: "unavailable" });
     });
     await on(w);
