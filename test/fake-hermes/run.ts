@@ -117,6 +117,11 @@ const ops: Record<string, (b: Body, f: FakeHermes) => unknown> = {
   compress: (b, f) => f.compressElsewhere(b.profile, b.session_id),
   restDelay: (b, f) => void (f.restDelayMs = Number(b.ms) || 0),
   models: (b, f) => {
+    // A catalog as given (`{providers, model, provider}`, model.options' shape), e.g. one shaped like a live Hermes.
+    if (Array.isArray(b.providers)) {
+      f.handle("model.options", () => ({ providers: b.providers, model: b.model, provider: b.provider }));
+      return { models: (b.providers as { models: unknown[] }[]).reduce((n, p) => n + p.models.length, 0) };
+    }
     const n = Number(b.count) || 1;
     const models = Array.from({ length: n }, (_, i) => (i === 0 ? "stub" : `vendor-${i % 7}/a-rather-long-model-name-for-the-catalog-${String(i).padStart(3, "0")}-preview`));
     f.handle("model.options", () => ({

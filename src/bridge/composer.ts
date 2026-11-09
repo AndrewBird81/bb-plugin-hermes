@@ -96,6 +96,20 @@ export function chipBots<B extends { profile: string; served: boolean }>(bot: { 
   return own && !own.served ? [own, ...served] : served;
 }
 
+/**
+ * The chip each model carries (`model/list`, `bb/provider-model-catalog`): the served bots, `own` (a thread's bot)
+ * first if it isn't one. Its value is the served `default` bot, else the first served one, in every catalog and never
+ * a thread's own bot: bb sends no selection for an untouched New Thread chip, so the bridge falls back to `default`
+ * (`resolveContext`), and a project's New Thread reads its last chat's published catalog (research 13 §6). The chip
+ * then never shows one bot while the chat goes to another. Null with no bot to offer.
+ */
+export function chipOption(enabled: readonly EnabledBot[], own?: { profile: string; bot_label: string }) {
+  const menu = chipBots(own ?? { profile: "" }, enabled);
+  const values = own && !menu.some((b) => b.profile === own.profile) ? [own, ...menu] : menu;
+  const shown = menu.find((b) => b.profile === "default") ?? menu[0] ?? own;
+  return shown ? botOption(shown, values) : null;
+}
+
 /** "The bot's model" (the default), then the bot's models. */
 export function availableModels(catalog: Catalog | null, sessionOptions?: ReturnType<typeof botOption>[]): AvailableModel[] {
   return [
@@ -170,9 +184,7 @@ export function catalogState(catalog: Catalog, sessionOptions?: ReturnType<typeo
  */
 export function composerStates(bot: { profile: string; bot_label: string }, catalog: Catalog | null, enabled: readonly EnabledBot[] = []): ThreadDelta[] {
   const states: ThreadDelta[] = [{ kind: "extension.state", extensionKind: "bb/session-options", payload: { options: [botOption(bot)] } }];
-  const menu = chipBots(bot, enabled);
-  const values = menu.some((b) => b.profile === bot.profile) ? menu : [bot, ...menu];
-  if (catalog) states.push({ kind: "extension.state", extensionKind: "bb/provider-model-catalog", payload: catalogState(catalog, [botOption(bot, values)]) as never });
+  if (catalog) states.push({ kind: "extension.state", extensionKind: "bb/provider-model-catalog", payload: catalogState(catalog, [chipOption(enabled, bot)!]) as never });
   return states;
 }
 

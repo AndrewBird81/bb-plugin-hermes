@@ -27,7 +27,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { ConnectionOptions } from "../hermes/client.js";
 import { canonicalHome } from "../hermes/control.js";
-import { availableModels, botOption, chipBots, fetchCatalog, placeholderModel } from "./composer.js";
+import { availableModels, chipBots, chipOption, fetchCatalog, placeholderModel } from "./composer.js";
 import { resolveContext } from "./context.js";
 import { expandHome, readThread, readWorkerFile, threadForCwd } from "./files.js";
 import { HermesLink, type History, restHistory } from "./hermes.js";
@@ -152,7 +152,7 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
     void thread.publishComposer(ctx).catch(() => undefined);
   };
 
-  /** `model/list`: the bot of the thread at `cwd` (else the default bot), every switched-on, served bot as the chip's values (A18). */
+  /** `model/list`: the models of the thread at `cwd`'s bot (else the default bot's), with the chip (`chipOption`, A18). */
   const modelList = async (cwd: string | undefined) => {
     const worker = dataDir ? readWorkerFile(dataDir) : null;
     const known = worker ? threadForCwd(host.dataDir, cwd)?.entry : undefined;
@@ -161,7 +161,7 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
     const bot = own ?? menu.find((b) => b.profile === "default") ?? menu[0];
     if (!worker || !bot) return { models: [placeholderModel()], selectedOnlyModels: [] };
     const catalog = await fetchCatalog(host.link(expandHome(worker.root)), host.dataDir, bot);
-    return { models: availableModels(catalog, [botOption(bot, menu)]), selectedOnlyModels: [] };
+    return { models: availableModels(catalog, [chipOption(worker.enabled, own)!]), selectedOnlyModels: [] };
   };
 
   const hostThread = (threadId: string, providerThreadId: string): HostedThread => {

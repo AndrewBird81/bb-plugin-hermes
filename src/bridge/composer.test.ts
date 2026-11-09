@@ -7,7 +7,7 @@ import { catalogFromModelOptions } from "../shared/models.js";
 import { catalogState, imagesOnlyText, PLACEHOLDER_MODEL, unofferedModelText } from "./composer.js";
 import { updateThread } from "./files.js";
 import { type Rig, startRig, startThread, text, turn } from "./testing/harness.js";
-import { deltas, statuses } from "./testing/read.js";
+import { deltas, errors, statuses } from "./testing/read.js";
 
 let rig: Rig;
 beforeEach(async () => {
@@ -33,7 +33,8 @@ describe("model/list (maintenance: no provider options)", () => {
     updateThread(rig.dataDir, "thr_ml", { profile: "bob", bot: false, profile_home: home("bob") });
     const res = (await rig.call("model/list", { cwd: `/x/workspaces/thr_ml` })).result as { models: Record<string, any>[] };
     expect(rig.requests("model.options")[0]).toMatchObject({ params: { profile: "bob" } });
-    const chip = [expect.objectContaining({ id: "profile", value: "bob", values: expect.arrayContaining([{ id: "alex", label: "Alex" }, { id: "bob", label: "Bob" }]) })];
+    // The thread's bot's models; the chip shows what an untouched chip gets (`default`), never the thread's bot.
+    const chip = [expect.objectContaining({ id: "profile", value: "default", values: expect.arrayContaining([{ id: "alex", label: "Alex" }, { id: "bob", label: "Bob" }]) })];
     expect(res.models).toEqual([
       expect.objectContaining({ id: PLACEHOLDER_MODEL, isDefault: true, sessionOptions: chip }),
       expect.objectContaining({ id: "stub/stub", isDefault: false, sessionOptions: chip }),
@@ -122,7 +123,7 @@ describe("ux-v1.1 §3: the bot chip", () => {
     await startThread(rig, "thr_bob", opts("bob"));
     await rig.waitFor(() => deltas(rig, "thr_bob").length >= 2);
     const catalog = deltas(rig, "thr_bob").find((d) => d.extensionKind === "bb/provider-model-catalog")!;
-    expect(chip((catalog.payload as { models: Record<string, any>[] }).models)).toMatchObject({ value: "bob", values: [{ id: "bob" }, { id: "default" }, { id: "alex" }] });
+    expect(chip((catalog.payload as { models: Record<string, any>[] }).models)).toMatchObject({ value: "default", values: [{ id: "bob" }, { id: "default" }, { id: "alex" }] });
     await startThread(rig, "thr_alex", opts("alex"));
     await rig.waitFor(() => deltas(rig, "thr_alex").length >= 2);
     const alexCatalog = deltas(rig, "thr_alex").find((d) => d.extensionKind === "bb/provider-model-catalog")!;
@@ -132,6 +133,37 @@ describe("ux-v1.1 §3: the bot chip", () => {
     const none = (await rig.call("model/list", {})).result as { models: Record<string, any>[] };
     expect(none.models).toEqual([expect.objectContaining({ id: PLACEHOLDER_MODEL })]);
     expect(none.models[0]!.sessionOptions).toBeUndefined();
+  });
+});
+
+describe("item 14: an untouched chip shows the bot the chat gets", () => {
+  it("every catalog's chip shows the served default bot, never a thread's: bb sends no selection for an untouched chip, and the bridge then uses default", async () => {
+    // An alex chat in a project publishes the project's catalog; bob's thread lists by its workspace cwd.
+    updateThread(rig.dataDir, "thr_ws", { profile: "bob", bot: false, profile_home: home("bob") });
+    await startThread(rig, "thr_alex", opts("alex"));
+    await rig.waitFor(() => deltas(rig, "thr_alex").length >= 2);
+    const published = deltas(rig, "thr_alex").find((d) => d.extensionKind === "bb/provider-model-catalog")!;
+    const lists = [
+      (published.payload as { models: Record<string, any>[] }).models,
+      ((await rig.call("model/list", {})).result as { models: Record<string, any>[] }).models,
+      ((await rig.call("model/list", { cwd: "/x/workspaces/thr_ws" })).result as { models: Record<string, any>[] }).models,
+    ];
+    for (const models of lists) expect(new Set(models.map((m) => m.sessionOptions[0].value))).toEqual(new Set(["default"]));
+    // A New Thread sent untouched: no session options, so the chat is default's, as its chip showed.
+    await startThread(rig, "thr_untouched", opts("alex", null));
+    await turn(rig, "thr_untouched", [text("hi")], { ...opts("alex", null), model: PLACEHOLDER_MODEL });
+    expect(rig.requests("session.create").at(-1)!.profile).toBe("default");
+  });
+
+  it("with default off, the chip shows the first served bot and an untouched send is refused, never sent elsewhere", async () => {
+    await rig.close();
+    rig = await startRig({ enabled: ["alex", "bob"] });
+    const { models } = (await rig.call("model/list", {})).result as { models: Record<string, any>[] };
+    expect(models[0]!.sessionOptions[0]).toMatchObject({ value: "alex" });
+    await startThread(rig, "thr_off", opts("alex", null));
+    await turn(rig, "thr_off", [text("hi")], { ...opts("alex", null), model: PLACEHOLDER_MODEL });
+    expect(errors(rig, "thr_off")).toEqual([expect.stringContaining("Pick a bot")]);
+    expect(rig.requests("session.create")).toHaveLength(0);
   });
 });
 
@@ -146,7 +178,7 @@ describe("thread/start", () => {
     // carries the chip with every switched-on bot, this thread's bot picked, as `model/list` answers.
     const values = [{ id: "default", label: "Hermes bot", description: "Default profile" }, { id: "alex", label: "Alex" }, { id: "bob", label: "Bob" }];
     for (const model of (catalog!.payload as { models: Record<string, unknown>[] }).models)
-      expect(model.sessionOptions).toEqual([{ id: "profile", label: "Bot", category: "mode", type: "select", value: "bob", values }]);
+      expect(model.sessionOptions).toEqual([{ id: "profile", label: "Bot", category: "mode", type: "select", value: "default", values }]);
     expect(rig.fake.requests.filter((r) => r.method.startsWith("session."))).toEqual([]);
   });
 });

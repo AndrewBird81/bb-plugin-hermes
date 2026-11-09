@@ -124,7 +124,7 @@ bb → bridge → Hermes:
 | any turn on another host | — | `provider.error` "Hermes isn't on this machine. Start the thread on <machine> (--machine <machine>)."; the dispatch hook refuses first, naming this machine |
 | any turn, bot switched off | — | `provider.error` "<bot> is switched off in the Hermes plugin settings" |
 | `model/list` | legacy `model.options{profile}`, 2 s | Last-known list on timeout. Never creates a session (r09 M6) |
-| `thread/start` | — | Identity `pending:<threadId>`; publish `bb/session-options` (the chat's bot only) and `bb/provider-model-catalog` (reasoning from `capabilities`, r11 §1; each model with the bot option of every switched-on bot, this chat's picked, because a project's New Thread reads the project's catalog, r13 §6) |
+| `thread/start` | — | Identity `pending:<threadId>`; publish `bb/session-options` (the chat's bot only) and `bb/provider-model-catalog` (reasoning from `capabilities`, r11 §1; each model with the bot option of every switched-on, served bot, because a project's New Thread reads the project's catalog, r13 §6; its value is the served `default` bot, else the first, never this chat's bot: an untouched chip sends nothing and the bridge then uses `default`) |
 | `thread/resume` | — | Records identity only (R4 M4) |
 | `turn/start`, side chat, `pending` | `session.create{profile, request_id:"bb:<threadId>", source:"gui", cwd, model, provider, reasoning?}` | `cwd` = in a project (provider options `project`: the thread's project isn't the personal one), bb's `thread/start` folder (D54); else `terminal.cwd`, else `~`. `gui`, not `cli`: `hermes chat -c` continues a `cli` chat (A20 failed) |
 | `turn/start`, bot thread | flow 3 | S8 steps 1–4 |
