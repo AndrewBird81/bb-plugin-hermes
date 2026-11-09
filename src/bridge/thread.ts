@@ -10,7 +10,7 @@ import type { RestMessage } from "../hermes/history.js";
 import type { AdmissionStatus, GatewayEvent, PendingPrompt, Snapshot } from "../hermes/types.js";
 import { DEAD_REQUESTS_KEPT, EXTENSION_KINDS, PERSISTED_TURNS_KEPT, type PersistedTurnState, type StatusState } from "../shared/extension-state.js";
 import { type Marker, type Segment, segmentInput } from "../shared/marker.js";
-import { BOT_CHAT_TITLE } from "../shared/sources.js";
+import { BOT_CHAT_TITLE, OUTSIDE_TAG_PREFIX, OUTSIDE_TAG_REFUSAL } from "../shared/sources.js";
 import { botIdentity, chatIdentity, isPending, resolveContext, type ThreadContext, UserFacingError } from "./context.js";
 import { readThread, updateThread } from "./files.js";
 import { readProviderOptions } from "../shared/provider-options.js";
@@ -348,6 +348,12 @@ export class HostedThread {
       .trim();
     if (/^\/(new|reset)(\s|$)/.test(text)) {
       await this.compress(turn, ctx);
+      return { status: "completed" };
+    }
+    // D15: a recalled `[Outside bb]` line never reaches Hermes, also when bb merged it with a wake the server's
+    // dispatch hook let through.
+    if (OUTSIDE_TAG_PREFIX.test(text)) {
+      this.emit([{ kind: "provider.warning", summary: OUTSIDE_TAG_REFUSAL }]);
       return { status: "completed" };
     }
     const { attachments, warnings } = prepareAttachments(parts, ctx.profileHome);

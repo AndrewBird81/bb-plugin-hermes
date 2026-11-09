@@ -91,6 +91,14 @@ describe("side chat", () => {
     expect(errors(rig, "thr_side")).toEqual(["This chat is already set up."]);
   });
 
+  it("a tagged prompt (a recalled [Outside bb] line merged with a wake) never reaches Hermes (D15)", async () => {
+    await startThread(rig, "thr_tag", opts());
+    await turn(rig, "thr_tag", [text("[Outside bb · Oct 12] old line")], opts());
+    expect(rig.requests("prompt.submit")).toEqual([]);
+    expect(rig.requests("session.create")).toEqual([]);
+    expect(deltas(rig, "thr_tag").filter((d) => d.kind === "provider.warning").map((d) => d.summary)).toEqual(["Remove the [Outside bb] tag to send."]);
+  });
+
   it("an unbound thread uses its profile option (A18)", async () => {
     await startThread(rig, "thr_u", opts("bob", null));
     await turn(rig, "thr_u", [text("hi")], { ...opts("bob", null), sessionOptions: { profile: "bob" } });
