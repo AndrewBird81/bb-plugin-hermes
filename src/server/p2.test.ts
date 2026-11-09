@@ -1078,3 +1078,24 @@ describe("review-2 2: a failed rest render", () => {
     expect(turnRow(w.db, "thr_1", "A")).toMatchObject({ state: "done", reply_uids: ["A-r"] });
   });
 });
+
+describe("review-2 3: a wake sent at an import's end", () => {
+  it("keeps its input-only hold until its own finalize: its reply sends no push", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "c1");
+    await on(w);
+    const t = bindingByLineage(w.db, NEO, "c1")!.thread_id;
+    // A turn after the first pass began: news, woken once the import is over.
+    w.history.get("c1")!.turns.push(turn("c1-3", { ts: Date.now() + 1 }));
+    w.render(t);
+    await w.idle(t);
+    await w.quiet();
+    expect(w.markers(t).at(-1)).toEqual({ op: "mirror", anchor_uid: "c1-3", labeled: true });
+    await w.elapse(RESTORE_DELAY_MS);
+    expect(w.levels.get(t)).toBe("input-only");
+    w.render(t);
+    await w.idle(t);
+    await w.elapse(RESTORE_DELAY_MS);
+    expect(w.levels.get(t)).toBe("inherit");
+  });
+});

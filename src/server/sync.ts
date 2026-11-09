@@ -560,7 +560,8 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
       readCheck.set(threadId, READ_CHECKS);
       checkReadLater(threadId);
     }
-    notify.release(threadId);
+    // A wake the import's end sent keeps its hold: its own finalize releases it (review-2 3).
+    if (!queuedTurnsOf(db, threadId).length) notify.release(threadId);
   }
 
   /**
