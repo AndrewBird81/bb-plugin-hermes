@@ -1,6 +1,5 @@
 // Shared fixtures for the app's slot tests.
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { BotRow, Health, ThreadInfo } from "../shared/rpc-contract.js";
 import { DEFAULT_FOLDER } from "../shared/settings.js";
 
@@ -34,9 +33,4 @@ export function health(state: Health["state"], name: string | null = "studio"): 
     detail: null,
     worker_last_seen_at: null,
   };
-}
-
-/** The fields the app reads; the rest of bb's row is irrelevant here. */
-export function thread(id: string, extra: Partial<PluginSidebarThread> = {}): PluginSidebarThread {
-  return { id, providerId: "hermes", isUnread: false, displayTitle: id, ...extra } as PluginSidebarThread;
 }

@@ -194,7 +194,7 @@ describe("P1 follow-ups: tombstones (Q1)", () => {
 });
 
 describe("T2.1–T2.2: discovery and 30-day import", () => {
-  it("01 §3 AC: a Bot Chat, 2 side chats and 3 CLI chats → 1 pinned + 5 others; badges by kind", async () => {
+  it("01 §3 AC: a Bot Chat, 2 side chats and 3 CLI chats → 1 pinned + 5 others, by kind", async () => {
     const w = await botChatWorld();
     for (const id of ["c1", "c2", "c3"]) chat(w, id);
     await on(w);

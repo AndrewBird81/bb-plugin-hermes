@@ -44,19 +44,19 @@ The owner's model: **each bot has one thread, its Bot Chat.** A bot can also hav
 
 | Thread | Created by | Hermes session | In the sidebar |
 |---|---|---|---|
-| **Bot thread** (one per bot) | the plugin, at switch-on | the profile's Bot Chat, found by title on every send (S8 step 1) | Pinned; title = bot name ("Neo"); badge "Hermes · Neo · Bot Chat" |
-| **Side chat** (any number) | you: bb's New Thread with Neo in the Bot chip (D51), or `bb thread spawn` | a new session, created on the first message | Normal row; bb's title from your first message; badge "Hermes · Neo" |
-| **Mirrored chat** (any number) | the plugin, when a CLI, TUI, Desktop or Conduit chat of Neo exists | that session | Normal row; Hermes' title; badge "Hermes · Neo" (no app: Hermes' record names none unambiguously, `docs/operations.md` §Surfaces); outside bubbles tagged `[Outside bb]` |
+| **Bot thread** (one per bot) | the plugin, at switch-on | the profile's Bot Chat, found by title on every send (S8 step 1) | Pinned; title = bot name ("Neo") |
+| **Side chat** (any number) | you: bb's New Thread with Neo in the Bot chip (D51), or `bb thread spawn` | a new session, created on the first message | Normal row; bb's title from your first message |
+| **Mirrored chat** (any number) | the plugin, when a CLI, TUI, Desktop or Conduit chat of Neo exists | that session | Normal row; Hermes' title (no app named: Hermes' record names none unambiguously, `docs/operations.md` §Surfaces); outside bubbles tagged `[Outside bb]` |
 
 - The composer of each shows the Hermes icon and the bot's name in a one-value chip, so the bot is visible and fixed (A52).
 - UI text names an app only when Hermes records it for that exact chat or turn. Hermes records no per-turn source, so every outside turn, in every thread, reads `[Outside bb] …` (owner ruling, 2026-11-08).
 - Turns in the Bot Chat from any app (Desktop, Conduit, Bot Mode DMs from other bots, r12 §2) show in the bot thread, never in a new thread.
 - A Hermes side chat that bb started shows in Hermes Desktop's sidebar like Desktop's own side chats.
 - Deleting the bot thread in bb: it is re-created, pinned, at the next reconcile (D44). The Hermes Bot Chat is untouched.
-- Badge missing (A28 fails): pinned position and title still mark the bot thread.
+- Every row looks like any bb thread: one line, the Hermes icon before the title, no metadata line (D55). The pinned position and the title mark the bot thread.
 
 AC:
-- [P2] One bot with a Bot Chat, 2 side chats and 3 CLI chats → exactly 1 pinned + 5 other threads, each badge as above.
+- [P2] One bot with a Bot Chat, 2 side chats and 3 CLI chats → exactly 1 pinned + 5 other threads.
 - A Bot Chat turn from Conduit lands in the bot thread; no thread is created.
 
 ## 4. Chat from bb [P1]

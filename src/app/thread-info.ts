@@ -1,5 +1,4 @@
-// `threadInfo` per thread id, through bb's keyed query cache: the row badge reads every Hermes row in one
-// batch, a banner reads its own thread, and both share the cached rows.
+// `threadInfo` per thread id, through bb's keyed query cache: a thread banner reads its own thread.
 import { experimental_useRpcKeyedQuery } from "@get-bb/plugin-sdk/app";
 import type { PROVIDER_ID } from "../bridge/provider.js";
 import { rpcContract } from "../shared/rpc-contract.js";

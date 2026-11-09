@@ -69,7 +69,7 @@ export const botRowSchema = z
   .strict();
 export type BotRow = z.infer<typeof botRowSchema>;
 
-/** Per thread, for the row badge (A28), the composer chip and banners. */
+/** Per thread, for the thread banners. */
 export const threadInfoSchema = z
   .object({
     kind: z.enum(["bot", "chat", "mirror"]),

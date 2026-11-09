@@ -1,10 +1,9 @@
-// App (app seam): settings sections, row badge, New Thread and thread banners, and the Hermes icon.
+// App (app seam): settings sections, New Thread and thread banners, and the Hermes icon.
 import type { definePluginApp } from "@get-bb/plugin-sdk/app";
 import { BotSwitches } from "./bot-switches.js";
 import { ConnectionSection } from "./connection-section.js";
 import { HermesIcon } from "./hermes-icon.js";
 import { NoBotBanner } from "./new-thread-banners.js";
-import { RowBadge, useRowData, type RowData } from "./row-badge.js";
 import { OfflineBanner, StatusBanner } from "./thread-banners.js";
 import { HERMES_PROVIDER } from "./thread-info.js";
 
@@ -25,7 +24,6 @@ export const registerApp: Setup = (app) => {
     description: "Chat with a bot in bb and see its Hermes chats as threads. Every bot starts off.",
     component: BotSwitches,
   });
-  app.slots.experimental_threadRowMetadata<RowData>({ id: "hermes", useData: useRowData, component: RowBadge });
   app.composer.customize({ id: "hermes-new-thread", scopes: ["new-thread"], banners: [{ id: "no-bot", component: NoBotBanner }] });
   app.composer.customize({
     id: "hermes-thread",

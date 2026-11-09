@@ -1,4 +1,4 @@
-// `assets/hermes.svg` inline (row badge, provider icon): bb's icon slots take a component. The Hermes Agent
+// `assets/hermes.svg` inline (provider icon): bb's icon slots take a component. The Hermes Agent
 // icon from LobeHub's `@lobehub/icons-static-svg` 1.102.0 (MIT, `assets/LICENSE-lobe-icons`).
 // A test keeps the paths equal to the asset's.
 export const HERMES_PATHS = [

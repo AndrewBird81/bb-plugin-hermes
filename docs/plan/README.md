@@ -25,7 +25,7 @@ In:
 - **Chats from bb:** pick a bot, model and reasoning; live replies; approvals, `clarify`, Stop, steer, attachments; the bot is fixed per chat (01 §4–§5).
 - **Full mirroring** (D42): CLI, TUI, Desktop and Conduit chats of enabled bots; last 30 days imported at switch-on; replies from bb continue the same Hermes session (01 §7).
 - **Notifications:** outside activity marks unread; approvals and `clarify` push (01 §8).
-- **Hermes icon** on rows (D22) and in the composer.
+- **Hermes icon** on rows (D55) and in the composer.
 
 Later (out of v1):
 - Owner-specific: work/personal boundary (D28), Discord approvals (D24), per-bot restrictions (`approvals.deny` globs or a hook, r12 §4), privacy filter for tool results (D36), ACP harness retirement and probe cleanup (D12, D25).
@@ -36,7 +36,6 @@ Later (out of v1):
 - Upstream: S8's two race bugs (D50).
 - Community marketplace listing.
 - Several Hermes installations, one per machine (owner direction, 2026-11-09). Until then, no new single-machine assumption where a per-machine shape costs the same.
-- The Hermes icon before each Hermes row's title, as Pi rows have. bb's thread list draws it only for providers in bb's provider list (the New Thread picker and Settings → Providers), so it needs Hermes listed there, reversing D2. The phone layout's Recent list already shows it. Deferred by the owner (2026-11-09).
 
 ## Decisions that bind v1
 
@@ -51,7 +50,6 @@ Later (out of v1):
 | D16 | A legacy (not gateway-owned) row is adopted only by the first bb send; no Hermes mutation for it before (A23). Plus S8's wait-and-retry |
 | D17 | Reasoning in v1. One permission mode, `auto`, declared and tested never to answer an approval (A2) |
 | D19 | P1 gate: on the phone, start a chat and chat with a bot from bb; the bot thread then continues in Conduit (S8 §Plan changes) |
-| D22 | Hermes icon on rows: a row-metadata badge (A28) |
 | D27 | Narrowed: Stop works on bb's own turns and on Conduit turns forwarded into the gateway. Other outside turns show "Running outside bb" |
 | D30 | Narrowed: one setting picks the Hermes machine; the folder defaults to `~/.hermes` |
 | D42 | Full mirroring: every session of an enabled bot started outside bb appears as a bb thread and keeps updating. No "Continue in bb" step, no P2-lite |
@@ -67,6 +65,7 @@ Later (out of v1):
 | D52 | The Hermes icon is the Hermes Agent icon bb's provider-acp uses (taken from LobeHub's MIT `@lobehub/icons-static-svg`); the winged H goes |
 | D53 | A new chat uses its bot's own model unless the user picks one in that chat: "The bot's model" is every model list's default |
 | D54 | A Hermes chat in a project works in that project's folder, as Codex, Claude and Pi do; with "No project", in its bot's `terminal.cwd` |
+| D55 | Rows look like any bb thread: the Hermes icon before the title, no metadata line (owner, 2026-11-09). bb draws that icon only for a provider in its provider list, so it needs Hermes listed |
 | Q1 default | No cross-delete. bb delete → tombstone (mirrored chats and side chats; a bot thread is re-created instead), never re-imported. Deleted in Hermes → the thread stays; sends fail "Deleted in Hermes" |
 | Q7 default | Imported bubbles carry the outside tag and date (`[Outside bb · Oct 12]`), never an app's name; oldest first; item times are import time |
 
@@ -82,6 +81,7 @@ Superseded, one line each:
 - D13 settings v1 (default and hidden profiles, sources, hidden models) → connect setting + per-bot switches.
 - D20 drift checks → on-connect version check only; daily check, canary and audit Later.
 - D21 keep-awake → owner-specific; v1 handles an offline Hermes machine (02 flow 10).
+- D22 Hermes icon on rows as a row-metadata badge (A28) → D55.
 - D24, D28, D36 Discord approvals, work rule, privacy filter → Later.
 - D25 slash commands and fork → Later.
 - D26, D33 auto-read of the user's own outside turns → one v1 rule (01 §8); refinements Later.

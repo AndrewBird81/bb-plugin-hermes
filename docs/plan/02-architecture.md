@@ -9,7 +9,7 @@
 | Bridge | Hermes machine, one process per hosted thread (S1-S3 fact 2) | `host.ts` export `experimental_providerBridge` | Its own canonical connection; turns, deltas, interactions; replay and mirror rendering; S8's send rules |
 | Canonical client | library (worker, bridge) | `src/hermes/client.ts` | Discovery, ticket, dial, RPC, replay cursors; ported from `spike/hermes` `src/hermes/` |
 | History reader | library (worker, bridge) | `src/hermes/history.ts` | Read-only REST reads (below) |
-| App | bb UI | `app.tsx` | Settings page, row badge, thread banners |
+| App | bb UI | `app.tsx` | Settings page, New Thread and thread banners, Hermes icon |
 
 How Hermes' other apps reach the same chats:
 
