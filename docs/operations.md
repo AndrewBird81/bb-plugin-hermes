@@ -117,6 +117,17 @@ Run in order on `v0.3.0`; each gated step checks §Approvals first. The import w
 12. **todoist on** [approval: live bot switch-on]: before, `e2e/eligibility.ts --profile todoist` → `would_import` == the switch row's "Imports N chats"; after, N mirrored threads, 0 unread, 0 pushes.
 13. **After:** gateway pid unchanged; `node scripts/live-audit.mjs --since $S`: only the steps' own writes.
 
+Results (2026-11-09, UTC). Steps 0–5, 7–10 and 13 passed. Step 6 is the owner's (the phone); step 11 was skipped (it cuts off the machine the agents run on); step 12 was skipped (`todoist` stays off, D5).
+- **Steps 0–2:** `v0.3.0` released (tag `c5833240`). After the update and `stopHosted`: worker and bridges `0.3.0+70cf9d628fb3`; health connected, Hermes 0.22.6, supported; errors none.
+- **Step 3, upgrade import:** bindings 8 → 20, duplicates 0. `default` imported 12 threads = `would_import` 12 (one archived, as in Hermes); Neo, alex and david 0 = 0. All 12 read, `titleFallback` null, Hermes' titles; 0 pushes. Hermes: no writes besides one empty `acp` session from bb's provider-acp probe on update.
+- **Step 3, bugs:** BUG 1: `default`'s catalog stored at 65,372 bytes (93 models), no `provider/unhandled`. BUG 2: `/new` on a 4-message test chat warns "Nothing to compact yet"; no `thread/compacted`, Hermes unchanged.
+- **Step 5:** a `cli` chat with Neo (`hermes -p neo chat -q … --source cli`) became a thread 2.7 s after Hermes started the session: unread, `titleFallback` null, no push. A bb reply landed in the same session (`bb:` row, 0 new sessions).
+- **Step 7:** a Hermes rename (`hermes -p neo sessions rename`) reached bb in 1.6 s; after a bb rename, a second Hermes rename left bb's title alone.
+- **Step 8:** `[Outside bb] hi` → "HTTP 409: Remove the [Outside bb] tag to send."; no turn.
+- **Step 9:** a CLI turn into an archived thread: nothing for 12 s, still archived; unarchive → the turn showed 0.34 s later, unread.
+- **Step 10:** from `$WORK_HOST`, with and without `--model`: "Hermes runs on `$HERMES_HOST`: add `--machine $HERMES_HOST`", no thread. Minor bug: each refused spawn adds 2 `thread_not_found` entries to `diagnostics.errors` (fix in `v1.0.1`).
+- **Step 13:** gateway pid unchanged; config, `.env` and skill dirs unchanged. Writes: the tests' own (1 Neo `cli` test chat) and one tester error: `/new` sent with `bb thread tell` from an agent thread carries bb's `[bb message from thread:…]` prefix, so it ran as a prompt in alex's Bot Chat (1 turn, 1 push); two retries compacted that Bot Chat in place (8 → 2 active rows). Testers send slash commands unlabeled (`env -u BB_THREAD_ID`), and only into their own chats.
+
 Then T2.6 (`v1.0.0`, approved 2026-11-09) after the P2 gate. The live install tracks `@^0`, which never offers `1.0.0`: moving it to `@^1` takes `bb plugin remove` (keep a `VACUUM INTO` copy of `data.db`; settings and the connection must be saved again) and a fresh install.
 
 ## Approvals
@@ -134,5 +145,6 @@ Gated steps (pushes, tags, releases, the live install, each live bot switch-on) 
 | 2026-11-09 | Live update to `v0.2.0` | Approved |
 | 2026-11-09 | Neo's switch-on | Approved |
 | 2026-11-09 | Proceed with the next phases | Approved |
+| 2026-11-09 | P1 live dogfood steps 4–14, with the `default`, alex and david switch-ons | Approved ("The tests are approved, and you can proceed") |
 | 2026-11-09 | "Proceed as proposed" | Approved |
 | 2026-11-09 | "You can release 1.0": read as `v0.3.0` for the P2 live dogfood (its live update and 30-day import included), then `v1.0.0` (T2.6) | Approved |
