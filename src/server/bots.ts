@@ -277,18 +277,17 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; disc
     // at spawn, and the bridge lists only enabled bots (else `model_catalog_unavailable`).
     await connection.ensureNow();
     const bot = botRecord(db, profileHome)!;
-    const binding = botBinding(db, profileHome);
-    // D48: the bot thread and what the switch archived come back; threads the user archived stay archived.
-    if (binding && (await liveThread(binding.thread_id))?.archivedAt) await bb.sdk.threads.unarchive({ threadId: binding.thread_id });
+    // D48: the bot thread and what the switch archived come back; threads the user archived stay archived. A failed
+    // unarchive keeps its flag (retried at the next switch-on) and never stops the switch-on.
     for (const b of bindingsOf(db, profileHome)) {
-      if (b.kind === "bot" || !b.archived_by_switch) continue;
+      if (b.kind !== "bot" && !b.archived_by_switch) continue;
       try {
-        await bb.sdk.threads.unarchive({ threadId: b.thread_id });
+        if (b.kind !== "bot" || (await liveThread(b.thread_id))?.archivedAt) await bb.sdk.threads.unarchive({ threadId: b.thread_id });
+        if (b.archived_by_switch) updateBinding(db, b.thread_id, { archived_by_switch: false });
       } catch (error) {
         fail(errorCode(error, "unarchive_failed"));
       }
     }
-    for (const b of bindingsOf(db, profileHome)) if (b.archived_by_switch) updateBinding(db, b.thread_id, { archived_by_switch: false });
     if (!botBinding(db, profileHome)) {
       try {
         await spawnBotThreadNow(bot, target);

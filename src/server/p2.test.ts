@@ -880,3 +880,28 @@ describe("review 6 and 11: a stalled import never holds a slot", () => {
     expect(mirrors(w)).toHaveLength(3);
   });
 });
+
+describe("review 7: D48 unarchive failures", () => {
+  it("a failed unarchive keeps archived_by_switch (retried at the next switch-on); a failing bot-thread unarchive doesn't abort the switch-on", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "c1");
+    await on(w);
+    await drain(w);
+    const t = bindingByLineage(w.db, NEO, "c1")!.thread_id;
+    await w.rpc("setBot", { profile_home: NEO, on: false });
+    chat(w, "c2", { last_activity_at: Date.now() });
+    w.harness.inspection.sdk.stub("threads.unarchive", async () => {
+      throw Object.assign(new Error("HTTP 503"), { code: "unavailable" });
+    });
+    await on(w);
+    // The switch-on went on: c2 imports.
+    expect(bindingByLineage(w.db, NEO, "c2")).not.toBeNull();
+    expect(bindingByThread(w.db, t)?.archived_by_switch).toBe(true);
+    expect(bindingByThread(w.db, "thr_1")?.archived_by_switch).toBe(true);
+    w.harness.inspection.sdk.stub("threads.unarchive", async ({ threadId }: { threadId: string }) => ((w.thread(threadId).archivedAt = null), w.dto(threadId)));
+    await w.rpc("setBot", { profile_home: NEO, on: false });
+    await on(w);
+    expect([w.thread(t).archivedAt, w.thread("thr_1").archivedAt]).toEqual([null, null]);
+    expect(bindingByThread(w.db, t)?.archived_by_switch).toBe(false);
+  });
+});
