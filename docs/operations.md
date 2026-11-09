@@ -125,7 +125,7 @@ Results (2026-11-09, UTC). Steps 0–5, 7–10 and 13 passed. Step 6 is the owne
 - **Step 7:** a Hermes rename (`hermes -p neo sessions rename`) reached bb in 1.6 s; after a bb rename, a second Hermes rename left bb's title alone.
 - **Step 8:** `[Outside bb] hi` → "HTTP 409: Remove the [Outside bb] tag to send."; no turn.
 - **Step 9:** a CLI turn into an archived thread: nothing for 12 s, still archived; unarchive → the turn showed 0.34 s later, unread.
-- **Step 10:** from `$WORK_HOST`, with and without `--model`: "Hermes runs on `$HERMES_HOST`: add `--machine $HERMES_HOST`", no thread. Minor bug: each refused spawn adds 2 `thread_not_found` entries to `diagnostics.errors` (fix in `v1.0.1`).
+- **Step 10:** from `$WORK_HOST`, with and without `--model`: "Hermes runs on `$HERMES_HOST`: add `--machine $HERMES_HOST`", no thread. Minor bug: each refused spawn adds 2 `thread_not_found` entries to `diagnostics.errors` (fixed in `v1.0.1`).
 - **Step 13:** gateway pid unchanged; config, `.env` and skill dirs unchanged. Writes: the tests' own (1 Neo `cli` test chat) and one tester error: `/new` sent with `bb thread tell` from an agent thread carries bb's `[bb message from thread:…]` prefix, so it ran as a prompt in alex's Bot Chat (1 turn, 1 push); two retries compacted that Bot Chat in place (8 → 2 active rows). Testers send slash commands unlabeled (`env -u BB_THREAD_ID`), and only into their own chats.
 
 Then T2.6 (`v1.0.0`, approved 2026-11-09) after the P2 gate.

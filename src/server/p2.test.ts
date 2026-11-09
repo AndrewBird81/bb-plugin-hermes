@@ -608,6 +608,28 @@ describe("BUG 4: another machine", () => {
     expect(await send(w, null)).toEqual({ action: "proceed" });
     expect(await send(w, { id: "host_work" }, "codex")).toEqual({ action: "proceed" });
   });
+
+  it("a `bb thread spawn` refused there, which bb deletes, ends its jobs silently (v1.0.1)", async () => {
+    const w = await world();
+    await w.connect();
+    await on(w);
+    w.threads.set("thr_cli", { ...w.thread("thr_1"), id: "thr_cli", originPluginId: null, pinned: false, inputs: [] });
+    w.event("thr_cli", "client/thread/start", { request: { method: "thread/start", params: { options: { sessionOptions: { profile: "neo" } } } } });
+    // As bb: `thread.created`, the refused dispatch, the thread deleted; `thread.deleted` comes after the created job's reads.
+    const created = w.harness.behavior.emitThreadEvent("thread.created", { thread: w.dto("thr_cli") } as never);
+    expect(await send(w, { id: "host_work" })).toEqual({ action: "reject", message: otherMachineText("hermes-mac") });
+    w.thread("thr_cli").deletedAt = 1;
+    await created;
+    await w.flush();
+    await w.emit("thread.deleted", "thr_cli");
+    expect(bindingByThread(w.db, "thr_cli")).toBeNull();
+    expect((await w.rpc<Diagnostics>("diagnostics")).errors).toEqual([]);
+    // A real failure of a thread bb kept still records.
+    w.threads.set("thr_cli2", { ...w.thread("thr_1"), id: "thr_cli2", originPluginId: null, pinned: false, inputs: [] });
+    w.state.failEvents = 1;
+    await w.emit("thread.created", "thr_cli2");
+    expect((await w.rpc<Diagnostics>("diagnostics")).errors).toContain("unavailable");
+  });
 });
 
 describe("A49: a thread the user archived", () => {

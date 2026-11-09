@@ -63,11 +63,15 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
   const bots = createBots({ ...deps, sync, enqueue, discovery });
   const chats = createChats({ ...deps, sync, enqueue, describe: bots.describe });
   const run = (code: string, job: () => Promise<void>) => void enqueue(job).catch((error) => fail(errorCode(error, code)));
-  /** A job about one thread: one the server deleted itself (an import redo) ends silently, before or during it. */
+  /**
+   * A job about one thread: one the server deleted itself (an import redo) ends silently, before or during it; so
+   * does one bb deleted (a refused spawn), whose reads may fail before its `thread.deleted` comes.
+   */
   const runFor = (threadId: string, code: string, job: () => Promise<void>) =>
     run(code, async () => {
       if (sync.gone.has(threadId)) return;
       await job().catch((error) => {
+        if (errorCode(error, code) === "thread_not_found") sync.gone.add(threadId);
         if (!sync.gone.has(threadId)) throw error;
       });
     });
@@ -137,7 +141,7 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
       if (binding && target && bots.isEnabled(binding.profile_home)) await sync.reconcileNow(binding, target);
     });
   });
-  bb.events.on("thread.created", ({ thread }) => run("bind_failed", () => chats.onCreatedNow(thread)));
+  bb.events.on("thread.created", ({ thread }) => runFor(thread.id, "bind_failed", () => chats.onCreatedNow(thread)));
   bb.events.on("thread.deleted", ({ thread }) => {
     const binding = bindingByThread(db, thread.id);
     if (!binding) return;

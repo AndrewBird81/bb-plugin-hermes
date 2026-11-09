@@ -92,7 +92,8 @@ export async function world({ profiles = [neo, bob], seed, threads: before = [] 
 
   const thread = (id: string) => {
     const t = threads.get(id);
-    if (!t || t.deletedAt) throw new Error("HTTP 404: thread not found");
+    // As bb: a deleted thread is `thread_not_found` too.
+    if (!t || t.deletedAt) throw Object.assign(new Error("HTTP 404: Thread not found"), { code: "thread_not_found" });
     return t;
   };
   const dto = (t: FakeThread) =>
@@ -253,6 +254,7 @@ export async function world({ profiles = [neo, bob], seed, threads: before = [] 
         getPluginMetadata: async () => ({ metadata: {} }),
         events: {
           list: async ({ threadId, types, order, limit, beforeSeq }) => {
+            thread(threadId);
             if (state.failEvents > 0 && state.failEvents--) throw Object.assign(new Error("HTTP 503"), { code: "unavailable" });
             const rows = (events.get(threadId) ?? []).filter(
               (e) => (!types || (types as readonly string[]).includes(e.type)) && (beforeSeq === undefined || e.seq < Number(beforeSeq)),
