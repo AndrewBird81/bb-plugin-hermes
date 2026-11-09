@@ -151,6 +151,15 @@ Live (2026-11-09, UTC): `v1.0.0` released (tag `9f9a436c`); the steps above, in 
 - After: worker and bridges `1.0.1+fc0168a19b27`; health connected, supported; bindings 15, duplicates 0; errors none. 15, not 22: seven Hermes threads were deleted in bb since the move, and their bindings went with them, as designed.
 - A refused spawn from `$WORK_HOST`: the 409, no thread, errors still none. 0 pushes; 0 Hermes writes; gateway pid unchanged.
 
+## v1.1.0 live update (2026-11-09, UTC)
+
+`v1.1.0` released (tag `59bdb0ae`): bb's New Thread starts Hermes chats, listed only on the Hermes machine (D51–D57).
+- `bb plugin update hermes --yes`, then `stopHosted` (none failed).
+- After: worker and bridges `1.1.0+c4ac6dd3af46`; health connected, supported; bindings 15, duplicates 0; errors none.
+- `bb provider list --machine`: Hermes listed on `$HERMES_HOST` only, not on `$WORK_HOST` or the primary, so rows have no icon (D56). 0 pushes; 0 Hermes writes; gateway pid unchanged.
+- provider-acp's `acp-hermes-agent` was listed beside ours on `$HERMES_HOST` with the same icon; disabled at the owner's request (`bb provider disable acp-hermes-agent`).
+- Test chat: `bb thread spawn --provider hermes --machine $HERMES_HOST` with no profile, model or level ("hello"). Bound to `default` (the fallback bot), replied; one new `default` session on the bot's own model, no reasoning effort. 1 push (a finished turn at bb's default level `all`). Archived in bb; no Hermes write. The UI's New Thread wasn't clicked on live.
+
 ## Approvals
 
 Gated steps (pushes, tags, releases, the live install, each live bot switch-on) check this log first (04 §Rollout).
@@ -172,3 +181,7 @@ Gated steps (pushes, tags, releases, the live install, each live bot switch-on) 
 | 2026-11-09 | Moving the live install to `@^1` (`bb plugin remove`, then a fresh install), after the isolated test | Done under "You can release 1.0"; no data lost |
 | 2026-11-09 | Release `v1.0.1` and its live update | Approved ("Fix the bugs and release 1.0.1") |
 | 2026-11-09 | Sidebar Hermes icon (needs Hermes in bb's provider list, reversing D2) | Deferred: "I'll fold it in to my next major initiative" |
+| 2026-11-09 | New Thread listing: only where Hermes runs (B, D56) | Chosen ("Let's go with B for now") |
+| 2026-11-09 | Remote mode (research 15) | Dropped (D57: "we can punt entirely") |
+| 2026-11-09 | Release `v1.1.0`, its live update, one live test chat with `default` | Approved ("Approved") |
+| 2026-11-09 | Disable provider-acp's `acp-hermes-agent` on live bb | Done at the owner's request |
