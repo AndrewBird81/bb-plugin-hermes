@@ -993,3 +993,88 @@ describe("review 14: dispose", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+describe("review-2 1: imports and wake bursts of more than 20 turns", () => {
+  const turns30 = (prefix: string) => Array.from({ length: 30 }, (_, i) => turn(`${prefix}${i + 1}`));
+  const restWakes = (w: World, threadId: string) => w.markers(threadId).filter((m) => m.op === "mirror" && m.rest);
+
+  it("a 30-turn Bot Chat import: turns whose records aged out of the bridge's window settle done, never woken again", async () => {
+    const w = await botChatWorld(turns30("u"));
+    await on(w);
+    await drain(w);
+    await w.changed(NEO);
+    await drain(w);
+    expect(restWakes(w, "thr_1")).toEqual([]);
+    expect(turnRow(w.db, "thr_1", "u1")).toMatchObject({ state: "done", reply_uids: ["u1-r"] });
+    expect(bindingByThread(w.db, "thr_1")?.cursor_uid).toBe("u30");
+    expect((await w.rpc<Diagnostics>("diagnostics")).errors).toEqual([]);
+  });
+
+  it("a 30-turn mirrored chat: no rest wake at its end; it ends read", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "c1", {}, turns30("c1-"));
+    await on(w);
+    await drain(w);
+    const t = bindingByLineage(w.db, NEO, "c1")!.thread_id;
+    expect(bindingByThread(w.db, t)?.state).toBe("live");
+    expect(restWakes(w, t)).toEqual([]);
+    expect(turnRow(w.db, t, "c1-1")).toMatchObject({ state: "done", reply_uids: ["c1-1-r"] });
+    expect(isRead(w, t)).toBe(true);
+  });
+
+  it("a record read at any persisted-turn ingest settles its first claim, not only at idle", async () => {
+    const w = await botChatWorld(turns30("u"));
+    await on(w);
+    // The bridge renders the import turn by turn, publishing each record; bb announces each state.
+    for (let i = 0; i < w.thread("thr_1").inputs.length; i++) {
+      w.render("thr_1", { inputs: 1 });
+      await w.emit("experimental_thread.events" as never, "thr_1");
+    }
+    await w.idle("thr_1");
+    // Before any quiet confirm: every row settled from its own record.
+    expect(Array.from({ length: 30 }, (_, i) => turnRow(w.db, "thr_1", `u${i + 1}`)?.state)).toEqual(Array(30).fill("done"));
+  });
+
+  it("a render that left no record while the window is full, its anchor in the window but not covering, still fails", async () => {
+    const w = await botChatWorld(turns30("u"));
+    await on(w);
+    await drain(w);
+    w.history.get("root_bc")!.turns.push(turn("A", { complete: false, reply_uids: [] }));
+    await w.changed(NEO);
+    await drain(w);
+    expect(turnRow(w.db, "thr_1", "A")).toMatchObject({ state: "partial", reply_uids: [] });
+    Object.assign(w.history.get("root_bc")!.turns.at(-1)!, { complete: true, reply_uids: ["A-r"] });
+    await w.changed(NEO);
+    expect(restWakes(w, "thr_1")).toHaveLength(1);
+    // The rest render fails: A's record (in the full window) still holds no reply row.
+    Object.assign(w.thread("thr_1"), { status: "error", queued: 0 });
+    await w.emit("thread.failed" as never, "thr_1");
+    await w.quiet();
+    expect(turnRow(w.db, "thr_1", "A")).toMatchObject({ state: "partial", reply_uids: [] });
+  });
+});
+
+describe("review-2 2: a failed rest render", () => {
+  it("isn't settled as shown from the anchor's earlier record: the next reconcile wakes the rest again", async () => {
+    const w = await botChatWorld([turn("u1")]);
+    await on(w);
+    await drain(w);
+    // Conduit's own turn: no canonical admission, its reply comes later.
+    w.history.get("root_bc")!.turns.push(turn("A", { complete: false, reply_uids: [] }));
+    await w.changed(NEO);
+    await drain(w);
+    expect(turnRow(w.db, "thr_1", "A")).toMatchObject({ state: "partial", reply_uids: [] });
+    Object.assign(w.history.get("root_bc")!.turns.at(-1)!, { complete: true, reply_uids: ["A-r"] });
+    await w.changed(NEO);
+    // The bridge's chain read fails: no new record.
+    Object.assign(w.thread("thr_1"), { status: "error", queued: 0 });
+    await w.emit("thread.failed" as never, "thr_1");
+    await w.quiet();
+    expect(turnRow(w.db, "thr_1", "A")).toMatchObject({ state: "partial", reply_uids: [] });
+    await w.changed(NEO);
+    expect(w.markers("thr_1").filter((m) => m.op === "mirror" && m.rest)).toHaveLength(2);
+    w.render("thr_1");
+    await w.idle("thr_1");
+    expect(turnRow(w.db, "thr_1", "A")).toMatchObject({ state: "done", reply_uids: ["A-r"] });
+  });
+});

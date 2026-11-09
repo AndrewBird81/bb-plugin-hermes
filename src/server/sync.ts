@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { PromptInput } from "@get-bb/plugin-sdk/provider-bridge";
-import { EXTENSION_KINDS, persistedTurnStateSchema, type PersistedTurnState, statusStateSchema } from "../shared/extension-state.js";
+import { EXTENSION_KINDS, PERSISTED_TURNS_KEPT, persistedTurnStateSchema, type PersistedTurnState, statusStateSchema } from "../shared/extension-state.js";
 import type { HistoryTurn } from "../shared/host-contract.js";
 import { encodeMarker, type Marker } from "../shared/marker.js";
 import { THREAD_INFO_TAG } from "../shared/rpc-contract.js";
@@ -138,6 +138,8 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
    * gets `MAX_RENDER_RETRIES` rest wakes, never a bb turn every few seconds.
    */
   const renderFailures = new Map<string, number>();
+  /** Per thread: the bridge's `mirrored` records as last read, its newest `PERSISTED_TURNS_KEPT` (review-2 1). */
+  const lastMirrored = new Map<string, PersistedTurnState["mirrored"]>();
   /** Threads the server deleted itself (an import redo, a failed init): their late jobs and events end silently. */
   const gone = new Set<string>();
   let onImportOver: (threadId: string) => Promise<void> = async () => {};
@@ -316,27 +318,29 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
   }
 
   /**
-   * The bridge's `mirrored` records (mirror and replay turns) settle queued rows with the reply rows it really
-   * showed, and `partial` when Conduit's reply comes later. Only at idle (queue empty), so the newest record per
-   * anchor is the last render. A rest claim keeps the rows shown before it. A row with no record stays queued: its
-   * turn may not have run yet (bb's dispatch gap), or its render failed (`confirmNow` settles it then).
+   * The bridge's `mirrored` records (mirror and replay turns; one per anchor, every reply row it showed) settle
+   * queued rows with what was really shown, and `partial` when Conduit's reply comes later. At every ingest: the
+   * bridge keeps only its newest `PERSISTED_TURNS_KEPT`, so a long import's oldest records age out before its idle
+   * (review-2 1). A never-rendered anchor's record is its render; a rest claim settles only from a record that covers
+   * its reply rows (an earlier render's record isn't this one, review-2 2). A row with no such record stays queued:
+   * its turn may not have run yet (bb's dispatch gap), or its render failed (`confirmNow` settles it then).
    */
   function settleMirrored(threadId: string, state: PersistedTurnState): void {
+    lastMirrored.set(threadId, state.mirrored);
     const newest = new Map(state.mirrored.map((m) => [m.anchor_uid, m]));
     for (const row of queuedTurnsOf(db, threadId)) {
       const record = row.kind !== "bb" ? newest.get(row.anchor_uid) : undefined;
-      if (!record) continue;
-      const shown = row.prev_state ? [...new Set([...row.reply_uids, ...record.reply_uids])] : record.reply_uids;
-      settleTurn(db, threadId, row.anchor_uid, record.partial ? "partial" : "done", shown);
+      if (!record || (row.prev_state && !row.reply_uids.every((uid) => record.reply_uids.includes(uid)))) continue;
+      settleTurn(db, threadId, row.anchor_uid, record.partial ? "partial" : "done", record.reply_uids);
     }
   }
 
   /**
    * bb's own turns as Hermes stored them (A37): `bb` rows, and the session a `pending` binding now has.
    * A Hermes thread with no binding yet (a `bb thread spawn` whose profile wasn't on record) is bound here.
-   * `settle` (at idle): mirror records settle queued wakes too.
+   * Mirror records settle queued wakes too.
    */
-  function applyPersisted(threadId: string, state: PersistedTurnState, { settle = false } = {}): void {
+  function applyPersisted(threadId: string, state: PersistedTurnState): void {
     let binding = bindingByThread(db, threadId);
     if (!binding) {
       if (bindingByLineage(db, state.profile_home, state.lineage_root)) return fail("duplicate_binding");
@@ -384,7 +388,7 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
       updateBinding(db, threadId, { lineage_root: state.lineage_root, session_id: state.session_id, cursor_uid: last });
     }
     for (const record of state.turns) for (const anchor of record.anchor_uids) recordBbTurn(db, threadId, anchor, record.reply_uids, record.at);
-    if (settle) settleMirrored(threadId, state);
+    settleMirrored(threadId, state);
   }
 
   /** The latest `persisted-turn` and `status` payloads of a thread, from its events (the event itself is debounced). */
@@ -400,11 +404,11 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
   }
 
   /** `persisted-turn` (bb's own turns, A37), then `status.dead_requests` (dead cards, A3). */
-  async function ingestPersistedNow(threadId: string, options: { settle?: boolean } = {}): Promise<void> {
+  async function ingestPersistedNow(threadId: string): Promise<void> {
     const states = await latestStates(threadId);
     if (states.persisted !== undefined) {
       const parsed = persistedTurnStateSchema.safeParse(states.persisted);
-      if (parsed.success) applyPersisted(threadId, parsed.data, options);
+      if (parsed.success) applyPersisted(threadId, parsed.data);
       else fail("persisted_turn_invalid");
     }
     await deadCards(threadId, states.status);
@@ -456,7 +460,7 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
     if (thread.status !== "idle" && thread.status !== "error") return;
     // A message queued behind a dead card waits for it: the stop runs even with a queue.
     if (thread.queuedMessageCount > 0) return deadCards(threadId, (await latestStates(threadId)).status);
-    await ingestPersistedNow(threadId, { settle: true });
+    await ingestPersistedNow(threadId);
     const binding = bindingByThread(db, threadId);
     if (binding?.state === "replaying" && unfinished.has(threadId)) {
       // An import still to send (a bot thread bound by bb's own first send): send it; its idle finalizes.
@@ -518,10 +522,11 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
 
   /**
    * The thread is quiet: idle, nothing queued, no turn ended since the finalize (`latestAttentionAt` as it was).
-   * Otherwise a turn is still coming, and its idle finalize tries again. Then a queued row the bridge never recorded
-   * failed its render: `partial` with no reply rows, so the next natural reconcile's rest wake shows them; after
-   * `MAX_RENDER_RETRIES` rest wakes, `done` with Hermes' reply rows (one `render_failed`). And an init or import is
-   * over once read.
+   * Otherwise a turn is still coming, and its idle finalize tries again. Then a queued row with no record covering
+   * it: missing from a full window, it ran and its record aged out (`done` with its claimed reply rows: the bridge
+   * can't skip rows it showed in a later rest wake any more). Else its render failed: `partial` with the rows its
+   * record shows, so the next natural reconcile's rest wake shows the others; after `MAX_RENDER_RETRIES` rest wakes,
+   * `done` with Hermes' reply rows (one `render_failed`). And an init or import is over once read.
    */
   async function confirmNow(threadId: string, attentionAt: number): Promise<void> {
     if (gone.has(threadId)) return;
@@ -530,11 +535,17 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
     const thread = await bb.sdk.threads.get({ threadId });
     if (thread.status !== "idle" && thread.status !== "error") return;
     if (thread.queuedMessageCount > 0 || thread.latestAttentionAt !== attentionAt) return;
+    const records = lastMirrored.get(threadId) ?? [];
     for (const row of unrecorded) {
+      const record = records.find((m) => m.anchor_uid === row.anchor_uid);
+      if (!record && records.length >= PERSISTED_TURNS_KEPT) {
+        settleTurn(db, threadId, row.anchor_uid, "done", row.reply_uids);
+        continue;
+      }
       const key = `${threadId}\0${row.anchor_uid}`;
       const failures = (renderFailures.get(key) ?? 0) + 1;
       renderFailures.set(key, failures);
-      if (failures <= MAX_RENDER_RETRIES) settleTurn(db, threadId, row.anchor_uid, "partial", []);
+      if (failures <= MAX_RENDER_RETRIES) settleTurn(db, threadId, row.anchor_uid, "partial", record?.reply_uids ?? []);
       else {
         // Its claim holds the reply rows Hermes had: never woken again.
         settleTurn(db, threadId, row.anchor_uid, "done", row.reply_uids);
