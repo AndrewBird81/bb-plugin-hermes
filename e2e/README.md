@@ -14,6 +14,8 @@ Isolated runs only: Hermes homes under `/private/tmp/bb-hermes-test/`, the isola
 | `eligibility.ts` | P2 gate: the chats a switch-on imports, counted from `state.db` alone (`sqlite3 -readonly`), minus bb's bindings and tombstones (`--data-db`); safe on a live Hermes. Test: `npx vitest run --config e2e/vitest.config.ts e2e/eligibility.test.ts` |
 | `fake-sessions.ts`, `fake-messages.ts` | the fake's chats and stored rows |
 | `conduit-send.ts` | a Conduit-style (dashboard) send on the isolated Hermes |
+| `checks/p2-fake.mjs` | P2 Step 2 on the fake, every check PASS or FAIL (~8 min, restarts bb-app twice); needs a fresh fake, bb connected to it, and a headless Chrome for Testing in UTC on port 49222 (pushes: a `Notification` hook in an open bb page) |
+| `checks/eligibility-rest.ts` | `eligibility` against the plugin's REST rules on the isolated Hermes |
 | `threads.mjs` | every Hermes thread of the isolated bb: binding kind and state, read state, archive, pin, push level, a marker in `titleFallback` |
 | `tlog.mjs` | a thread's bb event log, one line per event |
 | `screenshots/` | T1.14 UI evidence. Taken in UTC: `bb-e2e.sh` runs bb-app (and so the bridges, which print card deadlines) with `TZ=UTC`, and the browser is a headless Chrome for Testing started with `TZ=UTC` and `--remote-debugging-port`, driven through agent-browser `--cdp` (`Intl.DateTimeFormat().resolvedOptions().timeZone` must say `UTC`) |
