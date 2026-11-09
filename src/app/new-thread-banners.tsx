@@ -2,12 +2,10 @@
 // not-connected and wrong-machine banners come with the listing decision, and this one stays out of their way.
 import { useComposer } from "@get-bb/plugin-sdk/app";
 import type { ComposerSelection } from "@get-bb/plugin-sdk/app";
+import { NO_BOT_TEXT, NO_BOT_TITLE } from "../shared/provider-options.js";
 import { BOTS_CHANNEL, HEALTH_CHANNEL } from "../shared/rpc-contract.js";
 import { useLive } from "./live.js";
 import { HERMES_PROVIDER } from "./thread-info.js";
-
-export const NO_BOT_TITLE = "No Hermes bot is on";
-export const NO_BOT_TEXT = "Switch one on in Settings → Plugins → Hermes [Experimental].";
 
 /** The machine a New Thread draft runs on, when it names one. */
 function hostOf(environment: ComposerSelection["environment"]): string | null {

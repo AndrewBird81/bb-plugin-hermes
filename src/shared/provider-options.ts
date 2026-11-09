@@ -48,6 +48,10 @@ export function readProviderOptions(raw: unknown): ProviderOptions | null {
   return parsed.success ? parsed.data : null;
 }
 
+/** No bot is on (ux-v1.1 §3): the New Thread banner's two lines, and the refusal of a chat with no bot to go to. */
+export const NO_BOT_TITLE = "No Hermes bot is on";
+export const NO_BOT_TEXT = "Switch one on in Settings → Plugins → Hermes [Experimental].";
+
 /** 01 §2: the error a switched-off bot's thread shows. */
 export const switchedOffText = (botLabel: string) => `${botLabel} is switched off in the Hermes plugin settings.`;
 /**

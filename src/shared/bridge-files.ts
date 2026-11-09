@@ -24,6 +24,13 @@ export const enabledBotSchema = z
 export type EnabledBot = z.infer<typeof enabledBotSchema>;
 
 /**
+ * The bot a chat gets when none is given, and what an untouched New Thread chip shows (bb sends nothing for it): the
+ * served `default` bot, else the first served bot that's on. Null when none is.
+ */
+export const fallbackBot = <B extends { profile: string; served: boolean }>(enabled: readonly B[]): B | null =>
+  enabled.find((b) => b.served && b.profile === "default") ?? enabled.find((b) => b.served) ?? null;
+
+/**
  * `worker.json`, rewritten on every `ensureWatch` that changes it. Its presence with the bridge's folder
  * as `root` means "this machine runs the Hermes worker"; a bridge without it fails turns with
  * `otherMachineText` (01 §9). `enabled`: the bots `model/list` offers as the `profile` session option

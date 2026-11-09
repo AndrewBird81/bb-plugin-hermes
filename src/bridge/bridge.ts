@@ -27,9 +27,10 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { ConnectionOptions } from "../hermes/client.js";
 import { canonicalHome } from "../hermes/control.js";
-import { availableModels, chipBots, chipOption, fetchCatalog, placeholderModel } from "./composer.js";
+import { availableModels, chipOption, fetchCatalog, placeholderModel } from "./composer.js";
 import { resolveContext } from "./context.js";
 import { expandHome, readThread, readWorkerFile, threadForCwd } from "./files.js";
+import { fallbackBot } from "../shared/bridge-files.js";
 import { HermesLink, type History, restHistory } from "./hermes.js";
 import { type BuildRegistry, openRegistry } from "./registry.js";
 import { HOLD_RETRY_MS, HostedThread, type ThreadHost, type TurnParams } from "./thread.js";
@@ -152,13 +153,12 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
     void thread.publishComposer(ctx).catch(() => undefined);
   };
 
-  /** `model/list`: the models of the thread at `cwd`'s bot (else the default bot's), with the chip (`chipOption`, A18). */
+  /** `model/list`: the models of the thread at `cwd`'s bot (else `fallbackBot`'s), with the chip (`chipOption`, A18). */
   const modelList = async (cwd: string | undefined) => {
     const worker = dataDir ? readWorkerFile(dataDir) : null;
     const known = worker ? threadForCwd(host.dataDir, cwd)?.entry : undefined;
     const own = known ? worker!.enabled.find((b) => b.profile_home === known.profile_home || b.profile === known.profile) : undefined;
-    const menu = worker ? chipBots(own ?? { profile: "" }, worker.enabled) : [];
-    const bot = own ?? menu.find((b) => b.profile === "default") ?? menu[0];
+    const bot = own ?? fallbackBot(worker?.enabled ?? []);
     if (!worker || !bot) return { models: [placeholderModel()], selectedOnlyModels: [] };
     const catalog = await fetchCatalog(host.link(expandHome(worker.root)), host.dataDir, bot);
     return { models: availableModels(catalog, [chipOption(worker.enabled, own)!]), selectedOnlyModels: [] };

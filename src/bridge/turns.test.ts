@@ -1,5 +1,8 @@
 // T1.1: bb's own turns (02 §Protocol mapping; 03 §Unit and bridge tests that guard known traps).
+import { readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { WORKER_FILE, type WorkerFile } from "../shared/bridge-files.js";
 import { encodeMarker, spawnStart } from "../shared/marker.js";
 import { otherMachineText, switchedOffText } from "../shared/provider-options.js";
 import { PLACEHOLDER_MODEL } from "./composer.js";
@@ -133,13 +136,20 @@ describe("side chat", () => {
     expect(statuses(rig, "thr_u")).toEqual(["completed"]);
   });
 
-  it("an unbound thread with no profile and no default bot lists the switched-on bots", async () => {
+  it("an unbound thread with no profile and default off goes to the first served bot that's on (`bb thread spawn` with no --option)", async () => {
     await rig.close();
-    rig = await startRig({ enabled: ["alex"] });
+    rig = await startRig({ enabled: ["alex", "bob"] });
     await startThread(rig, "thr_v", opts("alex", null));
     await turn(rig, "thr_v", [text("hi")], opts("alex", null));
-    expect(errors(rig, "thr_v")).toEqual([noBotText([{ profile: "alex", profile_home: "", bot_label: "", cwd: null, served: true }])]);
-    expect(rig.requests("session.create")).toHaveLength(0);
+    expect(rig.requests("session.create").at(-1)).toMatchObject({ profile: "alex" });
+    // No bot that's on is served: refused, no Hermes call.
+    const file = path.join(rig.dataDir, WORKER_FILE);
+    const worker = JSON.parse(readFileSync(file, "utf8")) as WorkerFile;
+    writeFileSync(file, JSON.stringify({ ...worker, enabled: worker.enabled.map((b) => ({ ...b, served: false })) }));
+    await startThread(rig, "thr_vu", opts("alex", null));
+    await turn(rig, "thr_vu", [text("hi")], opts("alex", null));
+    expect(errors(rig, "thr_vu")).toEqual(["No Hermes bot that's on is served by this machine's gateway."]);
+    expect(rig.requests("session.create")).toHaveLength(1);
   });
 });
 
@@ -179,7 +189,9 @@ describe("refusals", () => {
     await turn(rig, "thr_nb", [text("hi")], { ...opts("alex", null), model: PLACEHOLDER_MODEL });
     await startThread(rig, "thr_nn", opts("alex", null));
     await turn(rig, "thr_nn", [text("hi")], { ...opts("alex", null), model: PLACEHOLDER_MODEL, sessionOptions: { profile: "neo" } });
-    expect(errors(rig, "thr_nb")).toEqual([noBotText([])]);
+    // For the app and the CLI alike: no backticks (bb's toast prints them).
+    expect(errors(rig, "thr_nb")).toEqual(["No Hermes bot is on. Switch one on in Settings → Plugins → Hermes [Experimental]."]);
+    expect(noBotText([])).toBe(errors(rig, "thr_nb")[0]);
     expect(errors(rig, "thr_nn")).toEqual([switchedOffText("Neo")]);
     expect(rig.fake.requests).toEqual([]);
   });

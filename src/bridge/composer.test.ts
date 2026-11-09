@@ -155,15 +155,30 @@ describe("item 14: an untouched chip shows the bot the chat gets", () => {
     expect(rig.requests("session.create").at(-1)!.profile).toBe("default");
   });
 
-  it("with default off, the chip shows the first served bot and an untouched send is refused, never sent elsewhere", async () => {
+  it("with default off, the chip shows the first served bot that's on, and an untouched send goes to it", async () => {
     await rig.close();
     rig = await startRig({ enabled: ["alex", "bob"] });
     const { models } = (await rig.call("model/list", {})).result as { models: Record<string, any>[] };
     expect(models[0]!.sessionOptions[0]).toMatchObject({ value: "alex" });
+    // bb's New Thread with the chip untouched: no session options at all.
     await startThread(rig, "thr_off", opts("alex", null));
     await turn(rig, "thr_off", [text("hi")], { ...opts("alex", null), model: PLACEHOLDER_MODEL });
-    expect(errors(rig, "thr_off")).toEqual([expect.stringContaining("Pick a bot")]);
-    expect(rig.requests("session.create")).toHaveLength(0);
+    expect(errors(rig, "thr_off")).toEqual([]);
+    expect(rig.requests("session.create").at(-1)).toMatchObject({ profile: "alex" });
+  });
+
+  it("the chip never shows a thread's own unserved bot as the untouched choice", async () => {
+    // bob's thread, bob unserved and default off: the chip offers bob (its thread) but shows alex, where an untouched send goes.
+    await rig.close();
+    rig = await startRig({ enabled: ["alex", "bob"] });
+    const file = path.join(rig.dataDir, WORKER_FILE);
+    const worker = JSON.parse(readFileSync(file, "utf8")) as WorkerFile;
+    writeFileSync(file, JSON.stringify({ ...worker, enabled: worker.enabled.map((b) => (b.profile === "bob" ? { ...b, served: false } : b)) }));
+    await startThread(rig, "thr_bob_u", opts("bob"));
+    await rig.waitFor(() => deltas(rig, "thr_bob_u").length >= 2);
+    const catalog = deltas(rig, "thr_bob_u").find((d) => d.extensionKind === "bb/provider-model-catalog")!;
+    const option = (catalog.payload as { models: Record<string, any>[] }).models[0]!.sessionOptions[0];
+    expect(option).toMatchObject({ value: "alex", values: [{ id: "bob" }, { id: "alex" }] });
   });
 });
 

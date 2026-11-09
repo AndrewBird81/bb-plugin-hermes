@@ -4,7 +4,7 @@ import type { ComposerSelection } from "@get-bb/plugin-sdk/app";
 import { cleanup, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { rpcContract, type BotRow, type HealthState, type RpcContract } from "../shared/rpc-contract.js";
-import { NO_BOT_TEXT, NO_BOT_TITLE } from "./new-thread-banners.js";
+import { NO_BOT_TEXT, NO_BOT_TITLE } from "../shared/provider-options.js";
 import { bot, health, loadApp } from "./test-fixtures.js";
 
 const app = await loadApp();

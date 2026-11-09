@@ -1,19 +1,19 @@
 // Which Hermes chat a command is for (02 §Provider options): the server's thread view when it has bound the
-// thread, else (a fresh `bb thread spawn --provider hermes --option profile=<bot>`, A18) the session option
-// and the worker's `enabled` list. Every refusal is a user-facing sentence (01 §2, §9).
+// thread, else (a fresh New Thread or `bb thread spawn --provider hermes --option profile=<bot>`, A18) the session
+// option and the worker's `enabled` list; with no bot given, what an untouched chip shows (`fallbackBot`). Every
+// refusal is a user-facing sentence, for the app and the CLI alike (01 §2, §9).
 import { botLabel } from "../shared/bots.js";
-import type { EnabledBot, WorkerFile } from "../shared/bridge-files.js";
-import { otherMachineText, type ProviderOptions, readProviderOptions, switchedOffText, type ThreadView } from "../shared/provider-options.js";
+import { type EnabledBot, fallbackBot, type WorkerFile } from "../shared/bridge-files.js";
+import { NO_BOT_TEXT, NO_BOT_TITLE, otherMachineText, type ProviderOptions, readProviderOptions, switchedOffText, type ThreadView } from "../shared/provider-options.js";
 import { expandHome, readWorkerFile, sameFolder, type ThreadEntry } from "./files.js";
 
 /** A refusal shown to the user as the turn's error. */
 export class UserFacingError extends Error {}
 
 export const NOT_CONNECTED_TEXT = "Hermes isn't connected: pick the Hermes machine in the Hermes plugin settings.";
+/** No bot given and none to fall back to: none is on, or (rare) none that's on is served by the gateway. */
 export const noBotText = (enabled: readonly EnabledBot[]) =>
-  enabled.length
-    ? `Pick a bot: add \`--option profile=<bot>\` (switched on: ${enabled.map((b) => b.profile).join(", ")}).`
-    : "No bot is switched on in the Hermes plugin settings.";
+  enabled.length ? "No Hermes bot that's on is served by this machine's gateway." : `${NO_BOT_TITLE}. ${NO_BOT_TEXT}`;
 
 export interface ThreadContext {
   /** The Hermes folder, expanded on this machine. */
@@ -69,7 +69,7 @@ export function resolveContext(input: ResolveInput): ThreadContext {
     };
   }
   const asked = typeof input.sessionOptions?.profile === "string" ? input.sessionOptions.profile : (input.saved?.profile ?? null);
-  const bot = asked ? worker.enabled.find((b) => b.profile === asked) : worker.enabled.find((b) => b.profile === "default");
+  const bot = asked ? worker.enabled.find((b) => b.profile === asked) : fallbackBot(worker.enabled);
   if (!bot) throw new UserFacingError(asked ? switchedOffText(botLabel(asked)) : noBotText(worker.enabled));
   return {
     root,

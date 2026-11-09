@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { type AvailableModel, type PromptInput, reasoningEffortsForLevels, type ThreadDelta } from "@get-bb/plugin-sdk/provider-bridge";
-import type { EnabledBot } from "../shared/bridge-files.js";
+import { type EnabledBot, fallbackBot } from "../shared/bridge-files.js";
 import { type Catalog, catalogFromModelOptions, type CatalogModel, parseModelId } from "../shared/models.js";
 import { readCatalog, writeCatalog } from "./files.js";
 import type { HermesLink } from "./hermes.js";
@@ -98,15 +98,15 @@ export function chipBots<B extends { profile: string; served: boolean }>(bot: { 
 
 /**
  * The chip each model carries (`model/list`, `bb/provider-model-catalog`): the served bots, `own` (a thread's bot)
- * first if it isn't one. Its value is the served `default` bot, else the first served one, in every catalog and never
- * a thread's own bot: bb sends no selection for an untouched New Thread chip, so the bridge falls back to `default`
- * (`resolveContext`), and a project's New Thread reads its last chat's published catalog (research 13 §6). The chip
- * then never shows one bot while the chat goes to another. Null with no bot to offer.
+ * first if it isn't one. Its value is `fallbackBot` in every catalog, never a thread's own bot: bb sends no selection
+ * for an untouched New Thread chip, so the bridge falls back the same way (`resolveContext`), and a project's New
+ * Thread reads its last chat's published catalog (research 13 §6). An untouched chip sends what it shows. Null with
+ * no bot to offer.
  */
 export function chipOption(enabled: readonly EnabledBot[], own?: { profile: string; bot_label: string }) {
   const menu = chipBots(own ?? { profile: "" }, enabled);
   const values = own && !menu.some((b) => b.profile === own.profile) ? [own, ...menu] : menu;
-  const shown = menu.find((b) => b.profile === "default") ?? menu[0] ?? own;
+  const shown = fallbackBot(enabled) ?? own;
   return shown ? botOption(shown, values) : null;
 }
 

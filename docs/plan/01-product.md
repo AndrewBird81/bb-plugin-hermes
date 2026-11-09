@@ -63,7 +63,7 @@ AC:
 
 ![A chat from bb](../diagrams/chat-from-bb.svg)
 
-- **Start:** bb's New Thread (D51): pick Hermes on the Hermes machine, then the bot in the Bot chip, which lists every enabled bot the gateway serves; `default` reads "Hermes bot", "Default profile", in the chip and its menu only (ux-v1.1 §3, r13 §3). Untouched, the chip shows the `default` bot (else the first switched-on one) and bb sends no choice: the chat is `default`'s, or, with `default` off, refused "Pick a bot…" (never another bot). A picked bot stays picked for any model. With no bot on, a banner: "No Hermes bot is on. Switch one on in Settings → Plugins → Hermes [Experimental]." `bb thread spawn --option profile=<bot>` does the same. The bot thread itself is a chat too.
+- **Start:** bb's New Thread (D51): pick Hermes on the Hermes machine, then the bot in the Bot chip, which lists every enabled bot the gateway serves; `default` reads "Hermes bot", "Default profile", in the chip and its menu only (ux-v1.1 §3, r13 §3). Untouched, the chip shows the `default` bot, else the first switched-on one the gateway serves, and bb sends no choice: the chat goes to the bot it showed (the bridge falls back the same way). A picked bot stays picked for any model. With no bot on, a banner: "No Hermes bot is on. Switch one on in Settings → Plugins → Hermes [Experimental]." `bb thread spawn --option profile=<bot>` does the same. The bot thread itself is a chat too.
   - bb names the chat from its first message.
   - The Hermes session is created on the first message: an abandoned draft leaves nothing in Hermes.
 - **Composer:** bb's own: text, attachments, voice dictation, bb's model chip, reasoning.
@@ -164,7 +164,7 @@ AC: a CLI turn → dot, 0 pushes; an outside approval → 1 push; first import �
 ## 9. bb tooling [P1]
 
 - `bb thread tell|read|wait|stop|archive` work on Hermes threads.
-- `bb thread spawn --project proj_personal --provider hermes --option profile=<bot>` makes a side chat (A18; the CLI needs the project). No `profile` → `default` if it is on, else the turn fails listing the enabled bots. On another machine → "Hermes isn't on <this machine>. Start the thread on <machine> (--machine <machine>)." ("this machine" when bb doesn't name it; ux-v1.1 §2; bb refuses the spawn's first message, with or without `--model`).
+- `bb thread spawn --project proj_personal --provider hermes --option profile=<bot>` makes a side chat (A18; the CLI needs the project). No `profile` → what an untouched chip shows: `default` if it is on and served, else the first served bot that's on; none → "No Hermes bot is on. Switch one on in Settings → Plugins → Hermes [Experimental]." On another machine → "Hermes isn't on <this machine>. Start the thread on <machine> (--machine <machine>)." ("this machine" when bb doesn't name it; ux-v1.1 §2; bb refuses the spawn's first message, with or without `--model`).
 - An enabled bot runs these same commands through its skill (§2; 02 §bb access).
 
 AC: `bb thread tell <hermes-thread> "ping"` gets a reply; from an enabled bot's chat, "list my bb threads" runs `bb-hermes thread list`.
