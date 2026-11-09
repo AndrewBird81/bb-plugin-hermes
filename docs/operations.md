@@ -40,6 +40,18 @@ Run in order on the P1 release; each step needing an approval checks §Approvals
 
 Dogfood-only assumptions: A9, A13 (live latency), A16 (remote host RPC, ~15 s cold `model.options`), A18, A25, A30, A43/A44 on live Neo, A-S8a–c (the real Conduit app).
 
+Results (2026-11-09, UTC). Steps 1–3 passed; steps 4–8 wait on the owner.
+- **Steps 1–2:** `v0.2.0` released (tag `2ef01570`). After the update and `stopHosted`, the worker and the bridge both run `0.2.0+d6c73a23c879`; health connected, Hermes 0.22.6, supported; every bot off; 0 Hermes writes.
+- **Step 3:**
+  - `setBot` on Neo wrote `SKILL.md` and `.bb-plugin-hermes.json` (version 0.2.0), and the wrapper in `host-data/bin/`;
+  - Neo's `state_meta` gained `prompt_refresh.epoch`;
+  - one pinned thread titled "Neo" holds 15 turns: the init and 14 imported user turns, tagged `[Outside bb · Nov 4]` and so on;
+  - 0 pushes during the import;
+  - `diagnostics`: bindings 1, duplicates 0, no errors;
+  - 0 Hermes sessions created or changed, 0 `bb:` messages;
+  - Neo's Bot Chat was already gateway-owned: no adoption pending.
+- Found (fixed in P2): the bot thread's `titleFallback` is the raw init marker (bb derives it from every text part of the spawn input, agent-only included); the thread is left unread (`lastReadAt` 57 ms before `latestAttentionAt`: the import's `markRead` ran in the gap before its last queued turn started).
+
 ## Approvals
 
 Gated steps (pushes, tags, releases, the live install, each live bot switch-on) check this log first (04 §Rollout).
@@ -51,3 +63,7 @@ Gated steps (pushes, tags, releases, the live install, each live bot switch-on) 
 | 2026-11-08 | One live `bb plugin update` | Approved ("Approve all") |
 | 2026-11-08 | Default: `/retry` shows as Hermes shows it | Accepted |
 | 2026-11-08 | The stray empty `acp` session from bb's provider-acp probe stays | Accepted |
+| 2026-11-09 | Release `v0.2.0` | Approved |
+| 2026-11-09 | Live update to `v0.2.0` | Approved |
+| 2026-11-09 | Neo's switch-on | Approved |
+| 2026-11-09 | Proceed with the next phases | Approved |
