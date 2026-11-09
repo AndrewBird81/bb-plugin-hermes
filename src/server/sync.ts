@@ -42,6 +42,8 @@ export const IMPORT_WINDOW_MS = 30 * 86_400_000;
 export const SETTLE_QUIET_MS = 3_000;
 /** Rest wakes for a turn whose render failed, before it settles as Hermes shows it. */
 export const MAX_RENDER_RETRIES = 3;
+/** A chat Hermes no longer has (its thread stays, 01 §7) is read again at most this often, this process. */
+export const MISSING_RECHECK_MS = 30 * 60_000;
 /** Pages of a truncated wake read before the rest waits for the next reconcile. */
 const MAX_TURN_PAGES = 20;
 
@@ -140,6 +142,11 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
   const renderFailures = new Map<string, number>();
   /** Per thread: the bridge's `mirrored` records as last read, its newest `PERSISTED_TURNS_KEPT` (review-2 1). */
   const lastMirrored = new Map<string, PersistedTurnState["mirrored"]>();
+  /**
+   * Threads whose chat Hermes answers 404 (deleted there; bb's sends fail "Deleted in Hermes", 01 §7): a known
+   * state, not an error at every reconcile. Thread id → when it was last read.
+   */
+  const missing = new Map<string, number>();
   /** Threads the server deleted itself (an import redo, a failed init): their late jobs and events end silently. */
   const gone = new Set<string>();
   let onImportOver: (threadId: string) => Promise<void> = async () => {};
@@ -270,7 +277,17 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
   async function reconcileNow(binding: Binding, target: Target, { settle = false } = {}): Promise<void> {
     if (binding.state !== "live" || !binding.lineage_root) return;
     if ((!settle && active.has(binding.thread_id)) || paused()) return;
-    const read = await readAfter(binding, target);
+    const missingSince = missing.get(binding.thread_id);
+    if (missingSince !== undefined && Date.now() - missingSince < MISSING_RECHECK_MS) return;
+    let read: Awaited<ReturnType<typeof readAfter>>;
+    try {
+      read = await readAfter(binding, target);
+    } catch (error) {
+      if (!errorCode(error, "").startsWith("history_http_404")) throw error;
+      missing.set(binding.thread_id, Date.now());
+      return;
+    }
+    missing.delete(binding.thread_id);
     if (read.session_id !== binding.session_id) updateBinding(db, binding.thread_id, { session_id: read.session_id });
     for (const turn of read.turns) {
       const row = turnRow(db, binding.thread_id, turn.anchor_uid);

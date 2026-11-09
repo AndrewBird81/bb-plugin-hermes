@@ -250,7 +250,7 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; disc
         // redone from scratch.
         else if (!sync.importing.has(b.thread_id)) await discovery.redoNow(b);
       } catch (error) {
-        fail(errorCode(error, "reconcile_failed"));
+        fail(errorCode(error, b.state !== "replaying" ? "wake_failed" : b.kind !== "mirror" ? "import_failed" : "import_redo_failed"));
       }
     }
     // T2.1: after the bot thread and the bound threads, the chats with no thread yet.
@@ -268,7 +268,8 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; disc
       try {
         await reconcileProfileNow(home, target, options);
       } catch (error) {
-        fail(errorCode(error, "reconcile_failed"));
+        // What a profile's reconcile doesn't catch per binding: its bot thread (checked, spawned, its Bot Chat looked up).
+        fail(errorCode(error, "bot_thread_failed"));
       }
     }
   }
@@ -360,11 +361,16 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; disc
       if (missing.length) await reconcileAllNow(missing, target);
       return;
     }
-    const { profiles } = await describe(target);
+    // A failed describe never drops a boot's or reconnect's reconcile: the bots on record still have their threads
+    // (lead 8: lost at a worker boot until the next reconnect). Access retries wait for the next one.
+    const profiles = await describe(target).then(
+      (answer) => answer.profiles,
+      (error) => void fail(errorCode(error, "describe_failed")),
+    );
     // Retries for profiles of another folder wait (kept, so switching the folder back retries them): they'd
     // fail `profile_outside_root` here. An off one leaves its skill installed: said in diagnostics.
-    for (const [home, on] of Object.entries(pendingAccess())) {
-      if (profiles.some((p) => p.home === home)) await syncAccessNow(target, home, on);
+    for (const [home, on] of profiles ? Object.entries(pendingAccess()) : []) {
+      if (profiles!.some((p) => p.home === home)) await syncAccessNow(target, home, on);
       else if (!on) fail("skill_left_outside_root");
     }
     if (newBoot || reconnected) await reconcileAllNow(enabledBots(db).map((b) => b.profile_home), target, { full: newBoot });

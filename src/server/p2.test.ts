@@ -9,7 +9,7 @@ import { MAX_IMPORTS } from "./discovery.js";
 import { type FakeThread, MACHINE, NEO, session, turn, world, type World } from "./fake-world.js";
 import { deriveProviderOptions } from "./provider-options.js";
 import { RESTORE_DELAY_MS } from "./notify.js";
-import { IMPORT_WINDOW_MS } from "./sync.js";
+import { IMPORT_WINDOW_MS, MISSING_RECHECK_MS } from "./sync.js";
 
 const DAY = 86_400_000;
 
@@ -1219,5 +1219,55 @@ describe("review-2 6-10", () => {
     expect(turnRow(w.db, "thr_1", "u3")).toBeNull();
     await w.elapse(RESTORE_DELAY_MS);
     expect(w.levels.get("thr_1")).toBe("input-only");
+  });
+});
+
+describe("lead 8 and 9: diagnostics stay clean", () => {
+  it("errorCode: bb's body code; a worker's error by the code its message starts with, never the rest", async () => {
+    const { errorCode } = await import("./connection.js");
+    const bb = (code: string, message: string) => Object.assign(new Error(message), { status: 502, body: { code, message } });
+    expect(errorCode(bb("command_failed", "history_http_404:Session not found"), "x")).toBe("history_http_404");
+    expect(errorCode(bb("command_failed", "not_connected:connecting"), "x")).toBe("not_connected");
+    expect(errorCode(bb("command_failed", "spawn failed at /private/tmp/secret"), "x")).toBe("x");
+    expect(errorCode(bb("host_unavailable", "Host is not connected"), "x")).toBe("host_unavailable");
+    expect(errorCode(new Error("history_http_404:Session not found"), "x")).toBe("x");
+  });
+
+  it("8: a describe that fails at a worker boot never drops the boot reconcile; the error names its code", async () => {
+    const w = await botChatWorld([turn("u1")]);
+    await on(w);
+    await drain(w);
+    w.history.get("root_bc")!.turns.push(turn("u2"));
+    w.state.boot = "boot_2";
+    w.state.failDescribe = 1;
+    await w.connect();
+    expect(w.markers("thr_1").at(-1)).toEqual({ op: "mirror", anchor_uid: "u2", labeled: true });
+    expect((await w.rpc<Diagnostics>("diagnostics")).errors).toEqual(["not_connected"]);
+  });
+
+  it("9: a chat deleted in Hermes is a known state: no error per reconcile, re-read rarely; a chat that comes back mirrors", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "c1");
+    await on(w);
+    await drain(w);
+    const t = bindingByLineage(w.db, NEO, "c1")!.thread_id;
+    const reads = () => w.hostCalls("readTurns").filter((c) => (c.input as { lineage_root: string }).lineage_root === "c1").length;
+    const kept = w.history.get("c1")!;
+    w.history.delete("c1");
+    await w.changed(NEO);
+    const first = reads();
+    await w.changed(NEO);
+    w.state.boot = "boot_2";
+    await w.connect();
+    await w.changed(NEO);
+    expect(reads()).toBe(first);
+    expect((await w.rpc<Diagnostics>("diagnostics")).errors).toEqual([]);
+    // Back in Hermes, with a new turn: read again at the next re-check, and woken.
+    w.history.set("c1", { ...kept, turns: [...kept.turns, turn("c1-3")] });
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now + MISSING_RECHECK_MS + 1);
+    await w.changed(NEO);
+    expect(w.markers(t).at(-1)).toEqual({ op: "mirror", anchor_uid: "c1-3", labeled: true });
+    vi.restoreAllMocks();
   });
 });

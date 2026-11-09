@@ -12,11 +12,20 @@ const ERROR_RING = 20;
 
 export type HostClient = ExperimentalHostClient<HostContract, typeof hostSignals>;
 
-/** A bounded code for logs, health and diagnostics: an error's own short code, never its message. */
+const bounded = (code: unknown) => (typeof code === "string" && /^[A-Za-z0-9_.:-]{1,64}$/.test(code) ? code : null);
+
+/**
+ * A bounded code for logs, health and diagnostics: an error's own short code, never its message. bb's API errors
+ * keep theirs in `body.code`. A host worker's own error reaches the server as bb's `command_failed` with only its
+ * message (bb's plugin host worker sends no code): the worker's code that message starts with
+ * (`history_http_404:…`, `not_connected:…`), never the rest.
+ */
 export function errorCode(error: unknown, fallback: string): string {
-  const code = (error as { code?: unknown } | null)?.code;
-  if (typeof code === "string" && /^[A-Za-z0-9_.:-]{1,64}$/.test(code)) return code;
-  if ((error as { name?: unknown } | null)?.name === "AbortError") return "aborted";
+  const e = error as { code?: unknown; body?: { code?: unknown } | null; message?: unknown; name?: unknown } | null;
+  const code = bounded(e?.code) ?? bounded(e?.body?.code);
+  if (code === "command_failed") return (typeof e?.message === "string" ? /^[a-z]+(?:_[a-z0-9]+)+/.exec(e.message)?.[0] : undefined) ?? fallback;
+  if (code) return code;
+  if (e?.name === "AbortError") return "aborted";
   return fallback;
 }
 

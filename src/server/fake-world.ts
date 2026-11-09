@@ -88,7 +88,7 @@ export async function world({ profiles = [neo, bob], seed, threads: before = [] 
   const sessions = new Map<string, SessionRow[]>();
   const access: { profile_home: string; on: boolean; enabled_bots: string[] }[] = [];
   /** `root`: the folder these profiles live in. `outside`: the worker refuses every profile as outside the root. */
-  const state = { root: "~/.hermes", outside: false, failSpawn: 0, watched: [] as string[], failSend: 0, failAccess: false, refreshed: true, online: true, boot: "boot_1", supported: true, seq: 0, ids: 0, clock: 1_000, unreadable: [] as string[], lateAttention: false, failEvents: 0 };
+  const state = { root: "~/.hermes", outside: false, failSpawn: 0, watched: [] as string[], failSend: 0, failAccess: false, refreshed: true, online: true, boot: "boot_1", supported: true, seq: 0, ids: 0, clock: 1_000, unreadable: [] as string[], lateAttention: false, failEvents: 0, failDescribe: 0 };
 
   const thread = (id: string) => {
     const t = threads.get(id);
@@ -120,6 +120,7 @@ export async function world({ profiles = [neo, bob], seed, threads: before = [] 
         state.watched = input.enabled_bots;
         return answer();
       case "describe":
+        if (state.failDescribe > 0 && state.failDescribe--) throw new Error("not_connected:connecting");
         // Profiles of the folder the call names: another folder has none of these.
         return { uid: UID, profiles: input.root === state.root ? profiles : [] };
       case "setBotAccess":
@@ -144,7 +145,8 @@ export async function world({ profiles = [neo, bob], seed, threads: before = [] 
         return botChats.get(input.profile_home) ?? { state: "none" };
       case "readTurns": {
         const chat = history.get(input.lineage_root);
-        if (!chat) throw Object.assign(new Error("not found"), { code: "not_found" });
+        // The worker's REST read of a chat Hermes deleted (`sessions.py` `_NOT_FOUND`).
+        if (!chat) throw new Error("history_http_404:Session not found");
         let turns = chat.turns;
         const after = input.after_uid;
         const at = after ? turns.findIndex((t) => t.anchor_uid === after) : -1;
@@ -164,7 +166,16 @@ export async function world({ profiles = [neo, bob], seed, threads: before = [] 
 
   const fake = createFakePluginHost({
     pluginId: "hermes",
-    experimental_callHostRpc: hostCall,
+    // As bb delivers a host call's failure: its `ApiError` (code in `body`); a worker's own error is
+    // `command_failed` with only its message (`callHostOnlineRpcWithRetry`, the daemon's `ZS`).
+    experimental_callHostRpc: (call) => {
+      try {
+        return hostCall(call);
+      } catch (error) {
+        const { message, code } = error as { message: string; code?: string };
+        throw Object.assign(new Error(message), { status: 502, body: { code: code ?? "command_failed", message } });
+      }
+    },
     sdk: {
       hosts: { list: async () => [makeHostResponse({ id: MACHINE, name: "hermes-mac", status: state.online ? "connected" : "disconnected" })] },
       projects: { list: async () => [{ id: "proj_personal", kind: "personal" }] },

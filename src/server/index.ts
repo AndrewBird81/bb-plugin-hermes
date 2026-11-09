@@ -81,7 +81,7 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
     });
 
   onConnected = ({ newBoot, reconnected }) =>
-    run("reconcile_failed", async () => {
+    run("connect_reconcile_failed", async () => {
       const target = targetOf(connection);
       if (!target) return;
       if (newBoot) await sync.recoverQueuedNow(finalize);
