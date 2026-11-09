@@ -40,6 +40,8 @@ export const IMPORT_WINDOW_MS = 30 * 86_400_000;
  * past the `markRead` (P1 live dogfood).
  */
 export const SETTLE_QUIET_MS = 3_000;
+/** Rest wakes for a turn whose render failed, before it settles as Hermes shows it. */
+export const MAX_RENDER_RETRIES = 3;
 /** Pages of a truncated wake read before the rest waits for the next reconcile. */
 const MAX_TURN_PAGES = 20;
 
@@ -131,6 +133,11 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
    * confirmed over, then `onImportOver` shows them. A `replaying` mirror binding not in here was interrupted.
    */
   const importing = new Map<string, { archived: boolean; cutoff: number }>();
+  /**
+   * Per `threadId \0 anchor`: renders that ended with no bridge record, this process. A render that keeps failing
+   * gets `MAX_RENDER_RETRIES` rest wakes, never a bb turn every few seconds.
+   */
+  const renderFailures = new Map<string, number>();
   /** Threads the server deleted itself (an import redo, a failed init): their late jobs and events end silently. */
   const gone = new Set<string>();
   let onImportOver: (threadId: string) => Promise<void> = async () => {};
@@ -512,8 +519,9 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
   /**
    * The thread is quiet: idle, nothing queued, no turn ended since the finalize (`latestAttentionAt` as it was).
    * Otherwise a turn is still coming, and its idle finalize tries again. Then a queued row the bridge never recorded
-   * failed its render: `partial` with no reply rows, so a rest wake shows them (now, if Hermes has them). And an
-   * init or import is over once read.
+   * failed its render: `partial` with no reply rows, so the next natural reconcile's rest wake shows them; after
+   * `MAX_RENDER_RETRIES` rest wakes, `done` with Hermes' reply rows (one `render_failed`). And an init or import is
+   * over once read.
    */
   async function confirmNow(threadId: string, attentionAt: number): Promise<void> {
     if (gone.has(threadId)) return;
@@ -522,11 +530,17 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
     const thread = await bb.sdk.threads.get({ threadId });
     if (thread.status !== "idle" && thread.status !== "error") return;
     if (thread.queuedMessageCount > 0 || thread.latestAttentionAt !== attentionAt) return;
-    if (unrecorded.length) {
-      for (const row of unrecorded) settleTurn(db, threadId, row.anchor_uid, "partial", []);
-      const binding = bindingByThread(db, threadId);
-      const target = targetOf(connection);
-      if (binding && target && botRecord(db, binding.profile_home)?.enabled) await reconcileNow(binding, target, { settle: true });
+    for (const row of unrecorded) {
+      const key = `${threadId}\0${row.anchor_uid}`;
+      const failures = (renderFailures.get(key) ?? 0) + 1;
+      renderFailures.set(key, failures);
+      if (failures <= MAX_RENDER_RETRIES) settleTurn(db, threadId, row.anchor_uid, "partial", []);
+      else {
+        // Its claim holds the reply rows Hermes had: never woken again.
+        settleTurn(db, threadId, row.anchor_uid, "done", row.reply_uids);
+        renderFailures.delete(key);
+        fail("render_failed");
+      }
     }
     if (!readAtIdle.has(threadId) && !importing.has(threadId)) return;
     if (readAtIdle.has(threadId) && (thread.lastReadAt ?? -Infinity) < thread.latestAttentionAt) return;

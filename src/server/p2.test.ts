@@ -647,6 +647,10 @@ describe("review 2: a failed render never loses its reply", () => {
     await w.emit("thread.failed" as never, "thr_1");
     expect(turnRow(w.db, "thr_1", "u2")?.state).toBe("queued");
     await w.quiet();
+    expect(turnRow(w.db, "thr_1", "u2")).toMatchObject({ state: "partial", reply_uids: [] });
+    // No forced retry: the next natural reconcile wakes the rest.
+    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toHaveLength(1);
+    await w.changed(NEO);
     expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([
       { op: "mirror", anchor_uid: "u2", labeled: true },
       { op: "mirror", anchor_uid: "u2", rest: true },
@@ -654,6 +658,26 @@ describe("review 2: a failed render never loses its reply", () => {
     w.render("thr_1");
     await w.idle("thr_1");
     expect(turnRow(w.db, "thr_1", "u2")).toMatchObject({ state: "done", reply_uids: ["u2-r"] });
+  });
+
+  it("a render that keeps failing: at most 3 rest wakes, then done with Hermes' reply rows and one render_failed", async () => {
+    const w = await botChatWorld([turn("u1")]);
+    await on(w);
+    await drain(w);
+    w.history.get("root_bc")!.turns.push(turn("u2"));
+    await w.changed(NEO);
+    for (let i = 0; i < 6; i++) {
+      Object.assign(w.thread("thr_1"), { status: "error", queued: 0 });
+      await w.emit("thread.failed" as never, "thr_1");
+      await w.quiet();
+      await w.changed(NEO);
+    }
+    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([
+      { op: "mirror", anchor_uid: "u2", labeled: true },
+      ...Array.from({ length: 3 }, () => ({ op: "mirror", anchor_uid: "u2", rest: true })),
+    ]);
+    expect(turnRow(w.db, "thr_1", "u2")).toMatchObject({ state: "done", reply_uids: ["u2-r"] });
+    expect((await w.rpc<Diagnostics>("diagnostics")).errors.filter((e) => e === "render_failed")).toEqual(["render_failed"]);
   });
 
   it("bb's dispatch gap never settles a row the bridge hasn't recorded yet", async () => {
