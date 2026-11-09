@@ -24,10 +24,12 @@ const HERMES_EFFORTS = ["none", "low", "medium", "high", "xhigh", "max", "ultra"
 const NEAREST: Record<string, string> = { ultracode: "xhigh" };
 
 /**
- * "The bot's model", first and the default of every list (D53): never sent to Hermes (`chooseModel`), so a chat
- * runs its bot's own model unless the user picks one. With the bot's catalog it offers the current model's
- * reasoning. Without one (no bot to ask on this machine, or no bot on) it is a stand-in, so bb resolves a spawn's
- * model (`loadCatalogDefaultForProvider` refuses an empty catalog) and the spawn reaches the plugin's own refusal.
+ * "The bot's model", first and the default of every list (D53): the bot's own model and reasoning. Neither is sent
+ * to Hermes (`chooseModel`); a level is picked with a model. bb carries one reasoning level across models (`medium`
+ * unless remembered) and keeps it wherever offered, so this entry offers only "Default": bb's composer then moves
+ * to it (`reconcileReasoningLevel`). Without a catalog (no bot to ask on this machine, or no bot on) it is a
+ * stand-in, so bb resolves a spawn's model (`loadCatalogDefaultForProvider` refuses an empty catalog) and the
+ * spawn reaches the plugin's own refusal.
  */
 export const PLACEHOLDER_MODEL = "hermes-bot-model";
 export function placeholderModel(catalog: Catalog | null = null, sessionOptions?: ReturnType<typeof botOption>[]): AvailableModel {
@@ -40,7 +42,7 @@ export function placeholderModel(catalog: Catalog | null = null, sessionOptions?
     isDefault: true,
     defaultReasoningEffort: current?.reasoning ? DEFAULT_REASONING : "medium",
     reasoningDiscovery: "known",
-    supportedReasoningEfforts: current ? efforts(current) : [],
+    supportedReasoningEfforts: current?.reasoning ? efforts(current).slice(0, 1) : [],
     ...(sessionOptions ? { sessionOptions } : {}),
   };
 }
@@ -188,8 +190,8 @@ export interface ModelChoice {
  */
 export function chooseModel(catalog: Catalog | null, asked: string | undefined, reasoning: string | undefined): ModelChoice {
   const effort = !reasoning || reasoning === DEFAULT_REASONING ? null : (NEAREST[reasoning] ?? reasoning);
-  // The bot's own model, with the picked level if it takes one.
-  if (asked === PLACEHOLDER_MODEL) return { model: null, provider: null, reasoning: currentModel(catalog)?.reasoning ? effort : null, warning: null };
+  // The bot's own model and level, whatever level bb carried over.
+  if (asked === PLACEHOLDER_MODEL) return { model: null, provider: null, reasoning: null, warning: null };
   if (!asked || !catalog) return { model: null, provider: null, reasoning: effort, warning: null };
   const offered = catalog.models.find((m) => m.id === asked);
   const pick = offered ?? catalog.models.find((m) => m.id === catalog.current) ?? null;

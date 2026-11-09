@@ -176,7 +176,7 @@ describe("bb/provider-model-catalog under bb's 64 KiB state limit", () => {
     const current = models.find((m) => m.id === "openrouter/vendor-3/model-name-150")!;
     expect(current.reasoningDiscovery).toBe("known");
     expect(ladder(current)).toEqual(["default", "none", "low", "medium", "high", "xhigh", "max", "ultra"]);
-    expect(ladder(models[0]!)).toEqual(ladder(current));
+    expect(ladder(models[0]!)).toEqual(["default"]);
     // Bare entries before any chip, chips before ladders: the first two carry the chip.
     expect([models[0]!.sessionOptions, current.sessionOptions].every((o) => o?.[0]?.id === "profile")).toBe(true);
     // The rest: bb asks `model/list{selectedModel}` when one is picked (its selected-model discovery).
@@ -198,7 +198,7 @@ describe("bb/provider-model-catalog under bb's 64 KiB state limit", () => {
     const ids = state.models.map((m) => m.id);
     expect(ids.slice(0, 2)).toEqual([PLACEHOLDER_MODEL, catalog.models[0]!.id]);
     expect(ids).toContain(catalog.current);
-    expect(state.models.find((m) => m.isDefault)!.supportedReasoningEfforts).toHaveLength(8);
+    expect(state.models.find((m) => m.isDefault)!.supportedReasoningEfforts.map((e) => e.reasoningEffort)).toEqual(["default"]);
     expect(state.models.find((m) => m.id === catalog.current)!.supportedReasoningEfforts).toHaveLength(8);
     const kept = ids.filter((id) => id !== catalog.current && id !== PLACEHOLDER_MODEL);
     expect(kept).toEqual(catalog.models.slice(0, kept.length).map((m) => m.id));
@@ -220,21 +220,30 @@ describe("model and reasoning", () => {
     expect(rig.requests("session.create").at(-1)!.params.reasoning).toBeUndefined();
   });
 
-  it("\"The bot's model\" never reaches Hermes: the bot's own model with the picked level, no warning", async () => {
-    await startThread(rig, "thr_ph", opts());
-    await turn(rig, "thr_ph", [text("hi")], { ...opts(), model: PLACEHOLDER_MODEL, reasoningLevel: "high" });
-    const params = rig.requests("session.create")[0]!.params;
-    expect(params.model).toBeUndefined();
-    expect(params.provider).toBeUndefined();
-    expect(params.reasoning).toBe("high");
+  it("\"The bot's model\" is the bot's own model and level: it offers only Default, and no level bb carried over reaches Hermes", async () => {
+    const { models } = (await rig.call("model/list", {})).result as { models: Record<string, any>[] };
+    // bb keeps its carried level (`medium`) wherever a model offers it; offered only Default, it moves there.
+    expect(models[0]).toMatchObject({ id: PLACEHOLDER_MODEL, defaultReasoningEffort: "default", supportedReasoningEfforts: [expect.objectContaining({ reasoningEffort: "default" })] });
+    expect(models[0]!.supportedReasoningEfforts).toHaveLength(1);
+    for (const [threadId, level] of [["thr_ph", "medium"], ["thr_ph_high", "high"], ["thr_ph_def", "default"]] as const) {
+      await startThread(rig, threadId, opts());
+      await turn(rig, threadId, [text("hi")], { ...opts(), model: PLACEHOLDER_MODEL, reasoningLevel: level });
+      const params = rig.requests("session.create").at(-1)!.params;
+      expect([params.model, params.provider, params.reasoning]).toEqual([undefined, undefined, undefined]);
+      expect(warnings(threadId)).toEqual([]);
+    }
     expect(JSON.stringify(rig.fake.requests)).not.toContain(PLACEHOLDER_MODEL);
-    expect(warnings("thr_ph")).toEqual([]);
-    expect(statuses(rig, "thr_ph")).toEqual(["completed"]);
-    // A bot's model without reasoning takes no level.
-    rig.fake.handle("model.options", () => ({ providers: [{ slug: "stub", name: "Stub", is_current: true, models: ["stub-mini"], capabilities: { "stub-mini": { reasoning: false } } }], model: "stub-mini", provider: "stub" }));
-    await startThread(rig, "thr_ph2", opts());
-    await turn(rig, "thr_ph2", [text("hi")], { ...opts(), model: PLACEHOLDER_MODEL, reasoningLevel: "high" });
-    expect(rig.requests("session.create").at(-1)!.params.reasoning).toBeUndefined();
+    // A level is picked with a model.
+    await startThread(rig, "thr_pick_level", opts());
+    await turn(rig, "thr_pick_level", [text("hi")], { ...opts(), model: "stub/stub", reasoningLevel: "high" });
+    expect(rig.requests("session.create").at(-1)!.params).toMatchObject({ model: "stub", reasoning: "high" });
+  });
+
+  it("back to \"The bot's model\" mid-chat gives the reasoning back to the bot", async () => {
+    await startThread(rig, "thr_back", opts());
+    await turn(rig, "thr_back", [text("one")], { ...opts(), model: "stub/stub", reasoningLevel: "high" });
+    await turn(rig, "thr_back", [text("two")], { ...opts(), model: PLACEHOLDER_MODEL, reasoningLevel: "medium" });
+    expect(rig.requests("session.mutate").map((m) => [m.params.operation, m.params.payload])).toEqual([["reasoning", { effort: null }]]);
   });
 
   it("an unoffered model → the bot's current one and a warning; the turn still runs (S7 finding 6)", async () => {
