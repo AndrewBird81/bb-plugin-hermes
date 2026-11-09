@@ -23,7 +23,7 @@ AC:
 - **Every bot starts off** (D43). Off = absent from bb: no chat, no mirroring, no bb access.
 - Row text, before turning on:
   - "On: chat with Neo in bb, see Neo's Hermes chats in bb, and let Neo operate bb: read, start, message, stop and archive any bb thread on any machine. Hermes doesn't ask before running bb commands. Restrictions come later." (r12 §4)
-  - "Imports 12 chats from the last 30 days." (count from the history reader)
+  - "Imports 12 chats from the last 30 days." (count from the history reader: the chats that become mirrored threads; the Bot Chat goes into the bot thread and isn't counted)
 - **On:**
   1. The worker writes the bot's bb skill and the shared wrapper, then refreshes that profile's prompts (02 flow 1).
   2. The bot thread appears, pinned (§3).
@@ -143,7 +143,7 @@ AC (two-client harness, then the real app):
 - **Reply from bb** in any mirrored thread: continues that Hermes session (D44); a legacy Conduit chat is adopted on that first send (D16).
 - **Title** follows Hermes' title until you rename the thread in bb. bb renames, pins and archives stay in bb (D38 Later).
 - bb deletes a mirrored thread → never re-imported (Q1). Deleted in Hermes → the thread stays; sends fail "Deleted in Hermes".
-- Activity in a thread you archived: bb's own rule for archived threads (A49).
+- Activity in a thread you archived: bb refuses sends into an archived thread (A49), so it stays archived and unchanged; its turns come in when you unarchive it.
 - A recalled `[Outside bb] …` line sent from bb is refused: "Remove the [Outside bb] tag to send." (D15)
 
 AC:

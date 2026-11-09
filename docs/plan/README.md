@@ -61,7 +61,7 @@ Later (out of v1):
 | D48 | Switching a bot off archives its bb threads; on unarchives them and mirroring resumes |
 | D49 | No Discord or other chat-app sessions in v1, DMs included |
 | D50 | Leave `compression.in_place` as is (Q24, S8's open question 5); don't file the race bugs (Q25); plugin code lives in this public repo |
-| Q1 default | No cross-delete. bb delete → tombstone, never re-imported. Deleted in Hermes → the thread stays; sends fail "Deleted in Hermes" |
+| Q1 default | No cross-delete. bb delete → tombstone (mirrored chats and side chats; a bot thread is re-created instead), never re-imported. Deleted in Hermes → the thread stays; sends fail "Deleted in Hermes" |
 | Q7 default | Imported bubbles carry the outside tag and date (`[Outside bb · Oct 12]`), never an app's name; oldest first; item times are import time |
 
 Superseded, one line each:

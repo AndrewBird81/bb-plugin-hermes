@@ -110,10 +110,14 @@ Critical path: T0.1 → T0.3 → T0.4 → T1.1 → T1.4 → T1.6 → T1.13 → T
 | A46 | FAILED as worded (T1.0, isolated): `/new` and `/reset` as `prompt.submit` text reset nothing; the gateway answers a non-stored "⚠️ Confirm /new … /approve" text with no model call. The bridge still intercepts them (→ compress, 01 §4); other `/` text runs as Hermes handles it | T1.0 |
 | A47 | VERIFIED (T1.14, isolated bb, DOM + screenshot): the thread banner shows the held text (now "Open in another Hermes app: sends when it's free") and clears once the send goes through | T1.12 |
 | A48 | VERIFIED (T0.5, isolated): the held row reads and stays `source: desktop`, `chat_id: null` | T0.5 |
-| A49 | What bb does with a wake into an archived thread (stays archived or unarchives); document it in `guide.md` | T2.5 |
+| A49 | VERIFIED (T2.5, bb-app 0.49.0 source + isolated bb): bb refuses any send into an archived thread (409 `thread_not_writable` "Thread is archived", `ensureThreadIsWritable`); it stays archived, its read state unchanged. So a wake waits for the unarchive (`thread.unarchived` reconciles); `guide.md` says so | T2.5 |
 | A50 | PARTLY (T1.0, isolated): `prompt.submit.attachments` `{path, mime}` takes only `image/png\|jpeg\|gif\|webp`, and the file must be a direct child of `<profile home>/cache/images/` (else `invalid_params`). T1.14 (isolated bb): an image from bb is staged as `<profile>/cache/images/bb-<uuid>.png` and the turn completes; a PDF warns and the text still goes. A described image on a real model: dogfood | T1.0, T1.14 |
 | A51 | VERIFIED for the installer's default layout (`scripts/install.sh:97` clones into `$HERMES_HOME/hermes-agent`; the file is tracked). Other layouts → "version unknown" (tested) | T0.8 |
 | A52 | VERIFIED (T1.14, isolated bb): with `experimental_providerIcon` registered, the composer shows the Hermes icon next to the bot chip while the provider is hidden | T1.12 |
+| A53 | bb runs a spawn whose only input is one empty agent-only text (`spawnStart`) as a turn the bridge ends with no Hermes call, and leaves `titleFallback` null (bb-app 0.49.0 `deriveTitleFallback` reads every text part, agent-only included; bridge test) | T2.5 |
+| A54 | VERIFIED (P1 live dogfood): bb can report a thread `idle` with nothing queued while it still dispatches a queued turn, whose idle then moves `latestAttentionAt` past an earlier `markRead`; an import's end is confirmed by a quiet re-read | P1 dogfood |
+| A55 | VERIFIED (source c314285f07, live list keys): REST `last_active` is a chat's latest activity (heartbeat, newest message, start); the raw `last_activity_at` is heartbeats only, null on older rows, the root's on a rotated chain (`docs/operations.md` §Surfaces) | T2.1 |
+| A56 | VERIFIED (source c314285f07, live counts): no recorded surface has a single writer, so no badge names an app; Hermes stores bb's side chats `local`/`desktop`, like Desktop's: bb-created chats are found by `expected_id` and a `bb:` first submission, never by surface | T2.1 |
 
 ## Dev loop
 

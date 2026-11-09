@@ -36,7 +36,7 @@ Switching it **off** archives its bb threads, removes the skill, and stops watch
   - Replying from bb continues the same Hermes chat. A Conduit chat Hermes' gateway doesn't own yet is taken over by the gateway at your first bb send; Conduit keeps working.
   - Titles follow Hermes until you rename the thread in bb. Pins, archives and renames in bb stay in bb.
   - A thread deleted in bb is never imported again. A chat deleted in Hermes keeps its thread; sends to it fail "Deleted in Hermes".
-  - A thread you archived stays archived when its chat changes in Hermes: A49_RESULT.
+  - A thread you archived stays archived when its chat changes in Hermes (bb takes no message into an archived thread); what happened meanwhile comes in when you unarchive it.
 - **Notifications:** outside activity marks a thread unread without a push; approvals and questions push.
 
 ## Privacy
