@@ -132,7 +132,7 @@ Critical path: T0.1 → T0.3 → T0.4 → T1.1 → T1.4 → T1.6 → T1.13 → T
 1. `npm run check` green; gate passed.
 2. Bump to `v0.x.y` (never retag); `TZ=UTC jj commit -m "release: v0.x.y"`; `TZ=UTC jj bookmark move main --to @-`.
 3. With the owner's OK: `TZ=UTC jj git push --bookmark main`; `gh release create v0.x.y --target <commit>`.
-- **Install (any user):** `bb plugin install git:github.com/AndrewBird81/bb-plugin-hermes@^0 --yes`. A range, never an exact tag: tags pin, and a second install is refused (R3 M2). Public, so the bb server needs no git credential (D29 dropped).
+- **Install (any user):** `bb plugin install git:github.com/AndrewBird81/bb-plugin-hermes@^1 --yes`. A range, never an exact tag: tags pin, and a second install is refused (R3 M2). A new major version needs `bb plugin remove` and a fresh install; `remove` keeps `data.db` (operations §Moving to a new major). Public, so the bb server needs no git credential (D29 dropped).
 - **Update:** `bb plugin update hermes` snapshots `data.db` and restores it if activation fails; then `bb plugin rpc call hermes stopHosted`; check `diagnostics`.
 - `guide.md` states the requirements: a bb host on the Hermes machine, Hermes with a multiplexed gateway (its default, S8 §Per-profile reach), and what a bot switch grants.
 - bb upgrade runbook (R3 S7): before upgrading live bb, run e2e and conformance on `npx bb-app@<new>`, then `bb plugin types --check`.

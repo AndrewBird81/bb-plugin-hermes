@@ -128,7 +128,19 @@ Results (2026-11-09, UTC). Steps 0–5, 7–10 and 13 passed. Step 6 is the owne
 - **Step 10:** from `$WORK_HOST`, with and without `--model`: "Hermes runs on `$HERMES_HOST`: add `--machine $HERMES_HOST`", no thread. Minor bug: each refused spawn adds 2 `thread_not_found` entries to `diagnostics.errors` (fix in `v1.0.1`).
 - **Step 13:** gateway pid unchanged; config, `.env` and skill dirs unchanged. Writes: the tests' own (1 Neo `cli` test chat) and one tester error: `/new` sent with `bb thread tell` from an agent thread carries bb's `[bb message from thread:…]` prefix, so it ran as a prompt in alex's Bot Chat (1 turn, 1 push); two retries compacted that Bot Chat in place (8 → 2 active rows). Testers send slash commands unlabeled (`env -u BB_THREAD_ID`), and only into their own chats.
 
-Then T2.6 (`v1.0.0`, approved 2026-11-09) after the P2 gate. The live install tracks `@^0`, which never offers `1.0.0`: moving it to `@^1` takes `bb plugin remove` (keep a `VACUUM INTO` copy of `data.db`; settings and the connection must be saved again) and a fresh install.
+Then T2.6 (`v1.0.0`, approved 2026-11-09) after the P2 gate.
+
+## Moving to a new major (`@^0` → `@^1`)
+
+A range never offers the next major, and bb refuses to reinstall a managed plugin. Tested on the isolated bb 0.49.0 (2026-11-09): `bb plugin remove hermes` deletes the registration, settings (the folder reverts to `~/.hermes`), secrets, schedules and the git checkout, and keeps all of `plugins/hermes/` (`data.db` with bindings, bots and the saved machine; `host-data`; `bridge-data`). Threads keep their ids, pins and read state; skills stay in the profiles. After a fresh install the plugin resumes: same bindings, 0 duplicates, no re-import, health connected without saving the connection again (when the folder is the default). During the gap a send to a Hermes thread fails at once (`HTTP 409: Provider "hermes" has no bridge to run on`); Hermes turns made meanwhile mirror after the install.
+
+1. The new tag exists: `git ls-remote --tags https://github.com/AndrewBird81/bb-plugin-hermes | grep v1.0.0` (else the install fails and leaves the plugin removed).
+2. `bb plugin rpc call hermes diagnostics --json`: note the bindings total.
+3. `bb plugin remove hermes`.
+4. Backup, optional: `bb file read --host <bb server machine> <server data dir>/plugins/hermes/data.db --json` (base64 and sha256; the database is closed and one file right after `remove`).
+5. `bb plugin install 'git:github.com/AndrewBird81/bb-plugin-hermes@^1' --yes`. If it fails: `…@^0` restores the old version on the same `data.db`.
+6. `bb plugin rpc call hermes health --json` → `connected` (`folder_changed`: save the connection again in Settings).
+7. `bb plugin rpc call hermes stopHosted`; `diagnostics`: the same bindings, duplicates 0, `1.0.0+…` on the worker and bridges; `bb plugin source hermes`: range `^1`, tag `v1.0.0`.
 
 ## Approvals
 
