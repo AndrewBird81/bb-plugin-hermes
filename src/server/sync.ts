@@ -354,6 +354,8 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
       }
     } else if (binding.lineage_root === state.lineage_root) {
       if (binding.session_id !== state.session_id) updateBinding(db, threadId, { session_id: state.session_id });
+      // bb's own send there adopted a legacy chat (D16): wakes may attach to its canonical turns from now on.
+      if (binding.legacy && state.turns.length) updateBinding(db, threadId, { legacy: false });
     } else if (binding.kind === "bot") {
       // The `Bot Chat` title moved to another chat (flow 3 step 6): follow it; its earlier turns aren't news.
       if (bindingByLineage(db, state.profile_home, state.lineage_root)) return fail("duplicate_binding");

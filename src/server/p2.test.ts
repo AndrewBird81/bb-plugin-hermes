@@ -800,3 +800,18 @@ describe("review 8: the first pass across a restart", () => {
     expect(isRead(w, bindingByLineage(w.db, NEO, "new")!.thread_id)).toBe(false);
   });
 });
+
+describe("e2e: a legacy chat adopted by bb's first send", () => {
+  it("clears bindings.legacy from persisted-turn, for a mirrored thread too", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "c4", { source: "desktop", created_source: null, legacy: true });
+    await on(w);
+    await drain(w);
+    const t = bindingByLineage(w.db, NEO, "c4")!.thread_id;
+    expect(bindingByThread(w.db, t)?.legacy).toBe(true);
+    w.persisted(t, { profile_home: NEO, lineage_root: "c4", session_id: "c4", turns: [{ submission_id: `bb:${t}:1`, anchor_uids: ["b1"], reply_uids: [], at: 1 }] });
+    await w.idle(t);
+    expect(bindingByThread(w.db, t)?.legacy).toBe(false);
+    expect(deriveProviderOptions(w.db, { settings: {}, threadId: t }).thread?.legacy).toBe(false);
+  });
+});
