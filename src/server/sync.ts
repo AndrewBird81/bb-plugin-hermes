@@ -229,7 +229,11 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
           };
       // A mirrored chat's import decided at its start whether it ends read (01 §8).
       if (!mirror) readAtIdle.add(binding.thread_id);
-      if (!(await sendClaimed(binding, turn.anchor_uid, turnInput(turn, true, marker), "muted"))) return sent;
+      if (!(await sendClaimed(binding, turn.anchor_uid, turnInput(turn, true, marker), "muted"))) {
+        // A mirrored chat's import frees its slot at once; the next reconcile redoes it.
+        if (mirror) importing.delete(binding.thread_id);
+        return sent;
+      }
       bound = true;
       sent++;
     }
@@ -572,7 +576,6 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
     dropReadFlag,
     gone,
     importing,
-    unfinished,
     setImportOver: (handler: typeof onImportOver) => void (onImportOver = handler),
     readImportTurns,
     sendInit,

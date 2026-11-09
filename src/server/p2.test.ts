@@ -839,3 +839,44 @@ describe("review 5: the user's own send behind an init or import", () => {
     expect(calls(w, "threads.markRead").map((a) => a.threadId)).not.toContain(chat);
   });
 });
+
+describe("review 6 and 11: a stalled import never holds a slot", () => {
+  it("an import whose end failed is redone at the next reconcile, not only at a worker reboot", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "c1");
+    await on(w);
+    const first = bindingByLineage(w.db, NEO, "c1")!.thread_id;
+    w.harness.inspection.sdk.stub("threads.stop", async () => {
+      throw Object.assign(new Error("HTTP 503"), { code: "unavailable" });
+    });
+    await drain(w);
+    expect(bindingByThread(w.db, first)?.state).toBe("replaying");
+    w.harness.inspection.sdk.stub("threads.stop", async ({ threadId }: { threadId: string }) => w.dto(threadId));
+    await w.changed(NEO);
+    await drain(w);
+    expect(bindingByLineage(w.db, NEO, "c1")).toMatchObject({ state: "live" });
+    expect(bindingByLineage(w.db, NEO, "c1")!.thread_id).not.toBe(first);
+  });
+
+  it("a send failure mid-import frees its slot at once; the import runs again at the next reconcile", async () => {
+    const w = await botChatWorld([]);
+    for (let i = 1; i <= 3; i++) chat(w, `c${i}`, { last_activity_at: Date.now() - (10 - i) * DAY });
+    // c1's bind goes out, its replay fails; c2 and c3 then take the slots.
+    let sends = 0;
+    w.harness.inspection.sdk.stub("threads.send", async ({ threadId, input }: { threadId: string; input: never[] }) => {
+      const t = w.thread(threadId);
+      if (bindingByThread(w.db, threadId)?.kind === "mirror" && ++sends === 2) throw Object.assign(new Error("HTTP 503"), { code: "unavailable" });
+      t.inputs.push(input);
+      t.queued++;
+      return { ok: true, delivery: "sent" };
+    });
+    await on(w);
+    expect(hidden(w).map((t) => t.title).sort()).toEqual(["Chat c1", "Chat c2", "Chat c3"]);
+    await drain(w);
+    expect(["c2", "c3"].map((id) => bindingByLineage(w.db, NEO, id)?.state)).toEqual(["live", "live"]);
+    await w.changed(NEO);
+    await drain(w);
+    expect(bindingByLineage(w.db, NEO, "c1")).toMatchObject({ state: "live" });
+    expect(mirrors(w)).toHaveLength(3);
+  });
+});

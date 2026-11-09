@@ -241,10 +241,9 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; disc
       try {
         if (b.state !== "replaying") await sync.reconcileNow(b, target);
         else if (b.kind !== "mirror") await sync.importNow(b, bot.enabled_at ?? Date.now(), target);
-        // A mirrored chat's import: this process's resumes its sends; one it isn't running was interrupted (flow 9).
-        else if (sync.importing.has(b.thread_id)) {
-          if (sync.unfinished.has(b.thread_id)) await sync.importNow(b, bot.enabled_at ?? Date.now(), target);
-        } else if (full) await discovery.redoNow(b);
+        // A mirrored chat's import that this process isn't running (interrupted, failed a send or its end, flow 9):
+        // redone from scratch.
+        else if (!sync.importing.has(b.thread_id)) await discovery.redoNow(b);
       } catch (error) {
         fail(errorCode(error, "reconcile_failed"));
       }
