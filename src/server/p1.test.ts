@@ -26,6 +26,7 @@ async function liveBotThread(turns = [turn("u1")]) {
   w.botChats.set(NEO, { state: "found", lineage_root: "root_bc", session_id: "tip_bc", legacy: false });
   w.history.set("root_bc", { session_id: "tip_bc", turns });
   await on(w);
+  w.render("thr_1");
   await w.idle("thr_1");
   expect(bindingByThread(w.db, "thr_1")).toMatchObject({ state: "live" });
   return w;
@@ -248,9 +249,11 @@ describe("Bot Chat import (T1.11)", () => {
     const segments = w.thread("thr_1").inputs.slice(2).flatMap((input) => segmentInput(input));
     expect(segments.map((s) => s.kind)).toEqual(["marker", "marker", "marker"]);
     expect(segments.map((s) => (s.kind === "marker" ? s.label : null))).toEqual([`${outsideTag(new Date(ts))}text u1`, "mine", null]);
-    expect(bindingByThread(w.db, "thr_1")).toMatchObject({ state: "replaying", cursor_uid: "u3" });
+    // The cursor passes imported turns only once the bridge's records settle them.
+    expect(bindingByThread(w.db, "thr_1")).toMatchObject({ state: "replaying", cursor_uid: null });
     expect(turnRow(w.db, "thr_1", "u2")).toMatchObject({ kind: "replay", state: "queued" });
 
+    w.render("thr_1");
     await w.idle("thr_1");
     expect(bindingByThread(w.db, "thr_1")?.state).toBe("live");
     expect(turnRow(w.db, "thr_1", "u2")).toMatchObject({ kind: "replay", state: "done" });
@@ -300,6 +303,7 @@ describe("wakes (T1.11)", () => {
     expect(w.levels.get("thr_1")).toBe("input-only");
 
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    w.render("thr_1");
     await w.idle("thr_1");
     expect(turnRow(w.db, "thr_1", "u2")).toMatchObject({ kind: "mirror", state: "partial", reply_uids: [] });
     await vi.advanceTimersByTimeAsync(RESTORE_DELAY_MS);
@@ -365,6 +369,7 @@ describe("wakes (T1.11)", () => {
     w.history.get("root_bc")!.turns.push(turn("u2", { user_hidden: true, user_text: null, complete: false, reply_uids: [] }));
     await w.changed(NEO);
     const texts = w.texts("thr_1").length;
+    w.render("thr_1");
     await w.idle("thr_1");
     w.history.get("root_bc")!.turns[1] = turn("u2", { user_hidden: true, user_text: null, reply_uids: ["r1", "r2"] });
     await w.changed(NEO);
@@ -374,6 +379,7 @@ describe("wakes (T1.11)", () => {
       { op: "mirror", anchor_uid: "u2", rest: true },
     ]);
     expect(w.texts("thr_1")).toHaveLength(texts);
+    w.render("thr_1");
     await w.idle("thr_1");
     expect(turnRow(w.db, "thr_1", "u2")).toMatchObject({ state: "done", reply_uids: ["r1", "r2"] });
     expect(bindingByThread(w.db, "thr_1")?.cursor_uid).toBe("u2");
@@ -399,6 +405,7 @@ describe("wakes (T1.11)", () => {
     claimTurn(w.db, { thread_id: "thr_1", anchor_uid: "u2", kind: "mirror", at: 1 });
     claimTurn(w.db, { thread_id: "thr_1", anchor_uid: "u3", kind: "mirror", at: 2 });
     w.event("thr_1", "client/turn/requested", { input: [{ type: "text", text: '<hermes-bb>{"op":"mirror","anchor_uid":"u3"}</hermes-bb>' }] });
+    w.persisted("thr_1", { profile_home: NEO, lineage_root: "root_bc", session_id: "tip_bc", turns: [], mirrored: [{ anchor_uid: "u3", reply_uids: ["u3-r"], partial: false, at: 1 }] });
     w.state.boot = "boot_2";
     await w.connect();
     expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u2", labeled: true }]);
@@ -437,6 +444,7 @@ describe("wakes (T1.11)", () => {
     await w.changed(NEO);
     const woken = () => w.markers("thr_1").filter((m) => m.op === "mirror").map((m) => (m as { anchor_uid: string }).anchor_uid);
     expect(woken()).toEqual(["u2", "u3", "u4", "u5", "u6"]);
+    w.render("thr_1");
     await w.idle("thr_1");
     expect(bindingByThread(w.db, "thr_1")?.cursor_uid).toBe("u6");
     await w.changed(NEO);
@@ -449,6 +457,7 @@ describe("wakes (T1.11)", () => {
     claimTurn(w.db, { thread_id: "thr_1", anchor_uid: "u2", kind: "mirror", at: 1 });
     w.event("thr_1", "client/turn/requested", { input: [{ type: "text", text: '<hermes-bb>{"op":"mirror","anchor_uid":"u2"}</hermes-bb>' }] });
     for (let i = 0; i < 150; i++) w.event("thr_1", "client/turn/requested", { input: [{ type: "text", text: `later ${i}` }] });
+    w.persisted("thr_1", { profile_home: NEO, lineage_root: "root_bc", session_id: "tip_bc", turns: [], mirrored: [{ anchor_uid: "u2", reply_uids: ["u2-r"], partial: false, at: 1 }] });
     w.state.boot = "boot_2";
     await w.connect();
     expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([]);
@@ -603,6 +612,7 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     // bb's own turn is already in the thread: never imported, never woken.
     expect(turnRow(w.db, "thr_1", "b1")).toMatchObject({ kind: "bb" });
     expect(w.texts("thr_1")).toEqual([`${outsideTag(new Date(ts))}text c1`, `${outsideTag(new Date(ts))}text c2`]);
+    w.render("thr_1");
     await w.idle("thr_1");
     expect(bindingByThread(w.db, "thr_1")).toMatchObject({ state: "live", cursor_uid: "b1" });
     await w.changed(NEO);

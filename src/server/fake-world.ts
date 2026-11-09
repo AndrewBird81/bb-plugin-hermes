@@ -8,7 +8,7 @@ import { EXTENSION_KINDS, type persistedTurnStateSchema } from "../shared/extens
 import type { BotChat, EnsureWatchOutput, HermesProfile, HistoryTurn, SessionRow } from "../shared/host-contract.js";
 import { decodeMarker, type Marker } from "../shared/marker.js";
 import { settingsDescriptors } from "../shared/settings.js";
-import { openMappingDb, setKv } from "./db.js";
+import { bindingByThread, openMappingDb, setKv } from "./db.js";
 import { startServer, WAKE_DEBOUNCE_MS } from "./index.js";
 import { SETTLE_QUIET_MS } from "./sync.js";
 
@@ -74,6 +74,8 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
   const prompts = new Map<string, { createdAt: number; id: string; input: PromptInput[] }[]>();
   const levels = new Map<string, string>();
   const levelCalls: { threadId: string; level: string }[] = [];
+  /** Inputs the fake bridge has rendered, per thread (`render`). */
+  const rendered = new Map<string, number>();
   /** bb's pending interaction cards (provider ones carry `origin.providerRequestId`). */
   const cards: { threadId: string; id: string; status: string; origin: { kind: string; providerRequestId?: string } }[] = [];
   /** Hermes chats by lineage root. */
@@ -327,6 +329,32 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
       const list = events.get(threadId) ?? [];
       list.push({ type: "thread/extensionState/updated", seq: ++state.seq, data: { kind: `hermes/${EXTENSION_KINDS.persistedTurn}`, payload, providerThreadId: "p" } });
       events.set(threadId, list);
+    },
+    /**
+     * The bridge rendered every mirror and import marker sent since its last render: `persisted-turn.mirrored`
+     * records (cumulative), the reply rows Hermes has, `partial` while the turn runs.
+     */
+    render(threadId: string) {
+      const binding = bindingByThread(db, threadId)!;
+      const t = thread(threadId);
+      const markersSince = t.inputs.slice(rendered.get(threadId) ?? 0).flatMap((input) =>
+        input.flatMap((p) => (p.type === "text" && p.visibility === "agent-only" ? [decodeMarker(p.text)].filter((m) => m !== null && m.op !== "init") : [])),
+      ) as Exclude<Marker, { op: "init" }>[];
+      rendered.set(threadId, t.inputs.length);
+      const last = [...(events.get(threadId) ?? [])].reverse().find((e) => (e.data as { kind?: string }).kind === `hermes/${EXTENSION_KINDS.persistedTurn}`);
+      const prev = (last?.data as { payload?: z.input<typeof persistedTurnStateSchema> } | undefined)?.payload;
+      const chat = history.get(binding.lineage_root!);
+      const mirrored = markersSince.map((m) => {
+        const h = chat?.turns.find((x) => x.anchor_uid === m.anchor_uid);
+        return { anchor_uid: m.anchor_uid, reply_uids: h?.complete ? h.reply_uids : [], partial: !h?.complete, at: ++state.clock };
+      });
+      this.persisted(threadId, {
+        profile_home: binding.profile_home,
+        lineage_root: binding.lineage_root!,
+        session_id: chat?.session_id ?? binding.lineage_root!,
+        turns: prev?.turns ?? [],
+        mirrored: [...(prev?.mirrored ?? []), ...mirrored],
+      });
     },
     /** The bridge published `status` for this thread. */
     status(threadId: string, payload: unknown) {

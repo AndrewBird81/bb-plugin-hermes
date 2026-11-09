@@ -219,39 +219,22 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
       sent++;
     }
     unfinished.delete(binding.thread_id);
-    // Imported turns are shown once their bb turns end: the cursor may pass them now.
-    let cursor = binding.cursor_uid;
-    for (const turn of read.turns) {
-      if (!turn.complete) break;
-      cursor = turn.anchor_uid;
-    }
-    // A mirrored chat goes live only once its import is confirmed over (`onImportOver`).
-    const over = !mirror && !queuedTurnsOf(db, binding.thread_id).length;
-    updateBinding(db, binding.thread_id, { cursor_uid: cursor, ...(over ? { state: "live" } : {}) });
+    // The cursor passes imported turns only once the bridge's records settle them (`advanceCursor`). A mirrored
+    // chat goes live only once its import is confirmed over (`onImportOver`).
+    if (!mirror && !queuedTurnsOf(db, binding.thread_id).length) updateBinding(db, binding.thread_id, { state: "live" });
     return sent;
   }
 
   /**
    * Flow 6 for one `live` binding of an enabled bot: anchors not in `turns` and not bb's wake as
-   * `mirror`; a shown, now complete turn with new reply rows wakes as `mirror{rest:true}`. `settle` (the
-   * thread just went idle): queued turns no `mirrored` record settled take what Hermes now shows (fallback).
+   * `mirror`; a shown, now complete turn with new reply rows wakes as `mirror{rest:true}`. `settle`: the
+   * thread just went idle (a running bb turn no longer holds wakes back).
    */
   async function reconcileNow(binding: Binding, target: Target, { settle = false } = {}): Promise<void> {
     if (binding.state !== "live" || !binding.lineage_root) return;
-    if (!settle && active.has(binding.thread_id)) return;
-    if (paused()) {
-      if (settle) for (const row of queuedTurnsOf(db, binding.thread_id)) settleTurn(db, binding.thread_id, row.anchor_uid, "done");
-      return;
-    }
+    if ((!settle && active.has(binding.thread_id)) || paused()) return;
     const read = await readAfter(binding, target);
     if (read.session_id !== binding.session_id) updateBinding(db, binding.thread_id, { session_id: read.session_id });
-    if (settle) {
-      const byAnchor = new Map(read.turns.map((t) => [t.anchor_uid, t]));
-      for (const row of queuedTurnsOf(db, binding.thread_id)) {
-        const turn = byAnchor.get(row.anchor_uid);
-        settleTurn(db, binding.thread_id, row.anchor_uid, turn && !turn.complete ? "partial" : "done", turn?.reply_uids);
-      }
-    }
     for (const turn of read.turns) {
       const row = turnRow(db, binding.thread_id, turn.anchor_uid);
       if (!row) {
@@ -299,14 +282,15 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
   }
 
   /**
-   * The bridge's `mirrored` records settle queued mirror turns with the reply rows it really showed, and
-   * `partial` when Conduit's reply comes later. Only at idle (queue empty), so every queued wake has run
-   * and the newest record per anchor is the last render. A rest claim keeps the rows shown before it.
+   * The bridge's `mirrored` records (mirror and replay turns) settle queued rows with the reply rows it really
+   * showed, and `partial` when Conduit's reply comes later. Only at idle (queue empty), so the newest record per
+   * anchor is the last render. A rest claim keeps the rows shown before it. A row with no record stays queued: its
+   * turn may not have run yet (bb's dispatch gap), or its render failed (`confirmNow` settles it then).
    */
   function settleMirrored(threadId: string, state: PersistedTurnState): void {
     const newest = new Map(state.mirrored.map((m) => [m.anchor_uid, m]));
     for (const row of queuedTurnsOf(db, threadId)) {
-      const record = row.kind === "mirror" || row.prev_state ? newest.get(row.anchor_uid) : undefined;
+      const record = row.kind !== "bb" ? newest.get(row.anchor_uid) : undefined;
       if (!record) continue;
       const shown = row.prev_state ? [...new Set([...row.reply_uids, ...record.reply_uids])] : record.reply_uids;
       settleTurn(db, threadId, row.anchor_uid, record.partial ? "partial" : "done", shown);
@@ -443,12 +427,11 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
       // Turns just sent haven't run: their idle finalizes.
       if (sent > 0 || unfinished.has(threadId)) return;
     }
-    for (const row of binding ? queuedTurnsOf(db, threadId) : []) if (row.kind === "replay") settleTurn(db, threadId, row.anchor_uid, "done");
     if (binding?.state === "replaying" && binding.kind !== "mirror" && !unfinished.has(threadId)) updateBinding(db, threadId, { state: "live" });
-    if (readAtIdle.has(threadId) || importing.has(threadId)) {
-      if (readAtIdle.has(threadId)) await bb.sdk.threads.markRead({ threadId });
-      confirmLater(threadId, thread.latestAttentionAt);
-    } else notify.release(threadId);
+    const flagged = readAtIdle.has(threadId) || importing.has(threadId);
+    if (readAtIdle.has(threadId)) await bb.sdk.threads.markRead({ threadId });
+    if (flagged || (binding && queuedTurnsOf(db, threadId).length)) confirmLater(threadId, thread.latestAttentionAt);
+    if (!flagged) notify.release(threadId);
     const live = bindingByThread(db, threadId);
     if (live && target && enabled(live.profile_home)) await reconcileNow(live, target, { settle: true });
   }
@@ -466,14 +449,24 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
   }
 
   /**
-   * The init or import is over: idle, nothing queued, no turn ended since the finalize (`latestAttentionAt` as it
-   * was) and read. Otherwise a turn is still coming, and its idle finalize tries again.
+   * The thread is quiet: idle, nothing queued, no turn ended since the finalize (`latestAttentionAt` as it was).
+   * Otherwise a turn is still coming, and its idle finalize tries again. Then a queued row the bridge never recorded
+   * failed its render: `partial` with no reply rows, so a rest wake shows them (now, if Hermes has them). And an
+   * init or import is over once read.
    */
   async function confirmNow(threadId: string, attentionAt: number): Promise<void> {
-    if (!readAtIdle.has(threadId) && !importing.has(threadId)) return;
+    const unrecorded = queuedTurnsOf(db, threadId);
+    if (!readAtIdle.has(threadId) && !importing.has(threadId) && !unrecorded.length) return;
     const thread = await bb.sdk.threads.get({ threadId });
     if (thread.status !== "idle" && thread.status !== "error") return;
     if (thread.queuedMessageCount > 0 || thread.latestAttentionAt !== attentionAt) return;
+    if (unrecorded.length) {
+      for (const row of unrecorded) settleTurn(db, threadId, row.anchor_uid, "partial", []);
+      const binding = bindingByThread(db, threadId);
+      const target = targetOf(connection);
+      if (binding && target && botRecord(db, binding.profile_home)?.enabled) await reconcileNow(binding, target, { settle: true });
+    }
+    if (!readAtIdle.has(threadId) && !importing.has(threadId)) return;
     if (readAtIdle.has(threadId) && (thread.lastReadAt ?? -Infinity) < thread.latestAttentionAt) return;
     if (importing.has(threadId)) await onImportOver(threadId);
     readAtIdle.delete(threadId);

@@ -48,6 +48,8 @@ async function drain(w: World, { gap = false } = {}): Promise<number> {
       if (t.deletedAt || t.inputs.length === (seen.get(t.id) ?? 0)) continue;
       seen.set(t.id, t.inputs.length);
       moved = true;
+      // The bridge renders what was sent (its records settle the rows).
+      if (bindingByThread(w.db, t.id)?.lineage_root) w.render(t.id);
       if (gap) {
         await w.idle(t.id);
         await w.active(t.id);
@@ -629,5 +631,58 @@ describe("A49: a thread the user archived", () => {
     expect(w.markers(t).filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "c1-3", labeled: true }]);
     expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u2", labeled: true }]);
     expect((await w.rpc<Diagnostics>("diagnostics")).errors).toEqual([]);
+  });
+});
+
+describe("review 2: a failed render never loses its reply", () => {
+  it("a wake whose render failed (no bridge record, thread.failed) settles partial with no reply rows once quiet; a rest wake shows the reply", async () => {
+    const w = await botChatWorld([turn("u1")]);
+    await on(w);
+    await drain(w);
+    w.history.get("root_bc")!.turns.push(turn("u2"));
+    await w.changed(NEO);
+    // The bridge's history read timed out: the turn fails, no record.
+    w.thread("thr_1").status = "error";
+    await w.emit("thread.failed" as never, "thr_1");
+    expect(turnRow(w.db, "thr_1", "u2")?.state).toBe("queued");
+    await w.quiet();
+    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([
+      { op: "mirror", anchor_uid: "u2", labeled: true },
+      { op: "mirror", anchor_uid: "u2", rest: true },
+    ]);
+    w.render("thr_1");
+    await w.idle("thr_1");
+    expect(turnRow(w.db, "thr_1", "u2")).toMatchObject({ state: "done", reply_uids: ["u2-r"] });
+  });
+
+  it("bb's dispatch gap never settles a row the bridge hasn't recorded yet", async () => {
+    const w = await botChatWorld([turn("u1")]);
+    await on(w);
+    await drain(w);
+    w.history.get("root_bc")!.turns.push(turn("u2"));
+    await w.changed(NEO);
+    // Idle with nothing queued before the wake ran: no record yet.
+    await w.idle("thr_1");
+    expect(turnRow(w.db, "thr_1", "u2")?.state).toBe("queued");
+    await w.active("thr_1");
+    w.render("thr_1");
+    await w.idle("thr_1");
+    expect(turnRow(w.db, "thr_1", "u2")).toMatchObject({ state: "done", reply_uids: ["u2-r"] });
+    await w.quiet();
+    expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toHaveLength(1);
+  });
+
+  it("an import turn whose render failed shows its reply by a rest wake once the thread is live", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "c1");
+    await on(w);
+    const t = bindingByLineage(w.db, NEO, "c1")!.thread_id;
+    // The bridge records c1-1 only; c1-2's render failed.
+    w.persisted(t, { profile_home: NEO, lineage_root: "c1", session_id: "c1", turns: [], mirrored: [{ anchor_uid: "c1-1", reply_uids: ["c1-1-r"], partial: false, at: 1 }] });
+    await w.idle(t);
+    await w.quiet();
+    expect(bindingByThread(w.db, t)?.state).toBe("live");
+    expect(turnRow(w.db, t, "c1-2")).toMatchObject({ state: "queued" });
+    expect(w.markers(t).at(-1)).toEqual({ op: "mirror", anchor_uid: "c1-2", rest: true });
   });
 });

@@ -189,7 +189,11 @@ export function createDiscovery(deps: SyncDeps & { sync: Sync }) {
       }
     }
     const target = targetOf(connection);
-    if (target) await startImportsNow(target);
+    if (!target) return;
+    // Live now: the cursor passes the imported turns, and turns that came during the import wake.
+    const live = bindingByThread(db, threadId);
+    if (live?.state === "live") await sync.reconcileNow(live, target).catch((error) => fail(errorCode(error, "reconcile_failed")));
+    await startImportsNow(target);
   }
   sync.setImportOver(endImportNow);
 
