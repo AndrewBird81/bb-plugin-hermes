@@ -75,6 +75,22 @@ describe("side chat", () => {
     expect((rig.notifications("thread/identity") as { providerThreadId: string }[]).map((i) => i.providerThreadId)).toEqual(["pending:thr_s"]);
   });
 
+  it("a bot thread's init after its spawn start (identity already the bot's) is accepted; a side chat's second init is refused", async () => {
+    const bot = { ...opts("alex", { kind: "bot" }), sessionOptions: { profile: "alex" } };
+    await startThread(rig, "thr_bot", bot);
+    await turn(rig, "thr_bot", [spawnStart()], bot);
+    const ids = () => (rig.notifications("thread/identity") as { providerThreadId: string; threadId?: string }[]).map((i) => i.providerThreadId);
+    expect(ids()).toContain(`${home("alex")}#bot`);
+    await turn(rig, "thr_bot", [encodeMarker({ op: "init", profile: "alex", bot: true })], bot);
+    expect(errors(rig, "thr_bot")).toEqual([]);
+    expect(statuses(rig, "thr_bot")).toEqual(["completed", "completed"]);
+
+    await startThread(rig, "thr_side", opts());
+    await turn(rig, "thr_side", [text("hi")], opts());
+    await turn(rig, "thr_side", [encodeMarker({ op: "init", profile: "alex" })], opts());
+    expect(errors(rig, "thr_side")).toEqual(["This chat is already set up."]);
+  });
+
   it("an unbound thread uses its profile option (A18)", async () => {
     await startThread(rig, "thr_u", opts("bob", null));
     await turn(rig, "thr_u", [text("hi")], { ...opts("bob", null), sessionOptions: { profile: "bob" } });

@@ -1041,7 +1041,9 @@ export class HostedThread {
   private async runMarker(turn: BbTurn, marker: Marker, params: TurnParams): Promise<void> {
     switch (marker.op) {
       case "init":
-        if (!isPending(this.providerThreadId)) throw new UserFacingError(INIT_REFUSED_TEXT);
+        // A bot thread's identity needs no session, so the spawn's empty start turn may already have announced it.
+        if (!isPending(this.providerThreadId) && !(marker.bot === true && this.providerThreadId === botIdentity(this.resolve(params).profileHome)))
+          throw new UserFacingError(INIT_REFUSED_TEXT);
         updateThread(this.host.dataDir, this.threadId, { profile: marker.profile, bot: marker.bot === true });
         try {
           await this.publishComposer(this.resolve(params));
