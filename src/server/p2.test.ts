@@ -686,3 +686,20 @@ describe("review 2: a failed render never loses its reply", () => {
     expect(w.markers(t).at(-1)).toEqual({ op: "mirror", anchor_uid: "c1-2", rest: true });
   });
 });
+
+describe("e2e: unread race at an import's end", () => {
+  it("latestAttentionAt moving just after the end's stop is marked read again after a quiet period (D48 switch-on)", async () => {
+    const w = await botChatWorld([]);
+    await on(w);
+    await drain(w);
+    await w.rpc("setBot", { profile_home: NEO, on: false });
+    chat(w, "c9", { last_activity_at: Date.now() });
+    w.state.lateAttention = true;
+    await on(w);
+    await drain(w);
+    const t = bindingByLineage(w.db, NEO, "c9")!.thread_id;
+    expect(w.thread(t).visibility).toBe("visible");
+    await w.quiet();
+    expect(isRead(w, t)).toBe(true);
+  });
+});

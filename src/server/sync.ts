@@ -110,7 +110,14 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
    */
   const readAtIdle = new Set<string>();
   const confirmTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  bb.onDispose(() => confirmTimers.forEach(clearTimeout));
+  /**
+   * Threads confirmed read, re-checked a bounded number of times after `SETTLE_QUIET_MS`: bb can move
+   * `latestAttentionAt` just after the last step (e2e: an import's end, 11 ms after its `markRead`).
+   */
+  const readCheck = new Map<string, number>();
+  const READ_CHECKS = 2;
+  const readTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  bb.onDispose(() => [...confirmTimers.values(), ...readTimers.values()].forEach(clearTimeout));
   /** Imports that haven't sent every turn yet: they stay `replaying` at idle and resume at the next reconcile. */
   const unfinished = new Set<string>();
   /**
@@ -245,7 +252,7 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
         }
         if (!claimTurn(db, { thread_id: binding.thread_id, anchor_uid: turn.anchor_uid, kind: "mirror", at: turn.ts, reply_uids: turn.reply_uids })) continue;
         // Outside activity is unread: an init or import still settling no longer ends read, nor muted.
-        if (readAtIdle.delete(binding.thread_id)) notify.release(binding.thread_id);
+        dropReadFlag(binding.thread_id);
         const input = turnInput(turn, false, { op: "mirror", anchor_uid: turn.anchor_uid });
         // Keep Hermes' order: stop at a failed send; the next re-list retries from there.
         if (!(await sendClaimed(binding, turn.anchor_uid, input, "input-only"))) break;
@@ -436,6 +443,34 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
     if (live && target && enabled(live.profile_home)) await reconcileNow(live, target, { settle: true });
   }
 
+  /** The thread's activity is news now (a wake, the user's own send): it no longer ends read, nor muted. */
+  function dropReadFlag(threadId: string): void {
+    readCheck.delete(threadId);
+    if (readAtIdle.delete(threadId)) notify.release(threadId);
+  }
+
+  /** A read-confirmed thread: once quiet, still read? Else marked read again, at most `READ_CHECKS` times. */
+  function checkReadLater(threadId: string): void {
+    clearTimeout(readTimers.get(threadId));
+    readTimers.set(
+      threadId,
+      setTimeout(() => {
+        readTimers.delete(threadId);
+        void enqueue(async () => {
+          const left = readCheck.get(threadId);
+          if (left === undefined) return;
+          const thread = await bb.sdk.threads.get({ threadId });
+          if (thread.status !== "idle" || thread.queuedMessageCount > 0) return void readCheck.delete(threadId);
+          if ((thread.lastReadAt ?? -Infinity) < thread.latestAttentionAt) await bb.sdk.threads.markRead({ threadId });
+          if (left > 1) {
+            readCheck.set(threadId, left - 1);
+            checkReadLater(threadId);
+          } else readCheck.delete(threadId);
+        }).catch((error) => fail(errorCode(error, "confirm_failed")));
+      }, SETTLE_QUIET_MS),
+    );
+  }
+
   /** After `SETTLE_QUIET_MS`, on the queue; a later idle finalize starts the wait again. */
   function confirmLater(threadId: string, attentionAt: number): void {
     clearTimeout(confirmTimers.get(threadId));
@@ -469,7 +504,10 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
     if (!readAtIdle.has(threadId) && !importing.has(threadId)) return;
     if (readAtIdle.has(threadId) && (thread.lastReadAt ?? -Infinity) < thread.latestAttentionAt) return;
     if (importing.has(threadId)) await onImportOver(threadId);
-    readAtIdle.delete(threadId);
+    if (readAtIdle.delete(threadId)) {
+      readCheck.set(threadId, READ_CHECKS);
+      checkReadLater(threadId);
+    }
     notify.release(threadId);
   }
 
@@ -517,6 +555,7 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
   return {
     active,
     readAtIdle,
+    dropReadFlag,
     importing,
     unfinished,
     setImportOver: (handler: typeof onImportOver) => void (onImportOver = handler),

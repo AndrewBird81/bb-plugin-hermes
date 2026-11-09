@@ -86,7 +86,7 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
   const sessions = new Map<string, SessionRow[]>();
   const access: { profile_home: string; on: boolean; enabled_bots: string[] }[] = [];
   /** `root`: the folder these profiles live in. `outside`: the worker refuses every profile as outside the root. */
-  const state = { root: "~/.hermes", outside: false, failSpawn: 0, watched: [] as string[], failSend: 0, failAccess: false, refreshed: true, online: true, boot: "boot_1", supported: true, seq: 0, ids: 0, clock: 1_000, unreadable: [] as string[] };
+  const state = { root: "~/.hermes", outside: false, failSpawn: 0, watched: [] as string[], failSend: 0, failAccess: false, refreshed: true, online: true, boot: "boot_1", supported: true, seq: 0, ids: 0, clock: 1_000, unreadable: [] as string[], lateAttention: false };
 
   const thread = (id: string) => {
     const t = threads.get(id);
@@ -217,7 +217,11 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
         list: async (args) => (args?.threadIds ?? []).flatMap((id: string) => (threads.get(id) ? [dto(threads.get(id)!)] : [])),
         archive: async ({ threadId }) => ((thread(threadId).archivedAt = 1), dto(thread(threadId))),
         unarchive: async ({ threadId }) => ((thread(threadId).archivedAt = null), dto(thread(threadId))),
-        stop: async ({ threadId }) => dto(thread(threadId)),
+        stop: async ({ threadId }) => {
+          // `lateAttention`: bb moves `latestAttentionAt` just after the stop answers (e2e: 11 ms after the markRead).
+          if (state.lateAttention) setImmediate(() => (thread(threadId).latestAttentionAt = ++state.clock));
+          return dto(thread(threadId));
+        },
         markRead: async ({ threadId }) => ((thread(threadId).lastReadAt = ++state.clock), dto(thread(threadId))),
         update: async ({ threadId, title, visibility }) => {
           if (title !== undefined) thread(threadId).title = title ?? null;
