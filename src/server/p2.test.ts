@@ -1035,6 +1035,20 @@ describe("review-2 1: imports and wake bursts of more than 20 turns", () => {
     expect(Array.from({ length: 30 }, (_, i) => turnRow(w.db, "thr_1", `u${i + 1}`)?.state)).toEqual(Array(30).fill("done"));
   });
 
+  it("a wake whose render left no record while the window is full of earlier turns still fails: never settled as shown", async () => {
+    const w = await botChatWorld(turns30("u"));
+    await on(w);
+    await drain(w);
+    w.history.get("root_bc")!.turns.push(turn("A"));
+    await w.changed(NEO);
+    Object.assign(w.thread("thr_1"), { status: "error", queued: 0 });
+    await w.emit("thread.failed" as never, "thr_1");
+    await w.quiet();
+    expect(turnRow(w.db, "thr_1", "A")).toMatchObject({ state: "partial", reply_uids: [] });
+    await w.changed(NEO);
+    expect(restWakes(w, "thr_1")).toEqual([{ op: "mirror", anchor_uid: "A", rest: true }]);
+  });
+
   it("a render that left no record while the window is full, its anchor in the window but not covering, still fails", async () => {
     const w = await botChatWorld(turns30("u"));
     await on(w);

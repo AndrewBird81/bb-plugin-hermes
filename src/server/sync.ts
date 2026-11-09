@@ -142,6 +142,9 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
   const renderFailures = new Map<string, number>();
   /** Per thread: the bridge's `mirrored` records as last read, its newest `PERSISTED_TURNS_KEPT` (review-2 1). */
   const lastMirrored = new Map<string, PersistedTurnState["mirrored"]>();
+  /** Per `threadId \0 anchor`: the order this process last sent its marker in (bb runs a thread's turns in order). */
+  const sentOrder = new Map<string, number>();
+  let sends = 0;
   /**
    * Threads whose chat Hermes answers 404 (deleted there; bb's sends fail "Deleted in Hermes", 01 §7): a known
    * state, not an error at every reconcile. Thread id → when it was last read.
@@ -184,6 +187,7 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
     await notify.hold(binding.thread_id, level);
     try {
       await send(binding.thread_id, input);
+      sentOrder.set(`${binding.thread_id}\0${anchorUid}`, ++sends);
       return true;
     } catch (error) {
       releaseTurn(db, binding.thread_id, anchorUid);
@@ -549,8 +553,9 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
   /**
    * The thread is quiet: idle, nothing queued, no turn ended since the finalize (`latestAttentionAt` as it was).
    * Otherwise a turn is still coming, and its idle finalize tries again. Then a queued row with no record covering
-   * it: missing from a full window, it ran and its record aged out (`done` with its claimed reply rows: the bridge
-   * can't skip rows it showed in a later rest wake any more). Else its render failed: `partial` with the rows its
+   * it: missing from a full window of turns sent after it (or before this process, which can't tell), it ran and its
+   * record aged out (`done` with its claimed reply rows: the bridge can't skip rows it showed in a later rest wake
+   * any more). Else its render failed: `partial` with the rows its
    * record shows, so the next natural reconcile's rest wake shows the others; after `MAX_RENDER_RETRIES` rest wakes,
    * `done` with Hermes' reply rows (one `render_failed`). And an init or import is over once read.
    */
@@ -562,9 +567,14 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
     if (thread.status !== "idle" && thread.status !== "error") return;
     if (thread.queuedMessageCount > 0 || thread.latestAttentionAt !== attentionAt) return;
     const records = lastMirrored.get(threadId) ?? [];
+    const order = (anchorUid: string) => sentOrder.get(`${threadId}\0${anchorUid}`);
+    const agedOut = (anchorUid: string) => {
+      const sent = order(anchorUid);
+      return records.length >= PERSISTED_TURNS_KEPT && (sent === undefined || records.every((m) => (order(m.anchor_uid) ?? -1) > sent));
+    };
     for (const row of unrecorded) {
       const record = records.find((m) => m.anchor_uid === row.anchor_uid);
-      if (!record && records.length >= PERSISTED_TURNS_KEPT) {
+      if (!record && agedOut(row.anchor_uid)) {
         settleTurn(db, threadId, row.anchor_uid, "done", row.reply_uids);
         continue;
       }
