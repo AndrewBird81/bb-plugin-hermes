@@ -67,6 +67,7 @@ Later (out of v1):
 | D55 | Rows look like any bb thread: the Hermes icon before the title, no metadata line (owner, 2026-11-09). bb draws that icon only for a provider in its provider list, so it needs Hermes listed |
 | D56 | Hermes is listed only on the machine where it runs; D2 superseded. Row icons need that machine to be bb's primary machine, until bb draws icons per thread machine (owner, 2026-11-09; 02 §Listing) |
 | D57 | No remote mode (r15) |
+| D58 | list-here marker: opt-in listing on a machine without Hermes, for row icons; health `unknown` there |
 | Q1 default | No cross-delete. bb delete → tombstone (mirrored chats and side chats; a bot thread is re-created instead), never re-imported. Deleted in Hermes → the thread stays; sends fail "Deleted in Hermes" |
 | Q7 default | Imported bubbles carry the outside tag and date (`[Outside bb · Oct 12]`), never an app's name; oldest first; item times are import time |
 

@@ -11,6 +11,9 @@ export const bridgeDataDir = (workerDataDir: string) => path.join(path.dirname(w
 
 export const WORKER_FILE = "worker.json";
 
+/** The owner's marker, never written by the plugin: any content lists Hermes on a machine without it (D58). */
+export const LIST_HERE_FILE = "list-here";
+
 export const enabledBotSchema = z
   .object({
     profile: z.string(),

@@ -13,7 +13,7 @@ import {
   experimental_createBridgeJsonRpcTestHarness as createHarness,
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { WORKER_FILE } from "../shared/bridge-files.js";
+import { LIST_HERE_FILE, WORKER_FILE } from "../shared/bridge-files.js";
 import { bridgeFileSchema } from "../shared/bridge-registry.js";
 import { type Bridge, createBridge } from "./bridge.js";
 import { placeholderModel } from "./composer.js";
@@ -70,6 +70,20 @@ describe("bridge handshake", () => {
     // Released (the Connection moved away): unlisted again.
     rmSync(join(dataDir, WORKER_FILE));
     expect(await health(4)).toMatchObject({ health: { status: "not_installed" } });
+  });
+
+  it("D58: list-here alone lists Hermes as unknown; worker.json wins with ready; neither is not_installed", async () => {
+    const health = async (id: number) => providerHealthResultSchema.parse((await call(id, "provider/health", { providerId: PROVIDER_ID })).result).health;
+    const workerFile = join(dataDir, WORKER_FILE);
+    const listHere = join(dataDir, LIST_HERE_FILE);
+    expect(await health(1)).toMatchObject({ status: "not_installed" });
+    writeFileSync(listHere, "");
+    expect(await health(2)).toMatchObject({ status: "unknown", statusMessage: "Hermes runs on another machine; listed here by list-here." });
+    writeFileSync(workerFile, JSON.stringify({ root: "/nowhere", worker_boot_id: "b", written_at: 1, enabled: [] }));
+    expect(await health(3)).toMatchObject({ status: "ready", statusMessage: "Hermes runs on this machine." });
+    rmSync(listHere);
+    rmSync(workerFile);
+    expect(await health(4)).toMatchObject({ status: "not_installed" });
   });
 
   it("thread/start answers and announces pending:<threadId>", async () => {

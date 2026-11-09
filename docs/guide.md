@@ -44,6 +44,18 @@ Switching it **off** archives its bb threads, removes the skill, and stops watch
   - A thread you archived stays archived when its chat changes in Hermes (bb takes no message into an archived thread); what happened meanwhile comes in when you unarchive it.
 - **Notifications:** outside activity marks a thread unread without a push; approvals and questions push.
 
+## Row icons when bb's primary machine has no Hermes
+
+bb draws the Hermes icon on rows only where Hermes is listed. To list it on a primary machine without Hermes:
+- On the primary machine, create `<bb data dir>/plugins/hermes/bridge-data/list-here` (any content, even empty). The data dir is "Data dir" in `bb status`.
+- Run `bb plugin reload hermes`.
+
+Then:
+- New Thread there shows Hermes, but a send is refused ("Hermes isn't on <this machine>…").
+- Don't click **Default** on the Hermes row in Settings → Providers: if you remove the file later, Hermes stays the default but hidden.
+- **Disable** on that row stops every Hermes turn.
+- To undo, delete the file and run `bb plugin reload hermes`.
+
 ## Privacy
 
 Mirrored threads copy Hermes transcripts, tool results included, into the bb server's store. Turn a bot on only if that is fine for its chats.

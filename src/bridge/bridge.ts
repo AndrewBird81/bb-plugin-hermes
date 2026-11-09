@@ -29,7 +29,7 @@ import type { ConnectionOptions } from "../hermes/client.js";
 import { canonicalHome } from "../hermes/control.js";
 import { availableModels, chipOption, fetchCatalog, placeholderModel } from "./composer.js";
 import { resolveContext } from "./context.js";
-import { expandHome, readThread, readWorkerFile, threadForCwd } from "./files.js";
+import { expandHome, listedHere, readThread, readWorkerFile, threadForCwd } from "./files.js";
 import { fallbackBot } from "../shared/bridge-files.js";
 import { HermesLink, type History, restHistory } from "./hermes.js";
 import { type BuildRegistry, openRegistry } from "./registry.js";
@@ -44,12 +44,19 @@ export const pendingIdentity = (threadId: string) => `pending:${threadId}`;
  * (research 13 §1). Hermes runs where the worker wrote `worker.json`: the saved Hermes machine, written at each
  * keep-alive whether or not the gateway answers, and removed when the Connection moves away (`release`). So Hermes is
  * listed only there, and stays listed while the gateway or the worker is down (a send then says why).
+ * D58: elsewhere, the owner's `list-here` marker lists it as `unknown` (for row icons), never `ready`, so bb's
+ * ready-provider default never picks it there.
  */
-const health = (here: boolean): ProviderHealthResult => ({
+const HEALTH_TEXT = {
+  ready: "Hermes runs on this machine.",
+  unknown: "Hermes runs on another machine; listed here by list-here.",
+  not_installed: "Hermes runs on another machine.",
+} as const;
+const health = (status: keyof typeof HEALTH_TEXT): ProviderHealthResult => ({
   supported: true,
   health: {
-    status: here ? "ready" : "not_installed",
-    statusMessage: here ? "Hermes runs on this machine." : "Hermes runs on another machine.",
+    status,
+    statusMessage: HEALTH_TEXT[status],
     accountEmail: null,
     planLabel: null,
     installedVersion: null,
@@ -192,7 +199,9 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
         },
       }),
     ),
-    [BRIDGE_REQUEST_METHODS.providerHealth]: method(providerMaintenanceParamsSchema, (_, reply) => reply(health(dataDir !== null && readWorkerFile(dataDir) !== null))),
+    [BRIDGE_REQUEST_METHODS.providerHealth]: method(providerMaintenanceParamsSchema, (_, reply) =>
+      reply(health(dataDir === null ? "not_installed" : readWorkerFile(dataDir) ? "ready" : listedHere(dataDir) ? "unknown" : "not_installed")),
+    ),
     // A maintenance process: no provider options, so the thread's bot comes from its `threads/` record by cwd (S7 1c).
     [BRIDGE_REQUEST_METHODS.modelList]: method(modelListParamsSchema, async ({ cwd }, reply) => reply(await modelList(cwd))),
     [BRIDGE_REQUEST_METHODS.threadStart]: method(threadStartParamsSchema, ({ threadId, cwd, options }, reply) => {

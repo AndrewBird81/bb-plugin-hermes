@@ -3,11 +3,11 @@
 // thread's bot, for `model/list` (no provider options there, S7 1c) and for a `bb thread spawn` thread the
 // server hasn't bound yet, plus bb's own turns as stored (the cumulative `persisted-turn` state).
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
-import { modelsFile, modelsFileSchema, WORKER_FILE, type WorkerFile, workerFileSchema } from "../shared/bridge-files.js";
+import { LIST_HERE_FILE, modelsFile, modelsFileSchema, WORKER_FILE, type WorkerFile, workerFileSchema } from "../shared/bridge-files.js";
 import { mirroredTurnRecordSchema, persistedTurnRecordSchema } from "../shared/extension-state.js";
 import type { Catalog } from "../shared/models.js";
 import { canonicalHome } from "../hermes/control.js";
@@ -42,6 +42,9 @@ export function readWorkerFile(dataDir: string): WorkerFile | null {
   const parsed = workerFileSchema.safeParse(readJson(path.join(dataDir, WORKER_FILE)));
   return parsed.success ? parsed.data : null;
 }
+
+/** The owner's `list-here` marker (D58): read only for `provider/health`. */
+export const listedHere = (dataDir: string) => existsSync(path.join(dataDir, LIST_HERE_FILE));
 
 export function readCatalog(dataDir: string, profileHome: string): Catalog | null {
   const parsed = modelsFileSchema.safeParse(readJson(modelsFile(dataDir, profileHome)));

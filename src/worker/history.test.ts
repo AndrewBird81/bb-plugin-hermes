@@ -2,12 +2,15 @@
 // the REST half of the version check, and no Hermes I/O for off bots.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { experimental_createBridgeJsonRpcTestHarness as createHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
 import { afterEach, describe, expect, it } from "vitest";
 import { Refusal, startFakeHermes, type FakeOptions } from "../../test/fake-hermes/index.js";
 import { removeDir, tempDir } from "../../test/fake-hermes/wire.js";
 import type { SessionsPage } from "../hermes/history.js";
-import { bridgeDataDir, modelsFile, WORKER_FILE } from "../shared/bridge-files.js";
+import { createBridge } from "../bridge/bridge.js";
+import { PROVIDER_ID } from "../bridge/provider.js";
+import { bridgeDataDir, LIST_HERE_FILE, modelsFile, WORKER_FILE } from "../shared/bridge-files.js";
 import { createHostEntry, type HostEntryOptions } from "./entry.js";
 import { firstSubmissions, listAllSessions, readHistoryTurns, toSessionRow } from "./sessions.js";
 
@@ -82,6 +85,23 @@ describe("worker.json", () => {
     // Picked again: the same worker process writes it again.
     await h.experimental_call("ensureWatch", { root, enabled_bots: [] });
     expect(existsSync(file)).toBe(true);
+  });
+
+  it("D58: `release` leaves the owner's list-here, so the bridge there still lists Hermes (unknown)", async () => {
+    const { h, bridgeDir, root } = await setup();
+    await h.experimental_call("ensureWatch", { root, enabled_bots: [] });
+    const listHere = path.join(bridgeDir, LIST_HERE_FILE);
+    writeFileSync(listHere, "");
+    expect(await h.experimental_call("release", null)).toEqual({ removed: true });
+    expect(existsSync(path.join(bridgeDir, WORKER_FILE))).toBe(false);
+    expect(existsSync(listHere)).toBe(true);
+    const bridge = createBridge("abc123def456");
+    bridge.start(bridgeDir);
+    cleanups.push(() => bridge.close());
+    const rpc = createHarness(bridge.handleLine);
+    cleanups.push(() => rpc.restore());
+    rpc.sendRequest(1, "provider/health", { providerId: PROVIDER_ID } as never);
+    expect((await rpc.waitForResponse(1)).result).toMatchObject({ health: { status: "unknown" } });
   });
 });
 

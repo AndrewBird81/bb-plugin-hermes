@@ -22,7 +22,7 @@ Labels: **RAN** = done on the isolated bb (CLI, screenshot, file check). **CODE*
 - **Main risk (RAN): Default.**
   - Clicking Default on the Hermes row makes every provider-less thread go to Hermes, from any machine. Off the Hermes machine it is refused.
   - If the shim is later removed while Hermes is default, the Hermes row disappears. Settings then shows **no** Default badge at all, yet provider-less spawns still go to Hermes.
-- **Plugin change:** recommended, small. Let the bridge also list on a separate marker file (`bridge-data/list-here`). The shim then stops faking `worker.json` (§5).
+- **Plugin change:** recommended, small, and built in v1.1.1 (D58). Let the bridge also list on a separate marker file (`bridge-data/list-here`). The shim then stops faking `worker.json` (§5).
 
 ## 1. The shim
 
@@ -149,7 +149,7 @@ Labels: **RAN** = done on the isolated bb (CLI, screenshot, file check). **CODE*
 | Default / Disable trap | yes | yes | yes |
 | Discoverable by others | no | docs only | Settings |
 
-- **Recommend M-lite.**
+- **Recommend M-lite.** Built in v1.1.1 (D58).
   - It turns the shim into a supported knob for 5 lines. It avoids the strict-schema and `release` traps, and it keeps the bridge's role signal (`worker.json`) true.
   - Answer `unknown` (still listed, r13 §1 matrix), not `ready`, so bb's "prefer a ready provider" default never picks Hermes there.
 - **M** only if other users ask, or if bb hasn't drawn icons from each thread's own machine by v1.2. It's more surface for a gap bb may close.
