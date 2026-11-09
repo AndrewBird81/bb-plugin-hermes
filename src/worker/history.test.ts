@@ -164,7 +164,8 @@ describe("listSessions", () => {
       archived: false,
       cwd: null,
       message_count: 2,
-      last_activity_at: 1794165216476,
+      // REST `last_active`, not the heartbeat column (1794165216.475869).
+      last_activity_at: 1794165216822,
       legacy: true,
     });
     expect(sessions.filter((s) => !s.legacy).every((s) => s.lineage_root === s.session_id && s.source === "local")).toBe(true);
@@ -196,6 +197,12 @@ describe("listSessions", () => {
   it("toSessionRow never carries prompts or configs", () => {
     const raw = { id: "a", chat_id: null, title: "t", source: "desktop", created_source: null, hidden: 1, archived: true, cwd: null, message_count: 3, last_activity_at: null, system_prompt: "x", model_config: "{}", origin_json: "{}" };
     expect(toSessionRow(raw as never)).toEqual({ session_id: "a", lineage_root: "a", title: "t", source: "desktop", created_source: null, hidden: true, archived: true, cwd: null, message_count: 3, last_activity_at: null, legacy: true });
+  });
+
+  it("activity is REST last_active (heartbeat, newest message or start), not the heartbeat column alone", () => {
+    const raw = { id: "a", chat_id: "a", title: null, source: "local", created_source: "cli", hidden: 0, archived: false, cwd: null, message_count: 2 };
+    expect(toSessionRow({ ...raw, last_activity_at: null, last_active: 1700.5 } as never).last_activity_at).toBe(1_700_500);
+    expect(toSessionRow({ ...raw, last_activity_at: 1600, last_active: 1700 } as never).last_activity_at).toBe(1_700_000);
   });
 });
 

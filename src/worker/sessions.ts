@@ -23,7 +23,7 @@ export function toSessionRow(r: RestSessionRow): SessionRow {
     archived: Boolean(r.archived),
     cwd: r.cwd ?? null,
     message_count: Number.isInteger(r.message_count) ? r.message_count : 0,
-    last_activity_at: toMs(r.last_activity_at),
+    last_activity_at: toMs(r.last_active ?? r.last_activity_at),
     legacy: !r.chat_id,
   };
 }

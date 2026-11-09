@@ -1,6 +1,6 @@
 import type { PromptInput } from "@get-bb/plugin-sdk/provider-bridge";
 import { describe, expect, it } from "vitest";
-import { decodeMarker, encodeMarker, MarkerError, segmentInput } from "./marker.js";
+import { decodeMarker, encodeMarker, MarkerError, segmentInput, spawnStart } from "./marker.js";
 
 const text = (t: string): PromptInput => ({ type: "text", mentions: [], text: t });
 const context = (t: string): PromptInput => ({ type: "text", mentions: [], text: t, visibility: "agent-only" });
@@ -20,6 +20,14 @@ describe("marker codec", () => {
       expect(part.text.startsWith("<hermes-bb>")).toBe(true);
       expect(decodeMarker(part.text)).toEqual(m);
     }
+  });
+
+  it("spawnStart is no marker and no text: bb's titleFallback (every text part, trimmed and joined) stays empty", () => {
+    const part = spawnStart();
+    expect(decodeMarker(part.text)).toBeNull();
+    expect(segmentInput([part])).toEqual([{ kind: "prompt", parts: [part] }]);
+    // bb-app 0.49.0 `cleanPromptText`, which `deriveTitleFallback` uses: "" → null fallback.
+    expect([part].filter((p) => p.type === "text").map((p) => p.text.trim()).join(" ").trim()).toBe("");
   });
 
   it("returns null for plain text and throws on a bad marker", () => {

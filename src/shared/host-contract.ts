@@ -96,7 +96,11 @@ export const sessionRowSchema = z
     archived: z.boolean(),
     cwd: z.string().nullable(),
     message_count: z.number().int(),
-    /** Unix ms. */
+    /**
+     * Unix ms of the chat's latest activity: REST `last_active` (max of the activity heartbeat, the newest message
+     * and the start, `hermes_state_common.py:258-274`). Never the raw `last_activity_at` column: heartbeats only,
+     * null on older rows, and a rotated chain's root value.
+     */
     last_activity_at: z.number().nullable(),
     /** Not gateway-owned yet (`chat_id` null, D16). */
     legacy: z.boolean(),

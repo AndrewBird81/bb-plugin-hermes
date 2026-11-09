@@ -47,7 +47,7 @@ The owner's model: **each bot has one thread, its Bot Chat.** A bot can also hav
 |---|---|---|---|
 | **Bot thread** (one per bot) | the plugin, at switch-on | the profile's Bot Chat, found by title on every send (S8 step 1) | Pinned; title = bot name ("Neo"); badge "Hermes · Neo · Bot Chat" |
 | **Side chat** (any number) | you: rail "New chat with Neo", or `bb thread spawn` | a new session, created on the first message | Normal row; title from your first message; badge "Hermes · Neo" |
-| **Mirrored chat** (any number) | the plugin, when a CLI, TUI, Desktop or Conduit chat of Neo exists | that session | Normal row; Hermes' title; badge "Hermes · Neo"; outside bubbles tagged `[Outside bb]` |
+| **Mirrored chat** (any number) | the plugin, when a CLI, TUI, Desktop or Conduit chat of Neo exists | that session | Normal row; Hermes' title; badge "Hermes · Neo" (no app: Hermes' record names none unambiguously, `docs/operations.md` §Surfaces); outside bubbles tagged `[Outside bb]` |
 
 - The composer of each shows the Hermes icon and the bot's name in a one-value chip, so the bot is visible and fixed (A52).
 - UI text names an app only when Hermes records it for that exact chat or turn. Hermes records no per-turn source, so every outside turn, in every thread, reads `[Outside bb] …` (owner ruling, 2026-11-08).

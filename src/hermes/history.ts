@@ -21,7 +21,10 @@ export interface RestSessionRow {
   archived: boolean;
   cwd: string | null;
   message_count: number;
+  /** Activity heartbeats only: null on older rows; a rotated chain shows its root's. Read `last_active`. */
   last_activity_at: number | null;
+  /** max(heartbeat, newest message, start), Unix seconds (`hermes_state_common.py:258-274`). */
+  last_active?: number | null;
 }
 
 export interface SessionsPage {

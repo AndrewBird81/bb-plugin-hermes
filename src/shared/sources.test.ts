@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { eligibility, OUTSIDE_TAG_PREFIX, outsideTag, type SessionFacts } from "./sources.js";
+import { eligibility, OUTSIDE_TAG_PREFIX, OUTSIDE_TAG_REFUSAL, outsideTag, type SessionFacts } from "./sources.js";
 
 const row = (over: Partial<SessionFacts> = {}): SessionFacts => ({
   source: "local",
@@ -66,5 +66,11 @@ describe("tags", () => {
     expect(OUTSIDE_TAG_PREFIX.test(`${outsideTag()}x`)).toBe(true);
     expect(OUTSIDE_TAG_PREFIX.test(`${imported}x`)).toBe(true);
     for (const old of ["[CLI] x", "[Conduit · Oct 12] x", "[Discord] x", "[Outside bb]x", "[outside bb] x"]) expect(OUTSIDE_TAG_PREFIX.test(old)).toBe(false);
+  });
+});
+
+describe("D15 refusal", () => {
+  it("quotes the tag", () => {
+    expect(OUTSIDE_TAG_REFUSAL).toBe("Remove the [Outside bb] tag to send.");
   });
 });

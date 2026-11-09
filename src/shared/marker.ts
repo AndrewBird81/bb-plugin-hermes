@@ -54,6 +54,16 @@ export function encodeMarker(marker: Marker): MarkerPart {
   return { type: "text", mentions: [], text: `${OPEN}${JSON.stringify(markerSchema.parse(marker))}${CLOSE}`, visibility: "agent-only" };
 }
 
+/**
+ * The input of every plugin spawn: one empty agent-only text. bb derives a thread's immutable `titleFallback` from
+ * every text part of the spawn input, agent-only ones included (bb-app 0.49.0 `deriveTitleFallback`), so a marker
+ * there would show wherever bb falls back from the title. The bridge runs it as an empty prompt: nothing reaches
+ * Hermes. The marker follows in a `threads.send`.
+ */
+export function spawnStart(): MarkerPart {
+  return { type: "text", mentions: [], text: "", visibility: "agent-only" };
+}
+
 export class MarkerError extends Error {
   readonly text: string;
   constructor(message: string, text: string) {

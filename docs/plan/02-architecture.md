@@ -46,7 +46,7 @@ Choice (README confirm item 4): Hermes' REST projection, as Hermes Desktop reads
 | `lineage_root`, `session_id` | logical id (`chat_id` owner) and current tip. Null until the first send creates the session |
 | `expected_id` | bb-created session id, computed before the first send (identity rules) |
 | `kind` | `bot` · `chat` · `mirror` |
-| `source`, `tag` | raw `source`/`created_source`: the chat's own recorded surface (for a later badge, never a label). `tag` stays null: every outside turn reads `[Outside bb]`, since Hermes records no per-turn source (owner ruling) |
+| `source`, `tag` | the chat's recorded surface (`source`, or `created_source` for `source=local`): eligibility only, never UI text: each value has several writers in Hermes (`docs/operations.md` §Surfaces), so no badge names an app. `tag` stays null: every outside turn reads `[Outside bb]`, since Hermes records no per-turn source (owner ruling) |
 | `cursor_uid` | the last anchor wakes have read past (migration 2) |
 | `state` | `pending` (no session yet) · `replaying` · `live` |
 | `legacy` | not gateway-owned yet (D16) |
@@ -92,7 +92,7 @@ Every call carries `root` (the folder); profiles are named by `profile_home`, wh
 | `ensureWatch` | `{root, enabled_bots}` (profile homes) → `{worker_boot_id, connected, instance_id, version, supported, detail}` (`detail`: a bounded reason code for health). Every 60 s: an idle worker dies at 300 s with no exit event (S7 §6). New boot id → full reconcile. Also writes `worker.json` for bridges |
 | `describe` | `{root}` → `{uid, profiles[{name, home, handle, terminal_cwd, served}]}` |
 | `models` | `{root, profile_home}` → the normalized catalog (`src/shared/models.ts`); enabled bots prewarmed into `models/` |
-| `listSessions` | `{root, profile_home, since?}` → `{sessions[{session_id, lineage_root, title, source, created_source, hidden, archived, cwd, message_count, last_activity_at, legacy}]}` |
+| `listSessions` | `{root, profile_home, since?}` → `{sessions[{session_id, lineage_root, title, source, created_source, hidden, archived, cwd, message_count, last_activity_at, legacy}]}`; `last_activity_at` is REST `last_active` (the raw column is heartbeats only) |
 | `readTurns` | `{root, profile_home, lineage_root, after_uid?, since?}` → `{session_id (tip), turns[{anchor_uid, user_text, user_hidden, surface, submission_id, reply_uids, ts, complete}], truncated}`, root to tip |
 | `findBotChat` | `{root, profile_home}` → `{state:"found", lineage_root, session_id, legacy}` · `{state:"none"}` · `{state:"held"}`. Read-only: `profiles.list` `canonical_session`, which lists only a Bot Chat Hermes has adopted |
 | `setBotAccess` | `{root, profile_home, on, enabled_bots}` → `{skill, wrapper, refreshed, detail}`: writes or deletes skill and wrapper (the wrapper goes when `enabled_bots` is empty), then `refresh-prompts` (flow 1) |
@@ -213,7 +213,7 @@ Hermes events → bb deltas:
 - **Turns:** one wake per anchor; bb's rows never mirror; approvals and `clarify` never filtered by admission.
 - **Approvals:** never auto-approve; never widen Hermes' choices.
 - **Hermes-side writes:** only those a bb user action causes (creates, sends, adoptions, Stop, steer, answers, `/new` compactions, model and reasoning picks, image copies into `<profile home>/cache/images/`, `prompt.resolve_unknown` for bb's own turns), plus the marked skill dir and `refresh-prompts` epochs.
-- **Off bot:** no call names that profile except removing its skill. Accepted: Hermes' own read of every served profile's store behind the host-scoped `profiles.list{include_sessions:true}` (cached, read-only; nothing from those rows leaves the worker).
+- **Off bot:** no call names that profile except the switch row's read-only count (`listSessions`, flow 1 "Before on") and removing its skill. Accepted: Hermes' own read of every served profile's store behind the host-scoped `profiles.list{include_sessions:true}` (cached, read-only; nothing from those rows leaves the worker).
 
 ## bb access and security
 

@@ -1,6 +1,6 @@
 // T1.1: bb's own turns (02 §Protocol mapping; 03 §Unit and bridge tests that guard known traps).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { encodeMarker } from "../shared/marker.js";
+import { encodeMarker, spawnStart } from "../shared/marker.js";
 import { otherMachineText, switchedOffText } from "../shared/provider-options.js";
 import { noBotText } from "./context.js";
 import { DELETED_TEXT } from "./thread.js";
@@ -60,6 +60,17 @@ describe("side chat", () => {
     expect(rig.requests("session.create")).toHaveLength(1);
     expect(rig.requests("prompt.submit").map((r) => r.params.text)).toEqual(["one", "two"]);
     expect(agentTexts(rig, "thr_b")).toEqual(["echo(2): one", "echo(4): two"]);
+  });
+
+  it("a spawn's empty start part (spawnStart) reaches no Hermes call and keeps the identity pending", async () => {
+    const options = { ...opts("alex", null), sessionOptions: { profile: "alex" } };
+    await startThread(rig, "thr_s", options);
+    const before = rig.fake.requests.length;
+    await turn(rig, "thr_s", [spawnStart()], options);
+    // Only the composer's catalog read (`model.options`, never a session) may still land.
+    expect(rig.fake.requests.slice(before).filter((r) => r.method !== "model.options")).toEqual([]);
+    expect(statuses(rig, "thr_s")).toEqual(["completed"]);
+    expect((rig.notifications("thread/identity") as { providerThreadId: string }[]).map((i) => i.providerThreadId)).toEqual(["pending:thr_s"]);
   });
 
   it("an unbound thread uses its profile option (A18)", async () => {

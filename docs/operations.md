@@ -14,6 +14,23 @@ Evidence (isolated Hermes c314285f07, stub model; `npx tsx test/fixtures/rest/re
 - A48 ✓: a chat the dashboard holds reads through REST; a canonical resume meanwhile → `runtime_coordination_required`; the row stays `source: desktop`, `chat_id: null`.
 - Paging: list `limit` ≤ 100, messages ≤ 500 (default: the latest page; pass `order=oldest`).
 
+## Surfaces (P2, Hermes c314285f07)
+
+Which app a session's recorded surface (`source`, or `created_source` when `source=local`) names. Source read only; no value has a single writer, so no badge or label names an app (owner ruling).
+
+| Value | Writers in Hermes |
+|---|---|
+| `cli` | `hermes chat` / `hermes` (`hermes_cli/gateway_chat.py:203`), `-c <title> --create-if-missing` (`hermes_cli/gateway_session_store.py:563`), Bot Chat delivery from other bots (`gateway/session_bot.py:370`), one-shot on a gateway without `oneshot` (`gateway_chat.py:199-203`); raw `source=cli`: older CLI rows and API-server `POST /api/sessions {source:"cli"}` (`gateway/platforms/api_server.py:1564, 2620-2623`, `created_source` null) |
+| `tui` | the TUI (`ui-tui/src/canonicalGateway.ts:15-18`), the dashboard Chat tab (`hermes_cli/web_server_chat.py:491-520`), `hermes chat --source tui` (`hermes_cli/_parser.py:317`) |
+| `gui` | a canonical policy label only: stored as `created_source=desktop` (`gateway/session_policy.py:88-107`); bb's own side chats are `local`/`desktop` too |
+| `desktop` | Desktop, local and remote (`apps/desktop/src/api/canonical-protocol.ts:548`), bb (`gui`), `hermes chat --source desktop`, the dashboard's legacy socket (Conduit, `tui_gateway/methods_session.py:65-67`), legacy onboarding (`tui_gateway/methods_onboarding.py:197`), API-server rows, adopted phone-app rows (`hermes_state_local_migration.py:131-134`) |
+
+- Kept out by the allow-list: `oneshot`, `tool`, `cron`, `kanban`, `subagent`, `acp` (`local`/`acp`), `a2a`, `bot_room`, `api_server`, chat apps. REST never lists hidden rows (`hermes_state_sessions.py:1329-1330`).
+- Known gap: an API-server client that labels its session `cli` or `desktop` mirrors. Live (read-only count, 2026-11-09): every API-server row is `source=api_server`.
+- Adoption keeps `source=desktop` and the row's own id as `chat_id` (`gateway/session_local_migration.py:257-330`): the binding's lineage root doesn't move.
+- Activity: REST `last_active` = max(heartbeat, newest message, start) (`hermes_state_common.py:258-274`); the raw `last_activity_at` is heartbeats only, null on older rows and a rotated chain's root value (live: 11 visible rows with it null).
+- Titles: Hermes titles a chat at its first turn (`derived`, then an LLM upgrade, `agent/title_generator.py:625-690`); a user rename wins (`hermes_state_titles.py:117-118`); a rotated chain lists the tip's title, else the root's (`hermes_state_session_list.py:28-38`).
+
 ## P0 live results (T0.11, 2026-11-08)
 
 - Releases `v0.1.0` and `v0.1.1`; `main` on origin at `v0.1.1`. Live install `hermes@0.1.0`, health connected, Hermes 0.22.6 supported; one update to `0.1.1` (A26 verified).

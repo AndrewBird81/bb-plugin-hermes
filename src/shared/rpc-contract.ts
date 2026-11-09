@@ -60,7 +60,10 @@ export const botRowSchema = z
     enabled: z.boolean(),
     /** The bot thread, once the switch made one. */
     thread_id: z.string().nullable(),
-    /** "Imports N chats from the last 30 days": P2 (null in P1). */
+    /**
+     * "Imports N chats from the last 30 days" (01 §2): for an off, served bot, the chats a switch-on now would
+     * import (02 flow 1 "Before on"). Null when the bot is on, or while the count is unknown (not connected).
+     */
     import_count: z.number().int().nullable(),
   })
   .strict();

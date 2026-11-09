@@ -10,10 +10,14 @@ export const OUTSIDE_TAG = "Outside bb";
 /** A visible text that starts with the outside tag: a mirror label, or a recalled one bb refuses to send (D15). */
 export const OUTSIDE_TAG_PREFIX = /^\[Outside bb(?: · [^\]\n]{1,40})?\] /;
 
+/** The `message.dispatch` refusal of a send that starts with the outside tag and carries no marker (D15, 01 §7). */
+export const OUTSIDE_TAG_REFUSAL = "Remove the [Outside bb] tag to send.";
+
 /**
  * Raw surfaces that mirror. Canonical rows store `source=local` and the surface in `created_source` (r03 §67);
  * dashboard chats (Conduit, remote Desktop, dashboard chat) are `desktop` rows. A surface only decides
- * eligibility; it never becomes UI text.
+ * eligibility; it never becomes UI text: every value has several writers in Hermes, so none names one app
+ * (owner ruling; evidence in `docs/operations.md` §Surfaces).
  */
 const MIRRORED_SURFACES: ReadonlySet<string> = new Set(["cli", "tui", "gui", "desktop"]);
 
