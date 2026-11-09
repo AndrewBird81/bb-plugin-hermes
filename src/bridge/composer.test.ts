@@ -17,7 +17,7 @@ afterEach(async () => {
   await rig.close();
 });
 
-const opts = (profile = "alex", view: object = {}) => ({ providerOptions: rig.options(profile, view as never) });
+const opts = (profile = "alex", view: object | null = {}) => ({ providerOptions: rig.options(profile, view as never) });
 const home = (profile: string) => rig.fake.profiles.find((p) => p.name === profile)!.home;
 const warnings = (threadId: string) => deltas(rig, threadId).filter((d) => d.kind === "provider.warning").map((d) => d.summary);
 const TWO_MODELS = {
@@ -33,10 +33,12 @@ describe("model/list (maintenance: no provider options)", () => {
     updateThread(rig.dataDir, "thr_ml", { profile: "bob", bot: false, profile_home: home("bob") });
     const res = (await rig.call("model/list", { cwd: `/x/workspaces/thr_ml` })).result as { models: Record<string, any>[] };
     expect(rig.requests("model.options")[0]).toMatchObject({ params: { profile: "bob" } });
+    const chip = [expect.objectContaining({ id: "profile", value: "bob", values: expect.arrayContaining([{ id: "alex", label: "Alex" }, { id: "bob", label: "Bob" }]) })];
     expect(res.models).toEqual([
-      expect.objectContaining({ id: "stub/stub", isDefault: true, sessionOptions: [expect.objectContaining({ id: "profile", value: "bob", values: expect.arrayContaining([{ id: "alex", label: "Alex" }, { id: "bob", label: "Bob" }]) })] }),
+      expect.objectContaining({ id: PLACEHOLDER_MODEL, isDefault: true, sessionOptions: chip }),
+      expect.objectContaining({ id: "stub/stub", isDefault: false, sessionOptions: chip }),
     ]);
-    expect(res.models[0]!.supportedReasoningEfforts.map((e: { reasoningEffort: string }) => e.reasoningEffort)).toEqual(["default", "none", "low", "medium", "high", "xhigh", "max", "ultra"]);
+    expect(res.models[1]!.supportedReasoningEfforts.map((e: { reasoningEffort: string }) => e.reasoningEffort)).toEqual(["default", "none", "low", "medium", "high", "xhigh", "max", "ultra"]);
     expect(existsSync(modelsFile(rig.dataDir, home("bob")))).toBe(true);
     expect(rig.fake.requests.filter((r) => r.method.startsWith("session."))).toEqual([]); // never a session (r09 M6)
   });
@@ -58,7 +60,40 @@ describe("model/list (maintenance: no provider options)", () => {
     const at = Date.now();
     const res = (await rig.call("model/list", { cwd: "/x/none" })).result as { models: unknown[] };
     expect(Date.now() - at).toBeLessThan(3000);
-    expect(res.models).toHaveLength(1);
+    expect(res.models).toHaveLength(2);
+  });
+});
+
+describe("D53: a new chat runs its bot's own model unless the user picks one", () => {
+  it("New Thread's list (no cwd) has \"The bot's model\" first as the default, with the chip; untouched, session.create gets no model (research 14 §4)", async () => {
+    // The first bot runs `codex/terra`; bob runs `local/mlx` and is offered `codex/terra` too.
+    rig.fake.handle("model.options", (params) => {
+      const bob = (params as { profile?: string }).profile === "bob";
+      return {
+        providers: [
+          { slug: "codex", name: "Codex", is_current: !bob, models: ["terra"], capabilities: { terra: { reasoning: true } } },
+          { slug: "local", name: "Local", is_current: bob, models: ["mlx"], capabilities: { mlx: { reasoning: false } } },
+        ],
+        model: bob ? "mlx" : "terra",
+        provider: bob ? "local" : "codex",
+      };
+    });
+    const { models } = (await rig.call("model/list", {})).result as { models: Record<string, any>[] };
+    expect(models.filter((m) => m.isDefault).map((m) => m.id)).toEqual([PLACEHOLDER_MODEL]);
+    expect(models[0]).toMatchObject({ id: PLACEHOLDER_MODEL, displayName: "The bot's model", sessionOptions: [expect.objectContaining({ id: "profile" })] });
+    // bb's New Thread: bob in the chip, the list's default as the model.
+    const bob = { ...opts("bob", null), sessionOptions: { profile: "bob" } };
+    await startThread(rig, "thr_d53", bob);
+    await turn(rig, "thr_d53", [text("hi")], { ...bob, model: models.find((m) => m.isDefault)!.id });
+    const params = rig.requests("session.create")[0]!.params;
+    expect(params).toMatchObject({ profile: "bob" });
+    expect(params).not.toHaveProperty("model");
+    expect(params).not.toHaveProperty("provider");
+    expect(warnings("thr_d53")).toEqual([]);
+    // A pick in that chat goes.
+    await startThread(rig, "thr_pick", bob);
+    await turn(rig, "thr_pick", [text("hi")], { ...bob, model: "codex/terra" });
+    expect(rig.requests("session.create").at(-1)!.params).toMatchObject({ model: "terra", provider: "codex" });
   });
 });
 
@@ -68,7 +103,7 @@ describe("thread/start", () => {
     await rig.waitFor(() => deltas(rig, "thr_ch").length >= 2);
     const [chip, catalog] = deltas(rig, "thr_ch");
     expect(chip).toMatchObject({ extensionKind: "bb/session-options", payload: { options: [{ id: "profile", value: "bob", values: [{ id: "bob", label: "Bob" }] }] } });
-    expect(catalog).toMatchObject({ extensionKind: "bb/provider-model-catalog", payload: { models: [{ id: "stub/stub" }] } });
+    expect(catalog).toMatchObject({ extensionKind: "bb/provider-model-catalog", payload: { models: [{ id: PLACEHOLDER_MODEL, isDefault: true }, { id: "stub/stub" }] } });
     expect(rig.fake.requests.filter((r) => r.method.startsWith("session."))).toEqual([]);
   });
 });
@@ -92,33 +127,35 @@ describe("bb/provider-model-catalog under bb's 64 KiB state limit", () => {
     // bb: `Buffer.byteLength(JSON.stringify(payload)) > EXTENSION_PAYLOAD_MAX_BYTES` (64 * 1024) → provider/unhandled.
     expect(Buffer.byteLength(JSON.stringify(state.payload))).toBeLessThanOrEqual(65536);
     const models = (state.payload as { models: Record<string, any>[] }).models;
-    expect(models).toHaveLength(200);
+    expect(models).toHaveLength(201);
     const ladder = (m: Record<string, any>) => m.supportedReasoningEfforts.map((e: { reasoningEffort: string }) => e.reasoningEffort);
-    const current = models.find((m) => m.isDefault)!;
-    expect(current.id).toBe("openrouter/vendor-3/model-name-150");
+    expect(models.filter((m) => m.isDefault).map((m) => m.id)).toEqual([PLACEHOLDER_MODEL]);
+    const current = models.find((m) => m.id === "openrouter/vendor-3/model-name-150")!;
     expect(current.reasoningDiscovery).toBe("known");
     expect(ladder(current)).toEqual(["default", "none", "low", "medium", "high", "xhigh", "max", "ultra"]);
+    expect(ladder(models[0]!)).toEqual(ladder(current));
     // The rest: bb asks `model/list{selectedModel}` when one is picked (its selected-model discovery).
     const later = models.filter((m) => m.reasoningDiscovery === "unknown");
     expect(later.length).toBeGreaterThan(0);
     expect(later.every((m) => m.supportedReasoningEfforts.length === 0)).toBe(true);
     const picked = later.at(-1)!;
     const res = (await rig.call("model/list", { cwd: "/x/workspaces/thr_big", selectedModel: picked.model })).result as { models: Record<string, any>[] };
-    expect(res.models).toHaveLength(200);
+    expect(res.models).toHaveLength(201);
     const answer = res.models.find((m) => m.model === picked.model)!;
     expect(answer.reasoningDiscovery).toBe("known");
     expect(ladder(answer)).toEqual(ladder(current));
   });
 
-  it("1000 models (bb's most): the current one with its reasoning, then the catalog's first; the last ones left out", () => {
+  it("1000 models (bb's most): the bot's model and the current one with their reasoning, then the catalog's first; the last ones left out", () => {
     const catalog = catalogFromModelOptions("/h", manyModels(1000, 900), 0);
     const state = catalogState(catalog);
     expect(Buffer.byteLength(JSON.stringify(state))).toBeLessThanOrEqual(65536);
     const ids = state.models.map((m) => m.id);
-    expect(ids[0]).toBe(catalog.models[0]!.id);
+    expect(ids.slice(0, 2)).toEqual([PLACEHOLDER_MODEL, catalog.models[0]!.id]);
     expect(ids).toContain(catalog.current);
     expect(state.models.find((m) => m.isDefault)!.supportedReasoningEfforts).toHaveLength(8);
-    const kept = ids.filter((id) => id !== catalog.current);
+    expect(state.models.find((m) => m.id === catalog.current)!.supportedReasoningEfforts).toHaveLength(8);
+    const kept = ids.filter((id) => id !== catalog.current && id !== PLACEHOLDER_MODEL);
     expect(kept).toEqual(catalog.models.slice(0, kept.length).map((m) => m.id));
   });
 });
@@ -138,16 +175,21 @@ describe("model and reasoning", () => {
     expect(rig.requests("session.create").at(-1)!.params.reasoning).toBeUndefined();
   });
 
-  it("the placeholder model never reaches Hermes: the bot's own model, no warning", async () => {
+  it("\"The bot's model\" never reaches Hermes: the bot's own model with the picked level, no warning", async () => {
     await startThread(rig, "thr_ph", opts());
     await turn(rig, "thr_ph", [text("hi")], { ...opts(), model: PLACEHOLDER_MODEL, reasoningLevel: "high" });
     const params = rig.requests("session.create")[0]!.params;
     expect(params.model).toBeUndefined();
     expect(params.provider).toBeUndefined();
-    expect(params.reasoning).toBeUndefined();
+    expect(params.reasoning).toBe("high");
     expect(JSON.stringify(rig.fake.requests)).not.toContain(PLACEHOLDER_MODEL);
     expect(warnings("thr_ph")).toEqual([]);
     expect(statuses(rig, "thr_ph")).toEqual(["completed"]);
+    // A bot's model without reasoning takes no level.
+    rig.fake.handle("model.options", () => ({ providers: [{ slug: "stub", name: "Stub", is_current: true, models: ["stub-mini"], capabilities: { "stub-mini": { reasoning: false } } }], model: "stub-mini", provider: "stub" }));
+    await startThread(rig, "thr_ph2", opts());
+    await turn(rig, "thr_ph2", [text("hi")], { ...opts(), model: PLACEHOLDER_MODEL, reasoningLevel: "high" });
+    expect(rig.requests("session.create").at(-1)!.params.reasoning).toBeUndefined();
   });
 
   it("an unoffered model → the bot's current one and a warning; the turn still runs (S7 finding 6)", async () => {

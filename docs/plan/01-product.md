@@ -68,7 +68,7 @@ AC:
   - bb names the chat from its first message.
   - The Hermes session is created on the first message: an abandoned draft leaves nothing in Hermes.
 - **Composer:** bb's own: text, attachments, voice dictation, bb's model chip, reasoning.
-  - **Model:** the bot's `model.options`; default = the bot's current model. Validated against the last-known list; never blocks a turn. An unoffered model → the bot's default plus a warning (S7 finding 6).
+  - **Model:** "The bot's model" first and the default (D53), then the bot's `model.options`. It sends no model, so a chat runs its bot's own unless you pick one there; it offers the bot's current model's reasoning. A pick is validated against the last-known list; never blocks a turn. An unoffered model → the bot's default plus a warning (S7 finding 6).
   - **Reasoning** (D17): Hermes levels per model; `default` = the bot's level (r11 §1). Mid-chat changes apply from the next turn.
   - **Attachments:** images (PNG, JPEG, GIF, WebP) go to Hermes (A50); other files don't: a warning names them, the text still goes.
 - **Replies** stream live: text, reasoning, tools.

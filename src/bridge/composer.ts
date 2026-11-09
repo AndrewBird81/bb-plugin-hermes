@@ -24,21 +24,28 @@ const HERMES_EFFORTS = ["none", "low", "medium", "high", "xhigh", "max", "ultra"
 const NEAREST: Record<string, string> = { ultracode: "xhigh" };
 
 /**
- * `model/list` with no bot to ask (no `worker.json` on this machine, or no bot on): one stand-in default, so bb
- * resolves a spawn's model (`loadCatalogDefaultForProvider` refuses an empty catalog) and the spawn reaches the
- * plugin's own refusal. No ladder, no session options; never sent to Hermes (`chooseModel`).
+ * "The bot's model", first and the default of every list (D53): never sent to Hermes (`chooseModel`), so a chat
+ * runs its bot's own model unless the user picks one. With the bot's catalog it offers the current model's
+ * reasoning. Without one (no bot to ask on this machine, or no bot on) it is a stand-in, so bb resolves a spawn's
+ * model (`loadCatalogDefaultForProvider` refuses an empty catalog) and the spawn reaches the plugin's own refusal.
  */
 export const PLACEHOLDER_MODEL = "hermes-bot-model";
-export const placeholderModel = (): AvailableModel => ({
-  id: PLACEHOLDER_MODEL,
-  model: PLACEHOLDER_MODEL,
-  displayName: "The bot's model",
-  description: "No Hermes bot to list models from here",
-  isDefault: true,
-  defaultReasoningEffort: "medium",
-  reasoningDiscovery: "known",
-  supportedReasoningEfforts: [],
-});
+export function placeholderModel(catalog: Catalog | null = null, sessionOptions?: ReturnType<typeof botOption>[]): AvailableModel {
+  const current = currentModel(catalog);
+  return {
+    id: PLACEHOLDER_MODEL,
+    model: PLACEHOLDER_MODEL,
+    displayName: "The bot's model",
+    description: catalog ? "The model set for the bot in Hermes" : "No Hermes bot to list models from here",
+    isDefault: true,
+    defaultReasoningEffort: current?.reasoning ? DEFAULT_REASONING : "medium",
+    reasoningDiscovery: "known",
+    supportedReasoningEfforts: current ? efforts(current) : [],
+    ...(sessionOptions ? { sessionOptions } : {}),
+  };
+}
+
+const currentModel = (catalog: Catalog | null) => catalog?.models.find((m) => m.id === catalog.current) ?? null;
 
 export const unofferedModelText = (asked: string, used: string | null) =>
   `${asked} isn't one of this bot's models in Hermes; ${used ? `using ${used}` : "using the bot's default"}.`;
@@ -76,18 +83,22 @@ export function botOption(bot: { profile: string; bot_label: string }, values: {
   };
 }
 
+/** "The bot's model" (the default), then the bot's models. */
 export function availableModels(catalog: Catalog | null, sessionOptions?: ReturnType<typeof botOption>[]): AvailableModel[] {
-  return (catalog?.models ?? []).map((m) => ({
-    id: m.id,
-    model: m.id,
-    displayName: m.model,
-    description: m.provider_label,
-    isDefault: m.id === catalog?.current,
-    defaultReasoningEffort: m.reasoning ? DEFAULT_REASONING : "medium",
-    reasoningDiscovery: "known",
-    supportedReasoningEfforts: efforts(m),
-    ...(sessionOptions ? { sessionOptions } : {}),
-  }));
+  return [
+    placeholderModel(catalog, sessionOptions),
+    ...(catalog?.models ?? []).map((m) => ({
+      id: m.id,
+      model: m.id,
+      displayName: m.model,
+      description: m.provider_label,
+      isDefault: false,
+      defaultReasoningEffort: m.reasoning ? DEFAULT_REASONING : "medium",
+      reasoningDiscovery: "known" as const,
+      supportedReasoningEfforts: efforts(m),
+      ...(sessionOptions ? { sessionOptions } : {}),
+    })),
+  ];
 }
 
 /** bb refuses an extension state whose `JSON.stringify` is longer (`EXTENSION_PAYLOAD_MAX_BYTES`, `start-server.js`). */
@@ -95,22 +106,23 @@ export const STATE_MAX_BYTES = 64 * 1024;
 
 /**
  * The `bb/provider-model-catalog` payload within `STATE_MAX_BYTES`: bb's schema has no shared ladder, and a big
- * provider's full ladders don't fit. The current model first, then the catalog's order, keep theirs while they fit;
- * the rest go `reasoningDiscovery: "unknown"`, which bb fills by asking `model/list{selectedModel}` when one is
- * picked (`refineSelectedModel`). Models that don't fit even so are left out, the last in that order first.
+ * provider's full ladders don't fit. "The bot's model" and the current model first, then the catalog's order, keep
+ * theirs while they fit; the rest go `reasoningDiscovery: "unknown"`, which bb fills by asking
+ * `model/list{selectedModel}` when one is picked (`refineSelectedModel`). Models that don't fit even so are left
+ * out, the last in that order first; the first two never are.
  */
 export function catalogState(catalog: Catalog): { models: AvailableModel[]; selectedOnlyModels: [] } {
   const full = availableModels(catalog);
-  const order = [...full.keys()].sort((a, b) => Number(full[b]!.isDefault) - Number(full[a]!.isDefault));
+  const kept = (i: number) => full[i]!.id === PLACEHOLDER_MODEL || full[i]!.id === catalog.current;
+  const order = [...full.keys()].sort((a, b) => Number(kept(b)) - Number(kept(a)));
   const bytes = (v: unknown) => Buffer.byteLength(JSON.stringify(v));
   const models: (AvailableModel | null)[] = full.map((m) => (m.supportedReasoningEfforts.length ? { ...m, reasoningDiscovery: "unknown", supportedReasoningEfforts: [] } : m));
   // The array's JSON: its entries, a comma between two, and the wrapper.
   let size = bytes({ models: [], selectedOnlyModels: [] }) + models.reduce((n, m) => n + bytes(m) + 1, -1);
-  // Room for the current model's ladder before any other model's.
-  const first = order[0];
-  const room = first !== undefined && full[first]!.isDefault ? bytes(full[first]) - bytes(models[first]) : 0;
+  // Room for the first two's ladders before any other model's.
+  const room = order.filter(kept).reduce((n, i) => n + bytes(full[i]) - bytes(models[i]), 0);
   for (const i of [...order].reverse()) {
-    if (size + room <= STATE_MAX_BYTES || full[i]!.isDefault) break;
+    if (size + room <= STATE_MAX_BYTES || kept(i)) break;
     size -= bytes(models[i]) + 1;
     models[i] = null;
   }
@@ -145,8 +157,8 @@ export interface ModelChoice {
  */
 export function chooseModel(catalog: Catalog | null, asked: string | undefined, reasoning: string | undefined): ModelChoice {
   const effort = !reasoning || reasoning === DEFAULT_REASONING ? null : (NEAREST[reasoning] ?? reasoning);
-  // The placeholder has no reasoning: the bot's own model and level.
-  if (asked === PLACEHOLDER_MODEL) return { model: null, provider: null, reasoning: null, warning: null };
+  // The bot's own model, with the picked level if it takes one.
+  if (asked === PLACEHOLDER_MODEL) return { model: null, provider: null, reasoning: currentModel(catalog)?.reasoning ? effort : null, warning: null };
   if (!asked || !catalog) return { model: null, provider: null, reasoning: effort, warning: null };
   const offered = catalog.models.find((m) => m.id === asked);
   const pick = offered ?? catalog.models.find((m) => m.id === catalog.current) ?? null;
