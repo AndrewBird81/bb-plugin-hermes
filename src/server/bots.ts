@@ -222,9 +222,14 @@ export function createBots(deps: SyncDeps & { sync: Sync; enqueue: Enqueue }) {
     if (binding && full) await liveThread(binding.thread_id);
     if (!botBinding(db, profileHome)) await spawnBotThreadNow(bot, target);
     if (relook) await relookBotChatNow(profileHome, target);
+    // Errors stay per binding: a chat deleted in Hermes (its thread stays, 01 §7) never stops the others.
     for (const b of bindingsOf(db, profileHome)) {
-      if (b.state === "replaying") await sync.importNow(b, bot.enabled_at ?? Date.now(), target);
-      else await sync.reconcileNow(b, target);
+      try {
+        if (b.state === "replaying") await sync.importNow(b, bot.enabled_at ?? Date.now(), target);
+        else await sync.reconcileNow(b, target);
+      } catch (error) {
+        fail(errorCode(error, "reconcile_failed"));
+      }
     }
   }
 

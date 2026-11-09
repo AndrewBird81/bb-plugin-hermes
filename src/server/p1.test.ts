@@ -337,6 +337,25 @@ describe("wakes (T1.11)", () => {
     expect(bindingByThread(w.db, "thr_1")?.cursor_uid).toBe("u3");
   });
 
+  it("a chat deleted in Hermes doesn't stop the bot's other threads from waking (01 §7: the thread stays)", async () => {
+    const w = await liveBotThread();
+    const chats: string[] = [];
+    for (const c of ["c1", "c2"]) {
+      const { thread_id: chat } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+      await w.idle(chat);
+      const sid = bindingByThread(w.db, chat)!.expected_id!;
+      w.history.set(sid, { session_id: sid, turns: [turn(`${c}-s1`, { submission_id: `bb:${chat}:${c}` })] });
+      w.persisted(chat, { profile_home: NEO, lineage_root: sid, session_id: sid, turns: [{ submission_id: `bb:${chat}:${c}`, anchor_uids: [`${c}-s1`], reply_uids: [], at: 1 }] });
+      await w.idle(chat);
+      chats.push(chat);
+    }
+    // The first side chat's session is deleted in Hermes; the second one gets an outside turn.
+    w.history.delete(bindingByThread(w.db, chats[0]!)!.lineage_root!);
+    w.history.get(bindingByThread(w.db, chats[1]!)!.lineage_root!)!.turns.push(turn("c2-s2"));
+    await w.changed(NEO);
+    expect(w.markers(chats[1]!).filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "c2-s2", labeled: true }]);
+  });
+
   it("a hidden user row wakes with the marker only; a later reply wakes once as rest", async () => {
     const w = await liveBotThread();
     w.history.get("root_bc")!.turns.push(turn("u2", { user_hidden: true, user_text: null, complete: false, reply_uids: [] }));
