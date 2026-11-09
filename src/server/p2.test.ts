@@ -1307,3 +1307,48 @@ describe("lead 8 and 9: diagnostics stay clean", () => {
     vi.restoreAllMocks();
   });
 });
+
+describe("v1.0.1: a failed job records once, by its caller", () => {
+  const errors = async (w: World) => (await w.rpc<Diagnostics>("diagnostics")).errors;
+  const cli = (w: World, id: string) => w.threads.set(id, { ...w.thread("thr_1"), id, originPluginId: null, pinned: false, inputs: [] });
+
+  it("a failing `run` job records once, with its code", async () => {
+    const w = await world();
+    await w.connect();
+    await on(w);
+    cli(w, "thr_cli");
+    w.state.failEvents = 1;
+    await w.emit("thread.created", "thr_cli");
+    expect(await errors(w)).toEqual(["unavailable"]);
+  });
+
+  it("a read check for a thread bb deleted records nothing", async () => {
+    const w = await world();
+    await w.connect();
+    await on(w);
+    const { thread_id } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+    await w.idle(thread_id);
+    // The init is confirmed over: a read check waits a quiet period.
+    await w.quiet();
+    w.thread(thread_id).deletedAt = 1;
+    // A job about it fails `thread_not_found`: it is gone.
+    await w.emit("experimental_thread.events" as never, thread_id);
+    await w.quiet();
+    expect(await errors(w)).toEqual([]);
+  });
+
+  it("setBot's and newChat's job errors reach their caller only", async () => {
+    const w = await world();
+    await w.connect();
+    await on(w);
+    w.state.failSpawn = 1;
+    await expect(w.harness.behavior.callRpc("newChat", { profile: "neo" })).rejects.toThrow("model catalog is empty");
+    await w.rpc("setBot", { profile_home: NEO, on: false });
+    // The switch-on's Bot Chat lookup fails.
+    w.botChats.get = () => {
+      throw new Error("history_http_503:down");
+    };
+    await expect(w.harness.behavior.callRpc("setBot", { profile_home: NEO, on: true })).rejects.toThrow("history_http_503");
+    expect(await errors(w)).toEqual([]);
+  });
+});

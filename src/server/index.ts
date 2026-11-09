@@ -55,7 +55,7 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
   await connection.init();
 
   const fail = (code: string) => connection.recordError(code);
-  const enqueue = createQueue((error) => fail(errorCode(error, "job_failed")));
+  const enqueue = createQueue();
   const notify = createNotify(bb, db, fail);
   const deps = { bb, db, host, connection, notify };
   const sync = createSync({ ...deps, enqueue });

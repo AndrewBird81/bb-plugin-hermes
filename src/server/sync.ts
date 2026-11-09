@@ -66,12 +66,15 @@ export function targetOf(connection: Connection): Target | null {
   return { machine: health.machine.id, root: health.folder };
 }
 
-/** Jobs run one at a time, in order. A job must never wait for another job: that would deadlock. */
-export function createQueue(onError: (error: unknown) => void) {
+/**
+ * Jobs run one at a time, in order. A job must never wait for another job: that would deadlock. A failed job
+ * fails only the promise its caller got: the caller records it (or not, for a thread gone).
+ */
+export function createQueue() {
   let tail: Promise<unknown> = Promise.resolve();
   return function enqueue<T>(job: () => Promise<T>): Promise<T> {
     const run = tail.then(job);
-    tail = run.catch(onError);
+    tail = run.catch(() => undefined);
     return run;
   };
 }
