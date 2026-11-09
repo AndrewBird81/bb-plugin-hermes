@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Read-only audit of a Hermes folder for writes bb could have made (03 §Rules: live Hermes is read-only).
 //   node scripts/live-audit.mjs [--folder ~/.hermes] [--since <unix seconds>]
-// Per profile: sessions started since `--since` by source, sessions bb would create (`request_id` / `submission_id`
-// starting `bb:`, `turn_author` bb), and the plugin's skill dir. `sqlite3 -readonly` only; never reads `.env`.
+// Per profile: sessions started since `--since` by source, bb's admissions (`request_id` / payload `bb:`; all time:
+// the table has no time column), bb's messages since `--since` (`display_metadata` `bb:`), and the plugin's skill
+// dir. `sqlite3 -readonly` only; never reads `.env`.
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import os from "node:os";
@@ -32,7 +33,7 @@ for (const [name, home] of homes) {
   report.profiles[name] = {
     sessions_since: query(db, `SELECT source, created_source, hidden, count(*) AS n FROM sessions WHERE started_at >= ${since} GROUP BY 1, 2, 3 ORDER BY 1, 2, 3`),
     bb_admissions: query(db, `SELECT count(*) AS n FROM session_admissions WHERE request_id LIKE 'bb:%' OR payload_json LIKE '%"bb:%'`)[0]?.n ?? null,
-    bb_messages: query(db, `SELECT count(*) AS n FROM messages WHERE display_metadata LIKE '%"bb:%'`)[0]?.n ?? null,
+    bb_messages: query(db, `SELECT count(*) AS n FROM messages WHERE display_metadata LIKE '%"bb:%' AND timestamp >= ${since}`)[0]?.n ?? null,
     skill_dir: existsSync(path.join(home, "skills", "bb-plugin-hermes")),
   };
 }
