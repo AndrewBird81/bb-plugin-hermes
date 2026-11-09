@@ -41,6 +41,8 @@ export interface WorldOptions {
   profiles?: HermesProfile[];
   /** Seeds the mapping db before the server starts (a previous run). */
   seed?: (db: ReturnType<typeof openMappingDb>) => void;
+  /** Threads bb holds before the server starts. */
+  threads?: FakeThread[];
 }
 
 const neo: HermesProfile = { name: "neo", home: NEO, handle: null, terminal_cwd: "/w/neo", served: true };
@@ -68,8 +70,8 @@ export function turn(anchor: string, over: Partial<HistoryTurn> = {}): HistoryTu
   return { anchor_uid: anchor, user_text: `text ${anchor}`, user_hidden: false, submission_id: null, reply_uids: [`${anchor}-r`], ts: Date.now() - 86_400_000, complete: true, ...over };
 }
 
-export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) {
-  const threads = new Map<string, FakeThread>();
+export async function world({ profiles = [neo, bob], seed, threads: before = [] }: WorldOptions = {}) {
+  const threads = new Map<string, FakeThread>(before.map((t) => [t.id, t]));
   const events = new Map<string, { type: string; data: unknown; seq: number }[]>();
   const prompts = new Map<string, { createdAt: number; id: string; input: PromptInput[] }[]>();
   const levels = new Map<string, string>();

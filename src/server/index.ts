@@ -11,7 +11,7 @@ import { createDiscovery } from "./discovery.js";
 import { dispatchDecision, hasUserMessage } from "./dispatch.js";
 import { type ConnectionSource, createConnection, errorCode, KEEPALIVE_MS, type OnConnected } from "./connection.js";
 import { hermesMachine, MACHINE_FOLDER_KEY, machineFolder } from "./provider-options.js";
-import { addTombstone, allBindings, bindingByThread, bindingCounts, type Db, deleteBinding, getKv, openMappingDb, queuedTurnsOf, setKv } from "./db.js";
+import { addTombstone, allBindings, bindingByThread, bindingCounts, type Db, deleteBinding, getKv, openMappingDb, queuedTurnsOf, setKv, updateBinding } from "./db.js";
 import { createNotify } from "./notify.js";
 import { createQueue, createSync, invalidateThreadInfo, targetOf } from "./sync.js";
 
@@ -90,12 +90,20 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
   // A restart mid-import (review 3): a thread with queued rows keeps its hold until its finalize, and a bot
   // thread's or side chat's import still ends read (a mirrored one is redone anyway).
   for (const b of allBindings(db)) if (b.state === "replaying" && b.kind !== "mirror") sync.readAtIdle.add(b.thread_id);
-  void notify.restoreAll((threadId) => queuedTurnsOf(db, threadId).length > 0);
+  // A restart during an init (review-2 6): a held thread whose binding has no session yet keeps its hold and ends
+  // read. Finalized now too: its idle may have come before the restart, its confirm lost with it.
+  const initing = notify.held().filter((threadId) => {
+    const b = bindingByThread(db, threadId);
+    return b?.state === "pending" && !b.session_id;
+  });
+  for (const threadId of initing) sync.readAtIdle.add(threadId);
+  void notify.restoreAll((threadId) => initing.includes(threadId) || queuedTurnsOf(db, threadId).length > 0);
+  for (const threadId of initing) finalize(threadId);
   // The folder as of the last check (the hook can't await settings).
   bb.experimental_hooks.on("message.dispatch", (context) => {
     const decision = dispatchDecision(context, hermesMachine(db, connection.health().folder));
     // Review 5: the user's own turn behind an init or import pushes as usual, and isn't marked read for them.
-    if (decision.action === "proceed" && hasUserMessage(context)) {
+    if (decision.action === "proceed" && hasUserMessage(context, bb.pluginId)) {
       sync.dropReadFlag(context.thread.id);
       notify.release(context.thread.id);
     }
@@ -121,6 +129,9 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
   bb.events.on("thread.unarchived", ({ thread }) => {
     if (!isHermes(thread)) return;
     runFor(thread.id, "wake_failed", async () => {
+      // D48: unarchived (by the user while the bot is off, or by the switch-on): the switch no longer owns its
+      // archive, so a later user archive stays at the next switch-on (review-2 8).
+      if (bindingByThread(db, thread.id)?.archived_by_switch) updateBinding(db, thread.id, { archived_by_switch: false });
       const binding = bindingByThread(db, thread.id);
       const target = targetOf(connection);
       if (binding && target && bots.isEnabled(binding.profile_home)) await sync.reconcileNow(binding, target);

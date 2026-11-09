@@ -180,8 +180,9 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
       return true;
     } catch (error) {
       releaseTurn(db, binding.thread_id, anchorUid);
-      // Nothing to run quietly any more, unless an init or import still holds the thread.
-      if (level === "input-only" && !readAtIdle.has(binding.thread_id) && !importing.has(binding.thread_id)) notify.release(binding.thread_id);
+      // Nothing to run quietly any more, unless an init, an import or a wake sent before still holds it (review-2 10).
+      const holds = readAtIdle.has(binding.thread_id) || importing.has(binding.thread_id) || queuedTurnsOf(db, binding.thread_id).length > 0;
+      if (level === "input-only" && !holds) notify.release(binding.thread_id);
       // bb takes no send into an archived thread (A49): not an error; `thread.unarchived` wakes it.
       const archived = await bb.sdk.threads.get({ threadId: binding.thread_id }).then((t) => t.archivedAt !== null, () => false);
       if (!archived) fail(errorCode(error, "send_failed"));
@@ -548,6 +549,11 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
       const record = records.find((m) => m.anchor_uid === row.anchor_uid);
       if (!record && records.length >= PERSISTED_TURNS_KEPT) {
         settleTurn(db, threadId, row.anchor_uid, "done", row.reply_uids);
+        continue;
+      }
+      // Nothing to show again (review-2 9): never retried, and the cursor may pass it.
+      if (!row.reply_uids.length) {
+        settleTurn(db, threadId, row.anchor_uid, "done", []);
         continue;
       }
       const key = `${threadId}\0${row.anchor_uid}`;

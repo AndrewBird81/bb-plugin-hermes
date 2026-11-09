@@ -24,11 +24,14 @@ const isMarker = (part: Part) => {
 /** A visible text part starting with the tag. */
 const tagged = (parts: readonly Part[]) => parts.some((p) => p.type === "text" && p.visibility !== "agent-only" && OUTSIDE_TAG_PREFIX.test(p.text ?? ""));
 
-/** The dispatch's messages: each queued row on its own, else the inline input. */
-const messagesOf = (context: MessageDispatchHookContext): { parts: readonly Part[]; user: boolean }[] =>
+/**
+ * The dispatch's messages: each queued row on its own, else the inline input. bb gives a plugin's own send with no
+ * sender thread `initiator: "user"` (`resolveDispatchAuthor`): `user` leaves out this plugin's (review-2 7).
+ */
+const messagesOf = (context: MessageDispatchHookContext, pluginId = ""): { parts: readonly Part[]; user: boolean }[] =>
   context.queuedMessages.length
-    ? context.queuedMessages.map((m) => ({ parts: m.content, user: m.initiator === "user" }))
-    : [{ parts: context.input.blocks as readonly PromptInput[], user: context.initiator === "user" }];
+    ? context.queuedMessages.map((m) => ({ parts: m.content, user: m.initiator === "user" && m.originPluginId !== pluginId }))
+    : [{ parts: context.input.blocks as readonly PromptInput[], user: context.initiator === "user" && context.originPluginId !== pluginId }];
 
 /**
  * `hermes`: the saved Hermes machine (null when unset). An unknown host (`context.host` null) passes. A group that
@@ -44,5 +47,5 @@ export function dispatchDecision(context: MessageDispatchHookContext, hermes: { 
 }
 
 /** The user's own message (not a plugin marker) is in this dispatch: it must not run under an init's or import's hold. */
-export const hasUserMessage = (context: MessageDispatchHookContext) =>
-  context.thread.providerId === "hermes" && messagesOf(context).some((m) => m.user && !m.parts.some(isMarker));
+export const hasUserMessage = (context: MessageDispatchHookContext, pluginId: string) =>
+  context.thread.providerId === "hermes" && messagesOf(context, pluginId).some((m) => m.user && !m.parts.some(isMarker));

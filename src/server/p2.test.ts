@@ -1116,3 +1116,108 @@ describe("review-2 5: a throw in an import's last finalize", () => {
     expect(isRead(w, t)).toBe(true);
   });
 });
+
+describe("review-2 6-10", () => {
+  it("6: a server restart during a side chat's init keeps its hold and read flag; the init still ends read", async () => {
+    const w = await world({
+      seed: (db) => {
+        db.prepare(`INSERT INTO bots (profile_home, name, enabled, enabled_at) VALUES (?, 'neo', 1, ?)`).run(NEO, Date.now());
+        insertBinding(db, { thread_id: "thr_c", profile_home: NEO, lineage_root: null, session_id: null, expected_id: "local-x", kind: "chat", source: null, tag: null, state: "pending", legacy: false, archived_by_switch: false, title_set: null });
+        // A pending chat whose init ended long ago keeps no hold: its level isn't on record.
+        insertBinding(db, { thread_id: "thr_d", profile_home: NEO, lineage_root: null, session_id: null, expected_id: "local-y", kind: "chat", source: null, tag: null, state: "pending", legacy: false, archived_by_switch: false, title_set: null });
+        db.prepare(`INSERT INTO kv (key, value) VALUES ('notify_restore', '{"thr_c":"all"}')`).run();
+      },
+      threads: [{ ...fakeThread("thr_c"), visibility: "visible", status: "active" }, { ...fakeThread("thr_d"), visibility: "visible" }],
+    });
+    await w.flush();
+    expect(w.levelCalls).toEqual([]);
+    await w.idle("thr_c");
+    await w.quiet();
+    expect(isRead(w, "thr_c")).toBe(true);
+    expect(isRead(w, "thr_d")).toBe(false);
+    await w.elapse(RESTORE_DELAY_MS);
+    expect(w.levelCalls).toEqual([{ threadId: "thr_c", level: "all" }]);
+    expect((await w.rpc<Diagnostics>("diagnostics")).errors).toEqual([]);
+  });
+
+  it("6: an init over just before the restart (its confirm lost) ends read and gets its level back", async () => {
+    const w = await world({
+      seed: (db) => {
+        db.prepare(`INSERT INTO bots (profile_home, name, enabled, enabled_at) VALUES (?, 'neo', 1, ?)`).run(NEO, Date.now());
+        insertBinding(db, { thread_id: "thr_c", profile_home: NEO, lineage_root: null, session_id: null, expected_id: "local-x", kind: "chat", source: null, tag: null, state: "pending", legacy: false, archived_by_switch: false, title_set: null });
+        db.prepare(`INSERT INTO kv (key, value) VALUES ('notify_restore', '{"thr_c":"all"}')`).run();
+      },
+      threads: [{ ...fakeThread("thr_c"), visibility: "visible", latestAttentionAt: 5 }],
+    });
+    await w.quiet();
+    expect(isRead(w, "thr_c")).toBe(true);
+    await w.elapse(RESTORE_DELAY_MS);
+    expect(w.levelCalls).toEqual([{ threadId: "thr_c", level: "all" }]);
+  });
+
+  it("7: the plugin's own send (spawnStart, initiator user, no sender) isn't the user's", async () => {
+    const w = await botChatWorld([]);
+    await on(w);
+    await drain(w);
+    const { thread_id: chat } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+    const hook = w.harness.inspection.registrations.hooks["message.dispatch"]!;
+    const blocks = [{ type: "text" as const, mentions: [], text: "", visibility: "agent-only" as const }];
+    expect(await hook(makeMessageDispatchHookContext({ thread: { id: chat, providerId: "hermes" }, initiator: "user", originPluginId: "hermes", input: { blocks, text: "" } }))).toEqual({ action: "proceed" });
+    await w.elapse(RESTORE_DELAY_MS);
+    expect(w.levels.get(chat)).toBe("muted");
+    // A queued row of the plugin's own, re-run at a drain.
+    await hook(makeMessageDispatchHookContext({ thread: { id: chat, providerId: "hermes" }, queuedMessages: [makeQueueEntry({ content: blocks, initiator: "user", originPluginId: "hermes" })], input: { blocks, text: "" } }));
+    await w.elapse(RESTORE_DELAY_MS);
+    expect(w.levels.get(chat)).toBe("muted");
+  });
+
+  it("8: a thread the user unarchives while the bot is off is theirs: the switch-on leaves it archived", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "c1");
+    await on(w);
+    await drain(w);
+    const t = bindingByLineage(w.db, NEO, "c1")!.thread_id;
+    await w.rpc("setBot", { profile_home: NEO, on: false });
+    expect(bindingByThread(w.db, t)?.archived_by_switch).toBe(true);
+    w.thread(t).archivedAt = null;
+    await w.emit("thread.unarchived", t);
+    expect(bindingByThread(w.db, t)?.archived_by_switch).toBe(false);
+    w.thread(t).archivedAt = 7;
+    await on(w);
+    expect(w.thread(t).archivedAt).toBe(7);
+  });
+
+  it("9: a failed render of a turn with no reply rows settles done; the cursor passes it", async () => {
+    const w = await botChatWorld([turn("u1")]);
+    await on(w);
+    await drain(w);
+    w.history.get("root_bc")!.turns.push(turn("u2", { reply_uids: [] }));
+    await w.changed(NEO);
+    Object.assign(w.thread("thr_1"), { status: "error", queued: 0 });
+    await w.emit("thread.failed" as never, "thr_1");
+    await w.quiet();
+    expect(turnRow(w.db, "thr_1", "u2")).toMatchObject({ state: "done", reply_uids: [] });
+    await w.changed(NEO);
+    expect(bindingByThread(w.db, "thr_1")?.cursor_uid).toBe("u2");
+  });
+
+  it("10: a failed second wake keeps the first wake's hold", async () => {
+    const w = await botChatWorld([turn("u1")]);
+    await on(w);
+    await drain(w);
+    await w.elapse(RESTORE_DELAY_MS);
+    w.history.get("root_bc")!.turns.push(turn("u2"), turn("u3"));
+    let sends = 0;
+    w.harness.inspection.sdk.stub("threads.send", async ({ threadId, input }: { threadId: string; input: never[] }) => {
+      if (++sends === 2) throw Object.assign(new Error("HTTP 503"), { code: "unavailable" });
+      w.thread(threadId).inputs.push(input);
+      w.thread(threadId).queued++;
+      return { ok: true, delivery: "sent" };
+    });
+    await w.changed(NEO);
+    expect(turnRow(w.db, "thr_1", "u2")?.state).toBe("queued");
+    expect(turnRow(w.db, "thr_1", "u3")).toBeNull();
+    await w.elapse(RESTORE_DELAY_MS);
+    expect(w.levels.get("thr_1")).toBe("input-only");
+  });
+});
