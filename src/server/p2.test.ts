@@ -118,6 +118,29 @@ describe("P1 follow-ups: an init or import ends read only once it is over", () =
     expect(w.levelCalls.at(-1)).toEqual({ threadId: "thr_1", level: "inherit" });
   });
 
+  for (const n of [1, 4]) {
+    it(`BUG 3 (live, every bot switched on): the init's finalize lands in the gap before the import's ${n === 1 ? "one turn starts" : "turns start"} → still 0 unread`, async () => {
+      const w = await botChatWorld(Array.from({ length: n }, (_, i) => turn(`u${i + 1}`)));
+      await on(w);
+      // The spawn's empty turn and the init end; bb reports idle with nothing queued before the first import turn starts.
+      await w.idle("thr_1");
+      const readAfterInit = w.thread("thr_1").lastReadAt!;
+      // Then every import turn runs, one by one; each end moves latestAttentionAt past that markRead.
+      for (let i = 0; i < n; i++) {
+        await w.active("thr_1");
+        await w.idle("thr_1");
+      }
+      expect(w.thread("thr_1").latestAttentionAt).toBeGreaterThan(readAfterInit);
+      await w.quiet();
+      expect(isRead(w, "thr_1")).toBe(true);
+      await w.elapse(RESTORE_DELAY_MS);
+      expect(w.levelCalls).toEqual([
+        { threadId: "thr_1", level: "muted" },
+        { threadId: "thr_1", level: "inherit" },
+      ]);
+    });
+  }
+
   it("a confirm that finds a later turn waits for that turn's idle", async () => {
     const w = await botChatWorld();
     await on(w);
