@@ -35,6 +35,7 @@ Later (out of v1):
 - Profiles with their own gateway, outside the host's `served_profiles` (S8 §Per-profile reach).
 - Upstream: S8's two race bugs (D50).
 - Community marketplace listing.
+- The Hermes icon before each Hermes row's title, as Pi rows have. bb's thread list draws it only for providers in bb's provider list (the New Thread picker and Settings → Providers), so it needs Hermes listed there, reversing D2. The phone layout's Recent list already shows it. Deferred by the owner (2026-11-09).
 
 ## Decisions that bind v1
 

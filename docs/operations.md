@@ -144,6 +144,13 @@ A range never offers the next major, and bb refuses to reinstall a managed plugi
 
 Live (2026-11-09, UTC): `v1.0.0` released (tag `9f9a436c`); the steps above, in order. The plugin was gone for 12 s. Backup: 102,400 bytes, sha256 matched, 22 bindings and 5 bots. After: health connected with no re-save; bindings 22 = 22, duplicates 0, errors none; worker and bridges `1.0.0+2b1292dd32b0`; source `^1`, tag `v1.0.0`. Hermes threads: the same 15 open, 8 archived and 4 pinned, titles unchanged, none unread; bots unchanged (`todoist` off); 0 pushes; 0 Hermes writes.
 
+## v1.0.1 live update (2026-11-09, UTC)
+
+`v1.0.1` released (tag `6f0109ba`): a spawn bb refuses no longer leaves `thread_not_found` in `diagnostics.errors`, and a failed job records once (by its caller, not also by the queue).
+- `bb plugin update hermes --yes` (without `--yes`, off a terminal, it refuses), then `stopHosted` (15 stopped).
+- After: worker and bridges `1.0.1+fc0168a19b27`; health connected, supported; bindings 15, duplicates 0; errors none. 15, not 22: seven Hermes threads were deleted in bb since the move, and their bindings went with them, as designed.
+- A refused spawn from `$WORK_HOST`: the 409, no thread, errors still none. 0 pushes; 0 Hermes writes; gateway pid unchanged.
+
 ## Approvals
 
 Gated steps (pushes, tags, releases, the live install, each live bot switch-on) check this log first (04 §Rollout).
@@ -163,3 +170,5 @@ Gated steps (pushes, tags, releases, the live install, each live bot switch-on) 
 | 2026-11-09 | "Proceed as proposed" | Approved |
 | 2026-11-09 | "You can release 1.0": read as `v0.3.0` for the P2 live dogfood (its live update and 30-day import included), then `v1.0.0` (T2.6) | Approved |
 | 2026-11-09 | Moving the live install to `@^1` (`bb plugin remove`, then a fresh install), after the isolated test | Done under "You can release 1.0"; no data lost |
+| 2026-11-09 | Release `v1.0.1` and its live update | Approved ("Fix the bugs and release 1.0.1") |
+| 2026-11-09 | Sidebar Hermes icon (needs Hermes in bb's provider list, reversing D2) | Deferred: "I'll fold it in to my next major initiative" |
