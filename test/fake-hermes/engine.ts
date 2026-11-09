@@ -1234,6 +1234,28 @@ export class Engine {
     return id;
   }
 
+  /**
+   * `profiles.list` `canonical_session`: the profile's Bot Chat once the gateway owns it (a legacy one only after
+   * its adoption), `resolved_id` its live tip (T1.0 rotated-bot-chat.json).
+   */
+  canonicalSession(profile: FakeProfile): Json | null {
+    const s = this.titled(profile, "Bot Chat");
+    if (!s || this.legacy(s)) return null;
+    const tip = this.tipOf(s);
+    const rows = this.chainRows(s).filter((r) => r.active);
+    const last = rows.at(-1);
+    return {
+      id: s.id,
+      resolved_id: tip.id,
+      title: tip.title ?? "",
+      root_title: s.title ?? "",
+      preview: last ? String(last.content ?? "").slice(0, 80) : "",
+      started_at: tip.started_at,
+      last_active: tip.last_activity_at,
+      message_count: tip.rows.filter((r) => r.active).length,
+    };
+  }
+
   hold(profile: FakeProfile, sessionId: string, on: boolean) {
     this.require(profile, sessionId).held = on;
   }

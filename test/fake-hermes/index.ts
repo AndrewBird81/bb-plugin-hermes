@@ -483,7 +483,8 @@ function p0Handlers(): Record<string, Handler> {
       session_create: { sources: ["acp", "cli", "gui", "oneshot", "tool", "tui"], parameters: ["cwd", "follow_profile_config", "model", "provider", "reasoning", "request_id", "source", "title"] },
     }),
     // Every profile folder, the root first, then by name (`hermes_cli/profiles.py:983-1001`).
-    "profiles.list": (_p, { fake }) => ({
+    // `canonical_session` only with `include_sessions` (the worker's read-only Bot Chat lookup).
+    "profiles.list": (params, { fake }) => ({
       profiles: [fake.profiles[0]!, ...[...fake.profiles.slice(1), ...fake.unserved].sort((a, b) => a.name.localeCompare(b.name))].map((p) => ({
         name: p.name,
         path: p.home,
@@ -493,7 +494,7 @@ function p0Handlers(): Record<string, Handler> {
         display_name: p.name === "default" ? "" : p.name,
         last_session: null,
         worker_session: null,
-        canonical_session: null,
+        canonical_session: params.include_sessions === true && !fake.unserved.includes(p) ? fake.engine.canonicalSession(p) : null,
       })),
       bot_mode_protocol: true,
       install_id: "",
