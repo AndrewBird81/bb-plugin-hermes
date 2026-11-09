@@ -24,6 +24,7 @@
 //   /retry           {profile, session_id}              another client's /retry of the last message
 //   /compress        {profile, session_id}              another client's compaction
 //   /restDelay       {ms}                               every REST answer waits (a slow import, A38)
+//   /models          {count}                            model.options offers this many models (a big catalog: bb's 64 KiB state limit)
 //   /requests        {from?}                            the canonical calls since index `from`: {next, calls[{method, profile, refused?}]}
 // SIGHUP restarts too. Prompt words script turns from bb's composer as well: #slow #tool #approval #edit
 // #clarify #think #fail.
@@ -112,6 +113,16 @@ const ops: Record<string, (b: Body, f: FakeHermes) => unknown> = {
   retry: (b, f) => f.retry(b.profile, b.session_id),
   compress: (b, f) => f.compressElsewhere(b.profile, b.session_id),
   restDelay: (b, f) => void (f.restDelayMs = Number(b.ms) || 0),
+  models: (b, f) => {
+    const n = Number(b.count) || 1;
+    const models = Array.from({ length: n }, (_, i) => (i === 0 ? "stub" : `vendor-${i % 7}/a-rather-long-model-name-for-the-catalog-${String(i).padStart(3, "0")}-preview`));
+    f.handle("model.options", () => ({
+      providers: [{ slug: "stub", name: "stub", is_current: true, models, total_models: n, capabilities: Object.fromEntries(models.map((m) => [m, { fast: false, reasoning: true }])) }],
+      model: "stub",
+      provider: "stub",
+    }));
+    return { models: n };
+  },
   requests: (b, f) => {
     const from = Number(b.from) || 0;
     return { next: f.requests.length, calls: f.requests.slice(from).map((r) => ({ method: r.method, profile: r.profile, ...(r.refused ? { refused: r.refused } : {}) })) };
