@@ -1,6 +1,8 @@
+import { makeMessageDispatchHookContext, makeQueueEntry } from "@get-bb/plugin-sdk/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { encodeMarker } from "../shared/marker.js";
 import type { BotRow, Diagnostics } from "../shared/rpc-contract.js";
-import { outsideTag } from "../shared/sources.js";
+import { OUTSIDE_TAG_REFUSAL, outsideTag } from "../shared/sources.js";
 import { allBindings, bindingByLineage, bindingByThread, botRecord, insertBinding } from "./db.js";
 import { MAX_IMPORTS } from "./discovery.js";
 import { type FakeThread, NEO, session, turn, world, type World } from "./fake-world.js";
@@ -402,5 +404,76 @@ describe("T2.1–T2.2: discovery and 30-day import", () => {
     await w.changed(NEO);
     expect(w.markers(t).filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "c1-3", labeled: true }]);
     expect(w.texts(t).at(-1)).toBe("[Outside bb] text c1-3");
+  });
+});
+
+describe("T2.3: title follow", () => {
+  it("follows Hermes' title until the user renames the thread in bb; a null title changes nothing; bot threads and side chats never follow", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "c1");
+    await on(w);
+    await drain(w);
+    const t = bindingByLineage(w.db, NEO, "c1")!.thread_id;
+    const row = w.sessions.get(NEO)!.find((r) => r.lineage_root === "c1")!;
+    row.title = "Renamed in Hermes";
+    await w.changed(NEO);
+    expect(w.thread(t).title).toBe("Renamed in Hermes");
+    row.title = null;
+    await w.changed(NEO);
+    expect(w.thread(t).title).toBe("Renamed in Hermes");
+    // The user renames it in bb: never retitled again.
+    w.thread(t).title = "Mine";
+    row.title = "Again in Hermes";
+    await w.changed(NEO);
+    expect(w.thread(t).title).toBe("Mine");
+
+    // A side chat listed with a Hermes title keeps bb's; so does the bot thread.
+    const { thread_id: side } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+    const sid = bindingByThread(w.db, side)!.expected_id!;
+    w.persisted(side, { profile_home: NEO, lineage_root: sid, session_id: sid, turns: [{ submission_id: `bb:${side}:1`, anchor_uids: ["s1"], reply_uids: [], at: 1 }] });
+    await w.idle(side);
+    chat(w, sid, { title: "Hermes names it", created_source: "desktop" }, [turn("s1", { submission_id: `bb:${side}:1` })]);
+    await w.changed(NEO);
+    expect(w.thread(side).title).toBe("New Neo chat");
+    expect(w.thread("thr_1").title).toBe("Neo");
+    expect(calls(w, "threads.update").filter((a) => a.title !== undefined).map((a) => a.threadId)).toEqual([t]);
+  });
+});
+
+describe("T2.3: dispatch hook (D15)", () => {
+  const hook = (w: World) => w.harness.inspection.registrations.hooks["message.dispatch"]!;
+  const text = (value: string) => ({ type: "text" as const, mentions: [], text: value });
+  const hermes = { providerId: "hermes" };
+  const refused = { action: "reject", message: OUTSIDE_TAG_REFUSAL };
+
+  it("a recalled [Outside bb] line is refused with the text; a wake, an import, a plain send and a non-Hermes thread pass", async () => {
+    const w = await world();
+    const decide = (input: ReturnType<typeof text | typeof encodeMarker>[], thread = hermes) =>
+      hook(w)(makeMessageDispatchHookContext({ thread, input: { blocks: input, text: "" } }));
+    expect(await decide([text("[Outside bb] hello")])).toEqual(refused);
+    expect(await decide([text("[Outside bb · Oct 12] hello")])).toEqual(refused);
+    expect(await decide([text("[Outside bb] hello"), encodeMarker({ op: "mirror", anchor_uid: "u1", labeled: true })])).toEqual({ action: "proceed" });
+    expect(await decide([text(`${outsideTag(new Date())}hi`), encodeMarker({ op: "replay", anchor_uid: "u2", labeled: true })])).toEqual({ action: "proceed" });
+    expect(await decide([text("hello [Outside bb] there")])).toEqual({ action: "proceed" });
+    expect(await decide([{ type: "text", mentions: [], text: "", visibility: "agent-only" }])).toEqual({ action: "proceed" });
+    // A broken marker is no marker.
+    expect(await decide([text("[Outside bb] x"), { type: "text", mentions: [], text: "<hermes-bb>{</hermes-bb>", visibility: "agent-only" }])).toEqual(refused);
+    expect(await decide([text("[Outside bb] hello")], { providerId: "codex" })).toEqual({ action: "proceed" });
+  });
+
+  it("merged rows: each queued message on its own (a wake's marker never covers a user's recalled line)", async () => {
+    const w = await world();
+    const wake = [text("[Outside bb] from the CLI"), encodeMarker({ op: "mirror", anchor_uid: "u1", labeled: true })];
+    const decide = (rows: (typeof wake)[]) =>
+      hook(w)(
+        makeMessageDispatchHookContext({
+          thread: hermes,
+          input: { blocks: rows.flat(), text: "" },
+          queuedMessages: rows.map((content) => makeQueueEntry({ content })),
+        }),
+      );
+    expect(await decide([wake, [text("[Outside bb] recalled")]])).toEqual(refused);
+    expect(await decide([wake, [text("my reply")]])).toEqual({ action: "proceed" });
+    expect(await decide([wake, wake])).toEqual({ action: "proceed" });
   });
 });
