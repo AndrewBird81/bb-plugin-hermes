@@ -84,7 +84,7 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
   const sessions = new Map<string, SessionRow[]>();
   const access: { profile_home: string; on: boolean; enabled_bots: string[] }[] = [];
   /** `root`: the folder these profiles live in. `outside`: the worker refuses every profile as outside the root. */
-  const state = { root: "~/.hermes", outside: false, failSpawn: 0, watched: [] as string[], failSend: 0, failAccess: false, refreshed: true, online: true, boot: "boot_1", supported: true, seq: 0, ids: 0, clock: 1_000 };
+  const state = { root: "~/.hermes", outside: false, failSpawn: 0, watched: [] as string[], failSend: 0, failAccess: false, refreshed: true, online: true, boot: "boot_1", supported: true, seq: 0, ids: 0, clock: 1_000, unreadable: [] as string[] };
 
   const thread = (id: string) => {
     const t = threads.get(id);
@@ -129,6 +129,12 @@ export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) 
       case "listSessions": {
         const since = input.since;
         return { sessions: (sessions.get(input.profile_home) ?? []).filter((r) => since === undefined || (r.last_activity_at ?? -1) >= since) };
+      }
+      case "firstSubmissions": {
+        // The first user row's submission_id; a chat it can't read is left out.
+        const { lineage_roots } = call.input as { lineage_roots: string[] };
+        const readable = lineage_roots.filter((r) => history.has(r) && !state.unreadable.includes(r));
+        return { submissions: Object.fromEntries(readable.map((r) => [r, history.get(r)!.turns.find((t) => !t.user_hidden)?.submission_id ?? null])) };
       }
       case "findBotChat":
         return botChats.get(input.profile_home) ?? { state: "none" };

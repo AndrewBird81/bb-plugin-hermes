@@ -32,7 +32,11 @@ export function createDiscovery(deps: SyncDeps & { sync: Sync }) {
   const fail = (code: string) => connection.recordError(code);
   /** Candidates waiting for an import slot, by profile home and lineage root. */
   const pending = new Map<string, Candidate>();
-  /** A chat whose first turn bb sent (A4): a side chat bb made, whose thread went before tombstones did. A first turn never changes. */
+  /**
+   * Per chat: its first user row's `submission_id` starts `bb:` (A4): a side chat bb made, e.g. one whose thread
+   * went before tombstones did. Hermes stores bb's side chats as Desktop's (`local`/`desktop`), so never decided by
+   * surface. A first turn never changes.
+   */
   const firstTurnBb = new Map<string, boolean>();
   /** Listed chats with no turn to import, until their activity moves. */
   const empty = new Set<string>();
@@ -45,24 +49,33 @@ export function createDiscovery(deps: SyncDeps & { sync: Sync }) {
   const firstPasses = () => (getKv(db, FIRST_PASS) as Record<string, number> | null) ?? {};
 
   /**
-   * 02 §Invariants allow-list, with `bbCreated` from the bindings' `expected_id`s and, for a `desktop`/`gui` chat
-   * (bb's side chats are stored so), its first turn when `readFirst` may read it.
+   * The 02 §Invariants allow-list for unbound rows: bb-created by a binding's `expected_id` (session id or lineage
+   * root) or a known `bb:` first submission; `unknown` = every rule passes but the first submission isn't known yet.
    */
-  async function eligible(profileHome: string, row: SessionRow, readFirst: Target | null): Promise<Eligibility> {
+  function verdicts(profileHome: string, rows: SessionRow[]): { row: SessionRow; verdict: Eligibility; unknown: boolean }[] {
     const expected = new Set(bindingsOf(db, profileHome).flatMap((b) => (b.expected_id ? [b.expected_id] : [])));
-    const facts = {
-      bbCreated: expected.has(row.session_id) || expected.has(row.lineage_root),
-      tombstoned: tombstoned(profileHome, row.lineage_root) || tombstoned(profileHome, row.session_id),
-    };
-    const verdict = eligibility(row, facts);
-    if (verdict.kind !== "chat" || (verdict.surface !== "desktop" && verdict.surface !== "gui")) return verdict;
-    const k = key(profileHome, row.lineage_root);
-    if (!firstTurnBb.has(k) && readFirst) {
-      const read = await host.call("readTurns", { root: readFirst.root, profile_home: profileHome, lineage_root: row.lineage_root }, { hostId: readFirst.machine });
-      // A truncated answer leaves the oldest turns out: the first is unknown, and the chat counts as not bb's.
-      firstTurnBb.set(k, !read.truncated && read.turns[0]?.submission_id?.startsWith("bb:") === true);
+    return rows
+      .filter((row) => !bindingByLineage(db, profileHome, row.lineage_root))
+      .map((row) => {
+        const first = firstTurnBb.get(key(profileHome, row.lineage_root));
+        const verdict = eligibility(row, {
+          bbCreated: expected.has(row.session_id) || expected.has(row.lineage_root) || first === true,
+          tombstoned: tombstoned(profileHome, row.lineage_root) || tombstoned(profileHome, row.session_id),
+        });
+        return { row, verdict, unknown: verdict.kind === "chat" && first === undefined };
+      });
+  }
+
+  /** `firstSubmissions` for these chats, 100 per call; a chat the worker can't read stays unknown (decided later). */
+  async function learnFirstNow(profileHome: string, lineageRoots: string[], target: Target): Promise<void> {
+    for (let i = 0; i < lineageRoots.length; i += 100) {
+      const { submissions } = await host.call(
+        "firstSubmissions",
+        { root: target.root, profile_home: profileHome, lineage_roots: lineageRoots.slice(i, i + 100) },
+        { hostId: target.machine },
+      );
+      for (const [root, id] of Object.entries(submissions)) firstTurnBb.set(key(profileHome, root), id?.startsWith("bb:") === true);
     }
-    return firstTurnBb.get(k) ? eligibility(row, { ...facts, bbCreated: true }) : verdict;
   }
 
   /** 01 §7: Hermes' title, until the user renames the thread in bb. A null Hermes title never changes bb's. */
@@ -87,18 +100,19 @@ export function createDiscovery(deps: SyncDeps & { sync: Sync }) {
     for (const k of [...pending.keys()]) if (pending.get(k)!.profile_home === profileHome) pending.delete(k);
     for (const row of sessions) {
       const binding = bindingByLineage(db, profileHome, row.lineage_root);
-      if (binding) {
-        if (binding.kind === "mirror") await followTitleNow(binding, row).catch((error) => fail(errorCode(error, "title_follow_failed")));
-        continue;
-      }
-      if (empty.has(`${key(profileHome, row.lineage_root)}\0${row.last_activity_at}`)) continue;
-      const verdict = await eligible(profileHome, row, target);
-      if (verdict.kind !== "chat") continue;
+      if (binding?.kind === "mirror") await followTitleNow(binding, row).catch((error) => fail(errorCode(error, "title_follow_failed")));
+    }
+    const unbound = sessions.filter((row) => !empty.has(`${key(profileHome, row.lineage_root)}\0${row.last_activity_at}`));
+    const unknown = verdicts(profileHome, unbound).flatMap((v) => (v.unknown ? [v.row.lineage_root] : []));
+    if (unknown.length) await learnFirstNow(profileHome, unknown, target);
+    for (const { row, verdict, unknown } of verdicts(profileHome, unbound)) {
+      if (verdict.kind !== "chat" || unknown) continue;
       const read = firstPass && row.last_activity_at !== null && row.last_activity_at <= passStart.get(profileHome)!;
       pending.set(key(profileHome, row.lineage_root), { profile_home: profileHome, row, surface: verdict.surface, read });
     }
     const busy = [...sync.importing.keys()].some((id) => bindingByThread(db, id)?.profile_home === profileHome);
-    if (firstPass && !busy && ![...pending.values()].some((c) => c.profile_home === profileHome)) {
+    const undecided = verdicts(profileHome, unbound).some((v) => v.unknown);
+    if (firstPass && !busy && !undecided && ![...pending.values()].some((c) => c.profile_home === profileHome)) {
       setKv(db, FIRST_PASS, { ...firstPasses(), [profileHome]: bot.enabled_at });
       passStart.delete(profileHome);
     }
@@ -195,15 +209,14 @@ export function createDiscovery(deps: SyncDeps & { sync: Sync }) {
 
   /**
    * The switch row's "Imports N chats" for an off bot (02 flow 1 "Before on"): the chats a switch-on now would
-   * import, by the same filter. Only `listSessions` (02 §Invariants): a `desktop` chat's first turn counts only
-   * if an earlier pass read it.
+   * import, by the same filter. Only `listSessions` (02 §Invariants): a chat counts as bb's by its first
+   * submission only if an earlier pass learnt it.
    */
   async function importCount(profileHome: string, target: Target): Promise<number> {
     const cached = counts.get(profileHome);
     if (cached && Date.now() - cached.at < COUNT_TTL_MS) return cached.count;
     const { sessions } = await host.call("listSessions", { root: target.root, profile_home: profileHome, since: Date.now() - IMPORT_WINDOW_MS }, { hostId: target.machine });
-    let count = 0;
-    for (const row of sessions) if (!bindingByLineage(db, profileHome, row.lineage_root) && (await eligible(profileHome, row, null)).kind === "chat") count++;
+    const count = verdicts(profileHome, sessions).filter((v) => v.verdict.kind === "chat").length;
     counts.set(profileHome, { at: Date.now(), count });
     return count;
   }

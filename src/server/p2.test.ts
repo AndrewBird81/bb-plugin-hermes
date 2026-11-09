@@ -282,12 +282,14 @@ describe("T2.1–T2.2: discovery and 30-day import", () => {
     chat(w, "bc", { title: "Bot Chat" });
     chat(w, "pend", { created_source: "desktop" });
     chat(w, "mine", { created_source: "desktop" }, [turn("m1", { submission_id: "bb:thr_gone:1" }), turn("m2")]);
+    // Never by surface: a bb-created chat on any surface is out.
+    chat(w, "mine2", { created_source: "cli" }, [turn("n1", { submission_id: "bb:thr_gone2:1" })]);
     chat(w, "tomb");
     w.db.prepare(`INSERT INTO tombstones (profile_home, lineage_root, at) VALUES (?, 'tomb', 1)`).run(NEO);
     w.threads.set("thr_pend", { ...fakeThread("thr_pend"), visibility: "visible" });
     insertBinding(w.db, { thread_id: "thr_pend", profile_home: NEO, lineage_root: null, session_id: null, expected_id: "pend", kind: "chat", source: null, tag: null, state: "pending", legacy: false, archived_by_switch: false, title_set: null });
-    // The count may read only the list (02 §Invariants): a side chat bb made counts until its first turn was read.
-    expect(await countRow(w)).toBe(1);
+    // The count may read only the list (02 §Invariants): a side chat bb made counts until its first submission was learnt.
+    expect(await countRow(w)).toBe(2);
     await on(w);
     await drain(w);
     await w.changed(NEO);
@@ -297,6 +299,25 @@ describe("T2.1–T2.2: discovery and 30-day import", () => {
     // Off again: the first turn is known now, so the count is exact.
     await w.rpc("setBot", { profile_home: NEO, on: false });
     expect(await countRow(w)).toBe(0);
+  });
+
+  it("first submissions: asked once per chat, in one batch, for every surface; a chat the worker can't read waits", async () => {
+    const w = await botChatWorld([]);
+    chat(w, "c1");
+    chat(w, "c2", { created_source: "desktop" });
+    chat(w, "c3");
+    w.state.unreadable = ["c3"];
+    await on(w);
+    await drain(w);
+    expect(w.hostCalls("firstSubmissions").map((c) => (c.input as { lineage_roots: string[] }).lineage_roots)).toEqual([["c1", "c2", "c3"]]);
+    expect(bindingByLineage(w.db, NEO, "c3")).toBeNull();
+    w.state.unreadable = [];
+    await w.changed(NEO);
+    await drain(w);
+    expect(w.hostCalls("firstSubmissions").map((c) => (c.input as { lineage_roots: string[] }).lineage_roots)).toEqual([["c1", "c2", "c3"], ["c3"]]);
+    expect(mirrors(w)).toHaveLength(3);
+    // The first pass waited for c3, so it ends read too.
+    expect(isRead(w, bindingByLineage(w.db, NEO, "c3")!.thread_id)).toBe(true);
   });
 
   it("a chat whose listed activity spans the window's start imports its newest turn alone, with the note", async () => {
