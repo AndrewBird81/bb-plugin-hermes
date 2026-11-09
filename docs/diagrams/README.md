@@ -29,10 +29,10 @@ Each chat with an enabled Hermes bot becomes a bb thread. bb sends through the H
 
 ## How does Stop work?
 
-[![Tapping Stop in bb stops bb's own turn or a forwarded Conduit turn, and bb shows it stopped. Other outside turns keep running, with a "Running in <app>" banner, and their reply shows when they end](chat-stop.svg)](https://andrewbird81.github.io/bb-plugin-hermes/chat-stop.html)
+[![Tapping Stop in bb stops bb's own turn or a forwarded Conduit turn, and bb shows it stopped. Other outside turns keep running, with a "Running outside bb" banner, and their reply shows when they end](chat-stop.svg)](https://andrewbird81.github.io/bb-plugin-hermes/chat-stop.html)
 
 - Stop works on bb's own turns, and on Conduit messages the dashboard hands to the gateway queue ([01 §5](../plan/01-product.md#5-stop-p1)).
-- Other outside turns keep running; bb shows "Running in Conduit" or "Running in CLI", and the reply still appears when the turn ends.
+- Other outside turns keep running; bb shows "Running outside bb", and the reply still appears when the turn ends.
 
 ## How do bb and Conduit share one Bot Chat?
 
@@ -46,7 +46,7 @@ Each chat with an enabled Hermes bot becomes a bb thread. bb sends through the H
 
 [![bb's send is refused while Conduit holds the chat; bb waits with a banner and retries; once Conduit lets go, the gateway adopts the chat and runs the turn](shared-wait.svg)](https://andrewbird81.github.io/bb-plugin-hermes/shared-wait.html)
 
-- bb shows "Open in Conduit: sends when it's free" and retries. It never creates a second chat ([02 flow 3](../plan/02-architecture.md#flows)).
+- bb shows "Open in another Hermes app: sends when it's free" and retries. It never creates a second chat ([02 flow 3](../plan/02-architecture.md#flows)).
 
 ## Which outside chats show up in bb?
 

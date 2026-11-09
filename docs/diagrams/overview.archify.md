@@ -8,15 +8,15 @@ Each chat with an enabled Hermes bot becomes a **bb thread**. bb sends through t
 - One switch per bot turns all of this on, including the bot's access to bb.[](source:switch)
 
 @answer scope="The v1 plan for any Hermes user. Bot names are examples."
-@meta locale=en quality_profile=showcase repo_url=https://github.com/AndrewBird81/bb-plugin-hermes repo_revision=a035e4cc67d1d611bb28f9bba4256cfb0b822cfa
+@meta locale=en quality_profile=showcase repo_url=https://github.com/AndrewBird81/bb-plugin-hermes repo_revision=2ef015707a172781f1ca61ed2928f006883976a8
 @source scope title="Plan: v1 scope" path=docs/plan/README.md lines=19:28
 @source arch title="02 Architecture: components" path=docs/plan/02-architecture.md lines=5:12
 @source reader title="02 Architecture: history reader" path=docs/plan/02-architecture.md lines=27:36
 @source cli title="Plan: how CLI and TUI save chats" path=docs/plan/README.md lines=132:132
-@source chat title="01 Product: chat from bb" path=docs/plan/01-product.md lines=62:78
-@source stop title="01 Product: Stop" path=docs/plan/01-product.md lines=89:99
-@source shared title="01 Product: the Bot Chat shared with Conduit" path=docs/plan/01-product.md lines=103:118
-@source mirror title="01 Product: mirroring and import" path=docs/plan/01-product.md lines=125:146
+@source chat title="01 Product: chat from bb" path=docs/plan/01-product.md lines=63:79
+@source stop title="01 Product: Stop" path=docs/plan/01-product.md lines=90:101
+@source shared title="01 Product: the Bot Chat shared with Conduit" path=docs/plan/01-product.md lines=105:120
+@source mirror title="01 Product: mirroring and import" path=docs/plan/01-product.md lines=127:147
 @source switch title="01 Product: bot switches" path=docs/plan/01-product.md lines=18:34
 @source confirm title="Plan: for the owner to confirm" path=docs/plan/README.md lines=127:137
 
@@ -46,7 +46,7 @@ Each chat with an enabled Hermes bot becomes a **bb thread**. bb sends through t
 @diagram architecture id=stop-flow source=chat-stop.json
 
 - Stop works on bb's own turns and on Conduit messages handed to the gateway queue.[](source:stop)
-- Other outside turns keep running; bb shows "Running in `<app>`".
+- Other outside turns keep running; bb shows "Running outside bb".
 
 ## How do bb and Conduit share one Bot Chat? {#shared span=4}
 
@@ -59,7 +59,7 @@ Each chat with an enabled Hermes bot becomes a **bb thread**. bb sends through t
 
 @diagram architecture id=wait-flow source=shared-wait.json
 
-- bb shows "Open in Conduit: sends when it's free" and retries. It never creates a second chat.[](source:shared)
+- bb shows "Open in another Hermes app: sends when it's free" and retries. It never creates a second chat.[](source:shared)
 
 ## Which outside chats show up in bb? {#mirroring span=4}
 

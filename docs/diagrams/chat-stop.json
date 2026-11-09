@@ -8,7 +8,7 @@
     "locale": "en",
     "repository": {
       "url": "https://github.com/AndrewBird81/bb-plugin-hermes",
-      "revision": "a035e4cc67d1d611bb28f9bba4256cfb0b822cfa"
+      "revision": "2ef015707a172781f1ca61ed2928f006883976a8"
     }
   },
   "components": [
@@ -28,8 +28,8 @@
       "sources": [
         {
           "path": "docs/plan/01-product.md",
-          "line": 89,
-          "end_line": 99,
+          "line": 90,
+          "end_line": 101,
           "label": "Stop table"
         }
       ]
@@ -50,8 +50,8 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 129,
-          "end_line": 129,
+          "line": 138,
+          "end_line": 138,
           "label": "thread/stop"
         },
         {
@@ -78,8 +78,8 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 150,
-          "end_line": 150,
+          "line": 159,
+          "end_line": 159,
           "label": "turn.boundary"
         }
       ]
@@ -96,12 +96,12 @@
         104,
         50
       ],
-      "sublabel": "Running in <app>",
+      "sublabel": "Running outside bb",
       "sources": [
         {
           "path": "docs/plan/01-product.md",
-          "line": 98,
-          "end_line": 99,
+          "line": 99,
+          "end_line": 101,
           "label": "Banner"
         },
         {
@@ -128,8 +128,8 @@
       "sources": [
         {
           "path": "docs/plan/01-product.md",
-          "line": 99,
-          "end_line": 101,
+          "line": 101,
+          "end_line": 103,
           "label": "Reply still shows"
         }
       ]
@@ -176,7 +176,7 @@
       "dot": "slate",
       "title": "bb can't stop",
       "items": [
-        "A turn Conduit's dashboard runs itself, and CLI, TUI or Desktop turns. bb stops watching and shows \"Running in <app>\", e.g. \"Running in Conduit\" or \"Running in CLI\" (D27 narrowed).",
+        "A turn Conduit's dashboard runs itself, and CLI, TUI or Desktop turns. bb stops watching and shows \"Running outside bb\", never an app's name: Hermes records no per-turn source (D27 narrowed).",
         "The turn keeps running in Hermes; its reply still shows in bb when it ends."
       ]
     }

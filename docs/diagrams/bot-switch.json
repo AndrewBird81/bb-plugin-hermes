@@ -8,7 +8,7 @@
     "locale": "en",
     "repository": {
       "url": "https://github.com/AndrewBird81/bb-plugin-hermes",
-      "revision": "a035e4cc67d1d611bb28f9bba4256cfb0b822cfa"
+      "revision": "2ef015707a172781f1ca61ed2928f006883976a8"
     }
   },
   "components": [
@@ -34,8 +34,8 @@
         },
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 156,
-          "end_line": 156,
+          "line": 165,
+          "end_line": 165,
           "label": "Count before on"
         }
       ]
@@ -56,14 +56,14 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 159,
-          "end_line": 159,
+          "line": 168,
+          "end_line": 168,
           "label": "setBotAccess on"
         },
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 210,
-          "end_line": 215,
+          "line": 220,
+          "end_line": 225,
           "label": "What a bot gets"
         }
       ]
@@ -90,8 +90,8 @@
         },
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 159,
-          "end_line": 159,
+          "line": 168,
+          "end_line": 168,
           "label": "refresh-prompts"
         }
       ]
@@ -112,8 +112,8 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 160,
-          "end_line": 162,
+          "line": 169,
+          "end_line": 171,
           "label": "Bot thread, unarchive"
         },
         {
@@ -140,8 +140,8 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 163,
-          "end_line": 163,
+          "line": 172,
+          "end_line": 172,
           "label": "Import"
         },
         {
@@ -190,8 +190,8 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 164,
-          "end_line": 164,
+          "line": 174,
+          "end_line": 174,
           "label": "Off flow"
         },
         {
@@ -218,8 +218,8 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 164,
-          "end_line": 164,
+          "line": 174,
+          "end_line": 174,
           "label": "Off flow"
         },
         {
@@ -246,8 +246,8 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 164,
-          "end_line": 164,
+          "line": 174,
+          "end_line": 174,
           "label": "refresh-prompts"
         },
         {

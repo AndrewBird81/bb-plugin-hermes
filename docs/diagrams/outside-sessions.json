@@ -8,7 +8,7 @@
     "locale": "en",
     "repository": {
       "url": "https://github.com/AndrewBird81/bb-plugin-hermes",
-      "revision": "a035e4cc67d1d611bb28f9bba4256cfb0b822cfa"
+      "revision": "2ef015707a172781f1ca61ed2928f006883976a8"
     }
   },
   "components": [
@@ -150,8 +150,8 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 200,
-          "end_line": 200,
+          "line": 210,
+          "end_line": 210,
           "label": "Allow-list fails closed"
         }
       ]
@@ -178,8 +178,8 @@
         },
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 200,
-          "end_line": 200,
+          "line": 210,
+          "end_line": 210,
           "label": "Allow-list"
         }
       ]
@@ -229,13 +229,13 @@
         {
           "path": "docs/plan/01-product.md",
           "line": 137,
-          "end_line": 141,
+          "end_line": 142,
           "label": "Live"
         },
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 183,
-          "end_line": 188,
+          "line": 193,
+          "end_line": 198,
           "label": "Wake and mirror"
         }
       ]
@@ -278,8 +278,8 @@
       "sources": [
         {
           "path": "docs/plan/01-product.md",
-          "line": 155,
-          "end_line": 160,
+          "line": 156,
+          "end_line": 161,
           "label": "Notifications"
         }
       ]

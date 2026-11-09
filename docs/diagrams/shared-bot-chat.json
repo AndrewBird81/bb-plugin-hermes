@@ -8,7 +8,7 @@
     "locale": "en",
     "repository": {
       "url": "https://github.com/AndrewBird81/bb-plugin-hermes",
-      "revision": "a035e4cc67d1d611bb28f9bba4256cfb0b822cfa"
+      "revision": "2ef015707a172781f1ca61ed2928f006883976a8"
     }
   },
   "components": [
@@ -28,8 +28,8 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 169,
-          "end_line": 172,
+          "line": 179,
+          "end_line": 182,
           "label": "Bot thread send"
         },
         {
@@ -106,8 +106,8 @@
         },
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 174,
-          "end_line": 174,
+          "line": 184,
+          "end_line": 184,
           "label": "Concurrent turns"
         }
       ]
@@ -150,8 +150,8 @@
       "sources": [
         {
           "path": "docs/plan/01-product.md",
-          "line": 109,
-          "end_line": 110,
+          "line": 111,
+          "end_line": 112,
           "label": "Streams after bb's turn"
         }
       ]
@@ -172,8 +172,8 @@
       "sources": [
         {
           "path": "docs/plan/01-product.md",
-          "line": 108,
-          "end_line": 108,
+          "line": 110,
+          "end_line": 110,
           "label": "Two steps"
         },
         {
@@ -241,7 +241,7 @@
       "dot": "cyan",
       "title": "How Conduit's turns show",
       "items": [
-        "Chat busy with a bb turn: the dashboard hands Conduit's message to the gateway queue. It runs after bb's turn and streams live in bb, tagged [Conduit].",
+        "Chat busy with a bb turn: the dashboard hands Conduit's message to the gateway queue. It runs after bb's turn and streams live in bb, tagged [Outside bb].",
         "Chat idle: the dashboard runs the turn and saves it. bb reads it through Hermes' REST projection: your message at once, the reply when the turn ends; neither streams."
       ]
     },

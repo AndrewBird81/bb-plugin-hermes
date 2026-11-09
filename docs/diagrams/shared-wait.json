@@ -8,7 +8,7 @@
     "locale": "en",
     "repository": {
       "url": "https://github.com/AndrewBird81/bb-plugin-hermes",
-      "revision": "a035e4cc67d1d611bb28f9bba4256cfb0b822cfa"
+      "revision": "2ef015707a172781f1ca61ed2928f006883976a8"
     }
   },
   "components": [
@@ -28,8 +28,8 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 169,
-          "end_line": 173,
+          "line": 179,
+          "end_line": 183,
           "label": "Bot thread send"
         }
       ]
@@ -72,14 +72,14 @@
       "sources": [
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 173,
-          "end_line": 173,
+          "line": 183,
+          "end_line": 183,
           "label": "Wait and retry"
         },
         {
           "path": "docs/plan/01-product.md",
-          "line": 115,
-          "end_line": 115,
+          "line": 117,
+          "end_line": 117,
           "label": "Banner"
         }
       ]
@@ -128,8 +128,8 @@
         },
         {
           "path": "docs/plan/02-architecture.md",
-          "line": 172,
-          "end_line": 172,
+          "line": 182,
+          "end_line": 182,
           "label": "Resume adopts"
         }
       ]
@@ -150,8 +150,8 @@
       "sources": [
         {
           "path": "docs/plan/01-product.md",
-          "line": 107,
-          "end_line": 107,
+          "line": 109,
+          "end_line": 109,
           "label": "Conduit keeps working"
         }
       ]
@@ -200,7 +200,7 @@
       "title": "Wait, never fork",
       "items": [
         "\"Refused\" is runtime_coordination_required: Conduit holds a chat the gateway hasn't adopted yet.",
-        "bb keeps your message queued and shows \"Open in Conduit: sends when it's free\". It retries at 2, 5, 10 and 30 s, then every 60 s. Stop drops the wait.",
+        "bb keeps your message queued and shows \"Open in another Hermes app: sends when it's free\". It retries at 2, 5, 10 and 30 s, then every 60 s. Stop drops the wait.",
         "Conduit lets go of a Bot Chat when it disconnects, and of other chats after 60 s idle.",
         "bb never creates a second chat and never takes over. After the gateway adopts the chat, Conduit keeps working."
       ]
