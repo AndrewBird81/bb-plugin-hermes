@@ -199,6 +199,13 @@ describe("listSessions", () => {
     expect(toSessionRow(raw as never)).toEqual({ session_id: "a", lineage_root: "a", title: "t", source: "desktop", created_source: null, hidden: true, archived: true, cwd: null, message_count: 3, last_activity_at: null, legacy: true });
   });
 
+  it("a rotated legacy chain (no chat_id) keeps its root as lineage root; a gateway chain keeps chat_id", () => {
+    const base = { title: "t", source: "desktop", created_source: "desktop", hidden: 0, archived: false, cwd: null, message_count: 4, last_active: 1 };
+    expect(toSessionRow({ ...base, id: "L2", chat_id: null, _lineage_root_id: "L1" } as never)).toMatchObject({ session_id: "L2", lineage_root: "L1", legacy: true });
+    expect(toSessionRow({ ...base, id: "L1", chat_id: null } as never)).toMatchObject({ session_id: "L1", lineage_root: "L1", legacy: true });
+    expect(toSessionRow({ ...base, id: "T2", chat_id: "R1", _lineage_root_id: "R1" } as never)).toMatchObject({ session_id: "T2", lineage_root: "R1", legacy: false });
+  });
+
   it("activity is REST last_active (heartbeat, newest message or start), not the heartbeat column alone", () => {
     const raw = { id: "a", chat_id: "a", title: null, source: "local", created_source: "cli", hidden: 0, archived: false, cwd: null, message_count: 2 };
     expect(toSessionRow({ ...raw, last_activity_at: null, last_active: 1700.5 } as never).last_activity_at).toBe(1_700_500);

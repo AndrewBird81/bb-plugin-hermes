@@ -87,7 +87,7 @@ export const sessionRowSchema = z
   .object({
     /** The listed id: a rotated chain lists its tip. */
     session_id: z.string(),
-    /** `chat_id`, else (a legacy row) the session's own id. */
+    /** `chat_id`, else (a legacy row) its rotated chain's root id (`_lineage_root_id`), else the session's own id. */
     lineage_root: z.string(),
     title: z.string().nullable(),
     source: z.string().nullable(),

@@ -15,7 +15,8 @@ const toMs = (s: number | null | undefined) => (typeof s === "number" && Number.
 export function toSessionRow(r: RestSessionRow): SessionRow {
   return {
     session_id: r.id,
-    lineage_root: r.chat_id ?? r.id,
+    // A rotated legacy chain lists its tip with no `chat_id`: its root id keeps the binding (and a tombstone) on one key.
+    lineage_root: r.chat_id ?? r._lineage_root_id ?? r.id,
     title: r.title ?? null,
     source: r.source ?? null,
     created_source: r.created_source ?? null,

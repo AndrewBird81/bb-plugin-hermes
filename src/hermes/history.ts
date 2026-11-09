@@ -16,6 +16,8 @@ export interface RestSessionRow {
   created_source: string | null;
   /** The lineage root of a gateway-owned row (also on a rotated tip); null on a legacy row (D16). */
   chat_id: string | null;
+  /** A rotated chain's root id, on the tip's projected row (`hermes_state_session_list.py:39`); a legacy chain's only lineage. */
+  _lineage_root_id?: string;
   /** 0 or 1. The list leaves hidden sessions out (the Bot Chat included): find those by `session.list`. */
   hidden: number;
   archived: boolean;

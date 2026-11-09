@@ -43,7 +43,7 @@ Choice (README confirm item 4): Hermes' REST projection, as Hermes Desktop reads
 |---|---|
 | `thread_id` PK | bb thread |
 | `profile_home` | Hermes `profile_id`, not the name (r03 §4) |
-| `lineage_root`, `session_id` | logical id (`chat_id` owner) and current tip. Null until the first send creates the session |
+| `lineage_root`, `session_id` | logical id (`chat_id` owner; a legacy chain with no `chat_id`: its root, REST `_lineage_root_id`, so a rotation never makes a second thread) and current tip. Null until the first send creates the session |
 | `expected_id` | bb-created session id, computed before the first send (identity rules) |
 | `kind` | `bot` · `chat` · `mirror` |
 | `source`, `tag` | the chat's recorded surface (`source`, or `created_source` for `source=local`): eligibility only, never UI text: each value has several writers in Hermes (`docs/operations.md` §Surfaces), so no badge names an app. `tag` stays null: every outside turn reads `[Outside bb]`, since Hermes records no per-turn source (owner ruling) |
