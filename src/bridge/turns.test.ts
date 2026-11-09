@@ -2,7 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { encodeMarker, spawnStart } from "../shared/marker.js";
 import { otherMachineText, switchedOffText } from "../shared/provider-options.js";
-import { noBotText } from "./context.js";
+import { PLACEHOLDER_MODEL } from "./composer.js";
+import { NOT_CONNECTED_TEXT, noBotText } from "./context.js";
 import { DELETED_TEXT, nothingCompactedText } from "./thread.js";
 import { AUTO, creq, type Rig, startRig, startThread, text, turn } from "./testing/harness.js";
 import { agentTexts, deltas, errors, events, statuses } from "./testing/read.js";
@@ -99,6 +100,36 @@ describe("refusals", () => {
     await turn(rig, "thr_m", [text("hi")], opts());
     expect(errors(rig, "thr_m")).toEqual([otherMachineText("hermes-mac")]);
     expect(statuses(rig, "thr_m")).toEqual(["failed"]);
+    expect(rig.fake.requests).toEqual([]);
+  });
+
+  it("a spawn on a machine without Hermes, on the placeholder model: names the machine from provider options (its id when unnamed)", async () => {
+    await rig.close();
+    rig = await startRig({ worker: false });
+    const spawned = { model: PLACEHOLDER_MODEL, sessionOptions: { profile: "neo" } };
+    await startThread(rig, "thr_wm", opts("alex", null));
+    await turn(rig, "thr_wm", [text("hi")], { ...opts("alex", null), ...spawned });
+    const unnamed = { providerOptions: { ...rig.options("alex", null), machine: { id: "host-1", name: null } } };
+    await startThread(rig, "thr_wn", unnamed);
+    await turn(rig, "thr_wn", [text("hi")], { ...unnamed, ...spawned });
+    const unset = { providerOptions: { ...rig.options("alex", null), machine: null } };
+    await startThread(rig, "thr_wu", unset);
+    await turn(rig, "thr_wu", [text("hi")], { ...unset, ...spawned });
+    expect(errors(rig, "thr_wm")).toEqual([otherMachineText("hermes-mac")]);
+    expect(errors(rig, "thr_wn")).toEqual([otherMachineText("host-1")]);
+    expect(errors(rig, "thr_wu")).toEqual([NOT_CONNECTED_TEXT]);
+    expect(rig.fake.requests).toEqual([]);
+  });
+
+  it("the Hermes machine with no bot on: the placeholder spawn says so, before any Hermes call", async () => {
+    await rig.close();
+    rig = await startRig({ enabled: [] });
+    await startThread(rig, "thr_nb", opts("alex", null));
+    await turn(rig, "thr_nb", [text("hi")], { ...opts("alex", null), model: PLACEHOLDER_MODEL });
+    await startThread(rig, "thr_nn", opts("alex", null));
+    await turn(rig, "thr_nn", [text("hi")], { ...opts("alex", null), model: PLACEHOLDER_MODEL, sessionOptions: { profile: "neo" } });
+    expect(errors(rig, "thr_nb")).toEqual([noBotText([])]);
+    expect(errors(rig, "thr_nn")).toEqual([switchedOffText("Neo")]);
     expect(rig.fake.requests).toEqual([]);
   });
 

@@ -45,7 +45,8 @@ export function resolveContext(input: ResolveInput): ThreadContext {
   if (!options?.machine) throw new UserFacingError(NOT_CONNECTED_TEXT);
   const worker: WorkerFile | null = readWorkerFile(input.dataDir);
   if (!worker || !sameFolder(worker.root, options.folder)) {
-    throw new UserFacingError(otherMachineText(options.machine.name ?? "the Hermes machine"));
+    // An unnamed machine: its id, which `--machine` takes too.
+    throw new UserFacingError(otherMachineText(options.machine.name ?? options.machine.id));
   }
   const root = expandHome(options.folder);
   const view = options.thread;

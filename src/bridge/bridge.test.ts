@@ -15,6 +15,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bridgeFileSchema } from "../shared/bridge-registry.js";
 import { type Bridge, createBridge } from "./bridge.js";
+import { placeholderModel } from "./composer.js";
 import { NOT_CONNECTED_TEXT } from "./context.js";
 import { PROVIDER_ID } from "./provider.js";
 
@@ -58,10 +59,10 @@ describe("bridge handshake", () => {
     });
   });
 
-  it("health is always not_installed and models are empty", async () => {
+  it("health is always not_installed; with no worker file, models are the placeholder", async () => {
     const health = providerHealthResultSchema.parse((await call(1, "provider/health", { providerId: PROVIDER_ID })).result);
     expect(health).toMatchObject({ supported: true, health: { status: "not_installed" } });
-    expect((await call(2, "model/list", { cwd })).result).toEqual({ models: [], selectedOnlyModels: [] });
+    expect((await call(2, "model/list", { cwd })).result).toEqual({ models: [placeholderModel()], selectedOnlyModels: [] });
   });
 
   it("thread/start answers and announces pending:<threadId>", async () => {

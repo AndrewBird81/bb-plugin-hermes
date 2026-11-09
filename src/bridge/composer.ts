@@ -23,6 +23,23 @@ const HERMES_EFFORTS = ["none", "low", "medium", "high", "xhigh", "max", "ultra"
 /** bb rungs Hermes lacks → the nearest lower Hermes level (never escalating). */
 const NEAREST: Record<string, string> = { ultracode: "xhigh" };
 
+/**
+ * `model/list` with no bot to ask (no `worker.json` on this machine, or no bot on): one stand-in default, so bb
+ * resolves a spawn's model (`loadCatalogDefaultForProvider` refuses an empty catalog) and the spawn reaches the
+ * plugin's own refusal. No ladder, no session options; never sent to Hermes (`chooseModel`).
+ */
+export const PLACEHOLDER_MODEL = "hermes-bot-model";
+export const placeholderModel = (): AvailableModel => ({
+  id: PLACEHOLDER_MODEL,
+  model: PLACEHOLDER_MODEL,
+  displayName: "The bot's model",
+  description: "No Hermes bot to list models from here",
+  isDefault: true,
+  defaultReasoningEffort: "medium",
+  reasoningDiscovery: "known",
+  supportedReasoningEfforts: [],
+});
+
 export const unofferedModelText = (asked: string, used: string | null) =>
   `${asked} isn't one of this bot's models in Hermes; ${used ? `using ${used}` : "using the bot's default"}.`;
 export const imagesOnlyText = (name: string) => `Hermes takes images only: ${name} not sent.`;
@@ -128,6 +145,8 @@ export interface ModelChoice {
  */
 export function chooseModel(catalog: Catalog | null, asked: string | undefined, reasoning: string | undefined): ModelChoice {
   const effort = !reasoning || reasoning === DEFAULT_REASONING ? null : (NEAREST[reasoning] ?? reasoning);
+  // The placeholder has no reasoning: the bot's own model and level.
+  if (asked === PLACEHOLDER_MODEL) return { model: null, provider: null, reasoning: null, warning: null };
   if (!asked || !catalog) return { model: null, provider: null, reasoning: effort, warning: null };
   const offered = catalog.models.find((m) => m.id === asked);
   const pick = offered ?? catalog.models.find((m) => m.id === catalog.current) ?? null;

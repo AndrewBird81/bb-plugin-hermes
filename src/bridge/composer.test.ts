@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { modelsFile } from "../shared/bridge-files.js";
 import { catalogFromModelOptions } from "../shared/models.js";
-import { catalogState, imagesOnlyText, unofferedModelText } from "./composer.js";
+import { catalogState, imagesOnlyText, PLACEHOLDER_MODEL, unofferedModelText } from "./composer.js";
 import { updateThread } from "./files.js";
 import { type Rig, startRig, startThread, text, turn } from "./testing/harness.js";
 import { deltas, statuses } from "./testing/read.js";
@@ -39,6 +39,17 @@ describe("model/list (maintenance: no provider options)", () => {
     expect(res.models[0]!.supportedReasoningEfforts.map((e: { reasoningEffort: string }) => e.reasoningEffort)).toEqual(["default", "none", "low", "medium", "high", "xhigh", "max", "ultra"]);
     expect(existsSync(modelsFile(rig.dataDir, home("bob")))).toBe(true);
     expect(rig.fake.requests.filter((r) => r.method.startsWith("session."))).toEqual([]); // never a session (r09 M6)
+  });
+
+  it("no bot to ask here (no worker.json, or no bot on): one placeholder default, so a spawn resolves a model and reaches the plugin's refusal", async () => {
+    for (const setup of [{ worker: false }, { enabled: [] }]) {
+      await rig.close();
+      rig = await startRig(setup);
+      const res = (await rig.call("model/list", { cwd: "/x/workspaces/thr_none" })).result as { models: Record<string, any>[] };
+      expect(res.models).toEqual([expect.objectContaining({ id: PLACEHOLDER_MODEL, model: PLACEHOLDER_MODEL, isDefault: true, reasoningDiscovery: "known", supportedReasoningEfforts: [] })]);
+      expect(res.models[0]!.sessionOptions).toBeUndefined(); // no option conflicts with `--option profile=<bot>`
+      expect(rig.fake.requests).toEqual([]);
+    }
   });
 
   it("model.options slower than 2 s → the last-known list", async () => {
@@ -125,6 +136,18 @@ describe("model and reasoning", () => {
     await startThread(rig, "thr_md", opts());
     await turn(rig, "thr_md", [text("hi")], { ...opts(), model: "stub/stub", reasoningLevel: "default" });
     expect(rig.requests("session.create").at(-1)!.params.reasoning).toBeUndefined();
+  });
+
+  it("the placeholder model never reaches Hermes: the bot's own model, no warning", async () => {
+    await startThread(rig, "thr_ph", opts());
+    await turn(rig, "thr_ph", [text("hi")], { ...opts(), model: PLACEHOLDER_MODEL, reasoningLevel: "high" });
+    const params = rig.requests("session.create")[0]!.params;
+    expect(params.model).toBeUndefined();
+    expect(params.provider).toBeUndefined();
+    expect(params.reasoning).toBeUndefined();
+    expect(JSON.stringify(rig.fake.requests)).not.toContain(PLACEHOLDER_MODEL);
+    expect(warnings("thr_ph")).toEqual([]);
+    expect(statuses(rig, "thr_ph")).toEqual(["completed"]);
   });
 
   it("an unoffered model → the bot's current one and a warning; the turn still runs (S7 finding 6)", async () => {
