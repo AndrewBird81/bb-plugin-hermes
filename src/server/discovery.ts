@@ -202,6 +202,7 @@ export function createDiscovery(deps: SyncDeps & { sync: Sync }) {
    * then the hidden thread. Discovery imports the chat again from scratch.
    */
   async function redoNow(binding: Binding): Promise<void> {
+    sync.gone.add(binding.thread_id);
     deleteBinding(db, binding.thread_id);
     sync.importing.delete(binding.thread_id);
     sync.readAtIdle.delete(binding.thread_id);

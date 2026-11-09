@@ -703,3 +703,24 @@ describe("e2e: unread race at an import's end", () => {
     expect(isRead(w, t)).toBe(true);
   });
 });
+
+describe("e2e: diagnostics after an A38 redo", () => {
+  it("jobs for a hidden thread the server deleted itself end silently", async () => {
+    const w = await world({
+      seed: (db) => {
+        db.prepare(`INSERT INTO bots (profile_home, name, enabled, enabled_at) VALUES (?, 'neo', 1, ?)`).run(NEO, Date.now());
+        insertBinding(db, { thread_id: "thr_old", profile_home: NEO, lineage_root: "c1", session_id: "c1", expected_id: null, kind: "mirror", source: "cli", tag: null, state: "replaying", legacy: false, archived_by_switch: false, title_set: null });
+        for (const a of ["c1-1", "c1-2"]) db.prepare(`INSERT INTO turns (thread_id, anchor_uid, kind, state, at) VALUES ('thr_old', ?, 'replay', 'queued', 1)`).run(a);
+      },
+    });
+    w.threads.set("thr_old", { ...fakeThread("thr_old"), title: "Chat c1" });
+    // Its import's sends ran before the restart: boot recovery finds them.
+    for (const a of ["c1-1", "c1-2"]) w.event("thr_old", "client/turn/requested", { input: [{ type: "text", text: `<hermes-bb>{"op":"replay","anchor_uid":"${a}"}</hermes-bb>` }] });
+    chat(w, "c1");
+    await w.connect();
+    await w.emit("thread.idle", "thr_old").catch(() => undefined);
+    await drain(w);
+    expect(mirrors(w)).toHaveLength(1);
+    expect((await w.rpc<Diagnostics>("diagnostics")).errors).toEqual([]);
+  });
+});

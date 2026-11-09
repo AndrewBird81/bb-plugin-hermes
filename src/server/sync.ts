@@ -125,6 +125,8 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
    * confirmed over, then `onImportOver` shows them. A `replaying` mirror binding not in here was interrupted.
    */
   const importing = new Map<string, { archived: boolean }>();
+  /** Threads the server deleted itself (an import redo, a failed init): their late jobs and events end silently. */
+  const gone = new Set<string>();
   let onImportOver: (threadId: string) => Promise<void> = async () => {};
   const persistedKind = `${bb.pluginId}/${EXTENSION_KINDS.persistedTurn}`;
   const statusKind = `${bb.pluginId}/${EXTENSION_KINDS.status}`;
@@ -145,6 +147,7 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
     try {
       await send(threadId, [encodeMarker(init)]);
     } catch (error) {
+      gone.add(threadId);
       deleteBinding(db, threadId);
       readAtIdle.delete(threadId);
       notify.release(threadId);
@@ -466,7 +469,7 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
             readCheck.set(threadId, left - 1);
             checkReadLater(threadId);
           } else readCheck.delete(threadId);
-        }).catch((error) => fail(errorCode(error, "confirm_failed")));
+        }).catch((error) => gone.has(threadId) || fail(errorCode(error, "confirm_failed")));
       }, SETTLE_QUIET_MS),
     );
   }
@@ -478,7 +481,7 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
       threadId,
       setTimeout(() => {
         confirmTimers.delete(threadId);
-        void enqueue(() => confirmNow(threadId, attentionAt)).catch((error) => fail(errorCode(error, "confirm_failed")));
+        void enqueue(() => confirmNow(threadId, attentionAt)).catch((error) => gone.has(threadId) || fail(errorCode(error, "confirm_failed")));
       }, SETTLE_QUIET_MS),
     );
   }
@@ -490,6 +493,7 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
    * init or import is over once read.
    */
   async function confirmNow(threadId: string, attentionAt: number): Promise<void> {
+    if (gone.has(threadId)) return;
     const unrecorded = queuedTurnsOf(db, threadId);
     if (!readAtIdle.has(threadId) && !importing.has(threadId) && !unrecorded.length) return;
     const thread = await bb.sdk.threads.get({ threadId });
@@ -517,10 +521,13 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
    */
   async function recoverQueuedNow(finalize: (threadId: string) => void): Promise<void> {
     for (const row of queuedTurns(db)) {
-      if (!bindingByThread(db, row.thread_id)) {
+      const binding = bindingByThread(db, row.thread_id);
+      if (!binding) {
         releaseTurn(db, row.thread_id, row.anchor_uid);
         continue;
       }
+      // An interrupted mirrored import: redone (thread, binding and rows deleted) by the reconcile that follows.
+      if (binding.kind === "mirror" && binding.state === "replaying" && !importing.has(row.thread_id)) continue;
       let sent = false;
       try {
         // A rest claim shares its anchor with the first wake, which ran: only a queued message proves it was sent.
@@ -556,6 +563,7 @@ export function createSync({ bb, db, host, connection, notify, enqueue }: SyncDe
     active,
     readAtIdle,
     dropReadFlag,
+    gone,
     importing,
     unfinished,
     setImportOver: (handler: typeof onImportOver) => void (onImportOver = handler),

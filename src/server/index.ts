@@ -63,11 +63,19 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
   const bots = createBots({ ...deps, sync, enqueue, discovery });
   const chats = createChats({ ...deps, sync, enqueue, describe: bots.describe });
   const run = (code: string, job: () => Promise<void>) => void enqueue(job).catch((error) => fail(errorCode(error, code)));
+  /** A job about one thread: one the server deleted itself (an import redo) ends silently, before or during it. */
+  const runFor = (threadId: string, code: string, job: () => Promise<void>) =>
+    run(code, async () => {
+      if (sync.gone.has(threadId)) return;
+      await job().catch((error) => {
+        if (!sync.gone.has(threadId)) throw error;
+      });
+    });
   const isHermes = (thread: { providerId: string }) => thread.providerId === PROVIDER_ID;
 
   /** A thread's turns may be over: settle them (sync), then a side chat's first title. */
   const finalize = (threadId: string) =>
-    run("finalize_failed", async () => {
+    runFor(threadId, "finalize_failed", async () => {
       await sync.finalizeNow(threadId, targetOf(connection), bots.isEnabled);
       await chats.retitleNow(threadId);
     });
@@ -96,12 +104,12 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
   bb.events.on("thread.failed", settled);
   // `persisted-turn` (A37); debounced and cumulative, so the latest state is enough.
   bb.events.on("experimental_thread.events", ({ thread }) => {
-    if (isHermes(thread)) run("persisted_turn_failed", () => sync.ingestPersistedNow(thread.id));
+    if (isHermes(thread)) runFor(thread.id, "persisted_turn_failed", () => sync.ingestPersistedNow(thread.id));
   });
   // A49: wakes bb refused while the user had it archived run now.
   bb.events.on("thread.unarchived", ({ thread }) => {
     if (!isHermes(thread)) return;
-    run("wake_failed", async () => {
+    runFor(thread.id, "wake_failed", async () => {
       const binding = bindingByThread(db, thread.id);
       const target = targetOf(connection);
       if (binding && target && bots.isEnabled(binding.profile_home)) await sync.reconcileNow(binding, target);
