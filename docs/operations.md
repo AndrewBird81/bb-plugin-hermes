@@ -57,7 +57,7 @@ Run in order on the P1 release; each step needing an approval checks §Approvals
 
 Dogfood-only assumptions: A9, A13 (live latency), A16 (remote host RPC, ~15 s cold `model.options`), A18, A25, A30, A43/A44 on live Neo, A-S8a–c (the real Conduit app).
 
-Results (2026-11-09, UTC). Steps 1–3 passed; steps 4–8 wait on the owner.
+Results (2026-11-09, UTC). Steps 1–9, 11 and 14 passed; step 10 failed (BUG 4); step 12 and the phone are the owner's; step 13 comes with the next release.
 - **Steps 1–2:** `v0.2.0` released (tag `2ef01570`). After the update and `stopHosted`, the worker and the bridge both run `0.2.0+d6c73a23c879`; health connected, Hermes 0.22.6, supported; every bot off; 0 Hermes writes.
 - **Step 3:**
   - `setBot` on Neo wrote `SKILL.md` and `.bb-plugin-hermes.json` (version 0.2.0), and the wrapper in `host-data/bin/`;
@@ -67,7 +67,23 @@ Results (2026-11-09, UTC). Steps 1–3 passed; steps 4–8 wait on the owner.
   - `diagnostics`: bindings 1, duplicates 0, no errors;
   - 0 Hermes sessions created or changed, 0 `bb:` messages;
   - Neo's Bot Chat was already gateway-owned: no adoption pending.
-- Found (fixed in P2): the bot thread's `titleFallback` is the raw init marker (bb derives it from every text part of the spawn input, agent-only included); the thread is left unread (`lastReadAt` 57 ms before `latestAttentionAt`: the import's `markRead` ran in the gap before its last queued turn started).
+- **Step 4:** Neo ran the `bb-plugin-hermes` skill through the `bb-hermes` wrapper against the remote bb server; 1 `bb:` admission, in the same session.
+- **Step 6** (Neo side chat): reasoning high reached `session.create`; an image described; Deny ran nothing; Allow once ran once; `clarify` answered; Stop in 0.28 s; steer joined the turn; an empty `newChat` left 0 sessions.
+- **Step 7** (on the side chat's session): the CLI turn showed 2.8 s after Hermes stored it, live, tagged `[Outside bb]`; Stop showed "Running outside bb", and the full reply came once.
+- **Step 8** (david): a real in-place compaction, 54 → 46 messages, same id. A short Bot Chat's `/new` is Hermes' `noop` (BUG 2).
+- **Step 9:** `default`'s rotation, on a side chat: 12 turns, then `/new`, gave a new tip; the next turn landed on it. `default`'s Bot Chat imported 0 turns (last active Aug 22).
+- **Step 11** (alex): off archived 2 threads, deleted the skill, kept the wrapper; on brought back the same 2 threads and the turn made while off.
+- **Step 14:** alex and david on, 0 pushes.
+- **Owner, on the phone:** "Everything else looks great": the conversation shared with Conduit, voice dictation, the badges. No banner seen live: they show only when held, on Stop of an outside turn, and offline.
+- **Live notes:** bb's send waited ~32 s behind the owner's own Conduit turn; a forwarded Conduit send streamed as `[Outside bb]`; the CLI can't run a turn on a Bot Chat Conduit holds ("This chat is open in another Hermes window/terminal"); during a Conduit turn of its own, bb's send shows Conduit's reply after bb's turn, though Hermes stored it first (P2: why, 01 §6).
+- **Hermes writes:** only the tests' own (3 side-chat sessions and a rotation tip, 1 Neo Bot Chat turn, david's compaction, skills, markers, refresh epochs) and the owner's own activity; gateway pid, config and `.env` unchanged.
+- **Now on:** Neo, `default`, alex, david; `todoist` off.
+- **Found, fixed in P2:**
+  - BUG 1: `default`'s catalog (93 models with their reasoning ladders) is 77 116 bytes, over bb's 64 KiB extension-state limit: refused.
+  - BUG 2: `/new` on a short chat showed "Context compacted" for Hermes' `noop`.
+  - BUG 3: every first import leaves its bot thread unread (Neo: `lastReadAt` 57 ms before `latestAttentionAt`; alex, david): the import's `markRead` ran in the gap before its last queued turn started.
+  - BUG 4 (step 10): from `$WORK_HOST`, `bb thread spawn` without `--model` fails "HTTP 503: The hermes model catalog is empty…" with no thread; with `--model` it says "add `--machine the Hermes machine`" (provider options carry no machine name).
+  - The bot thread's `titleFallback` is the raw init marker: bb derives it from every text part of the spawn input, agent-only included.
 
 ## Approvals
 
@@ -84,3 +100,5 @@ Gated steps (pushes, tags, releases, the live install, each live bot switch-on) 
 | 2026-11-09 | Live update to `v0.2.0` | Approved |
 | 2026-11-09 | Neo's switch-on | Approved |
 | 2026-11-09 | Proceed with the next phases | Approved |
+| 2026-11-09 | "Proceed as proposed" | Approved |
+| 2026-11-09 | "You can release 1.0": read as `v0.3.0` for the P2 live dogfood (its live update and 30-day import included), then `v1.0.0` (T2.6) | Approved |
