@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-hermes",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Hermes Agent chats as bb threads.",
   "license": "MIT",
