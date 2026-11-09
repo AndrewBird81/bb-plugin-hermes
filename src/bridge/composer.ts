@@ -73,10 +73,44 @@ export function availableModels(catalog: Catalog | null, sessionOptions?: Return
   }));
 }
 
+/** bb refuses an extension state whose `JSON.stringify` is longer (`EXTENSION_PAYLOAD_MAX_BYTES`, `start-server.js`). */
+export const STATE_MAX_BYTES = 64 * 1024;
+
+/**
+ * The `bb/provider-model-catalog` payload within `STATE_MAX_BYTES`: bb's schema has no shared ladder, and a big
+ * provider's full ladders don't fit. The current model first, then the catalog's order, keep theirs while they fit;
+ * the rest go `reasoningDiscovery: "unknown"`, which bb fills by asking `model/list{selectedModel}` when one is
+ * picked (`refineSelectedModel`). Models that don't fit even so are left out, the last in that order first.
+ */
+export function catalogState(catalog: Catalog): { models: AvailableModel[]; selectedOnlyModels: [] } {
+  const full = availableModels(catalog);
+  const order = [...full.keys()].sort((a, b) => Number(full[b]!.isDefault) - Number(full[a]!.isDefault));
+  const bytes = (v: unknown) => Buffer.byteLength(JSON.stringify(v));
+  const models: (AvailableModel | null)[] = full.map((m) => (m.supportedReasoningEfforts.length ? { ...m, reasoningDiscovery: "unknown", supportedReasoningEfforts: [] } : m));
+  // The array's JSON: its entries, a comma between two, and the wrapper.
+  let size = bytes({ models: [], selectedOnlyModels: [] }) + models.reduce((n, m) => n + bytes(m) + 1, -1);
+  // Room for the current model's ladder before any other model's.
+  const first = order[0];
+  const room = first !== undefined && full[first]!.isDefault ? bytes(full[first]) - bytes(models[first]) : 0;
+  for (const i of [...order].reverse()) {
+    if (size + room <= STATE_MAX_BYTES || full[i]!.isDefault) break;
+    size -= bytes(models[i]) + 1;
+    models[i] = null;
+  }
+  for (const i of order) {
+    if (!models[i] || models[i] === full[i]) continue;
+    const grown = size + bytes(full[i]) - bytes(models[i]);
+    if (grown > STATE_MAX_BYTES) break;
+    models[i] = full[i]!;
+    size = grown;
+  }
+  return { models: models.filter((m) => m !== null), selectedOnlyModels: [] };
+}
+
 /** `bb/session-options` (the chip) and `bb/provider-model-catalog` (S7 1c) for one thread's bot. */
 export function composerStates(bot: { profile: string; bot_label: string }, catalog: Catalog | null): ThreadDelta[] {
   const states: ThreadDelta[] = [{ kind: "extension.state", extensionKind: "bb/session-options", payload: { options: [botOption(bot)] } }];
-  if (catalog) states.push({ kind: "extension.state", extensionKind: "bb/provider-model-catalog", payload: { models: availableModels(catalog) as never, selectedOnlyModels: [] } });
+  if (catalog) states.push({ kind: "extension.state", extensionKind: "bb/provider-model-catalog", payload: catalogState(catalog) as never });
   return states;
 }
 

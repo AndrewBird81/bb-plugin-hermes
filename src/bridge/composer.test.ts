@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { modelsFile } from "../shared/bridge-files.js";
-import { imagesOnlyText, unofferedModelText } from "./composer.js";
+import { catalogFromModelOptions } from "../shared/models.js";
+import { catalogState, imagesOnlyText, unofferedModelText } from "./composer.js";
 import { updateThread } from "./files.js";
 import { type Rig, startRig, startThread, text, turn } from "./testing/harness.js";
 import { deltas, statuses } from "./testing/read.js";
@@ -58,6 +59,56 @@ describe("thread/start", () => {
     expect(chip).toMatchObject({ extensionKind: "bb/session-options", payload: { options: [{ id: "profile", value: "bob", values: [{ id: "bob", label: "Bob" }] }] } });
     expect(catalog).toMatchObject({ extensionKind: "bb/provider-model-catalog", payload: { models: [{ id: "stub/stub" }] } });
     expect(rig.fake.requests.filter((r) => r.method.startsWith("session."))).toEqual([]);
+  });
+});
+
+/** A big provider (OpenRouter-like ids): `n` reasoning models, the current one late in the list. */
+const manyModels = (n: number, current: number) => {
+  const models = Array.from({ length: n }, (_, i) => `vendor-${i % 7}/model-name-${i}`);
+  return {
+    providers: [{ slug: "openrouter", name: "OpenRouter", is_current: true, models, capabilities: Object.fromEntries(models.map((m) => [m, { reasoning: true }])) }],
+    model: models[current],
+    provider: "openrouter",
+  };
+};
+
+describe("bb/provider-model-catalog under bb's 64 KiB state limit", () => {
+  it("200 models: every model, under 65 536 bytes as bb measures it; the current one keeps its reasoning, a picked one gets it from model/list", async () => {
+    rig.fake.handle("model.options", () => manyModels(200, 150));
+    await startThread(rig, "thr_big", opts());
+    await rig.waitFor(() => deltas(rig, "thr_big").length >= 2);
+    const state = deltas(rig, "thr_big").find((d) => d.extensionKind === "bb/provider-model-catalog")!;
+    // bb: `Buffer.byteLength(JSON.stringify(payload)) > EXTENSION_PAYLOAD_MAX_BYTES` (64 * 1024) → provider/unhandled.
+    expect(Buffer.byteLength(JSON.stringify(state.payload))).toBeLessThanOrEqual(65536);
+    const models = (state.payload as { models: Record<string, any>[] }).models;
+    expect(models).toHaveLength(200);
+    const ladder = (m: Record<string, any>) => m.supportedReasoningEfforts.map((e: { reasoningEffort: string }) => e.reasoningEffort);
+    const current = models.find((m) => m.isDefault)!;
+    expect(current.id).toBe("openrouter/vendor-3/model-name-150");
+    expect(current.reasoningDiscovery).toBe("known");
+    expect(ladder(current)).toEqual(["default", "none", "low", "medium", "high", "xhigh", "max", "ultra"]);
+    // The rest: bb asks `model/list{selectedModel}` when one is picked (its selected-model discovery).
+    const later = models.filter((m) => m.reasoningDiscovery === "unknown");
+    expect(later.length).toBeGreaterThan(0);
+    expect(later.every((m) => m.supportedReasoningEfforts.length === 0)).toBe(true);
+    const picked = later.at(-1)!;
+    const res = (await rig.call("model/list", { cwd: "/x/workspaces/thr_big", selectedModel: picked.model })).result as { models: Record<string, any>[] };
+    expect(res.models).toHaveLength(200);
+    const answer = res.models.find((m) => m.model === picked.model)!;
+    expect(answer.reasoningDiscovery).toBe("known");
+    expect(ladder(answer)).toEqual(ladder(current));
+  });
+
+  it("1000 models (bb's most): the current one with its reasoning, then the catalog's first; the last ones left out", () => {
+    const catalog = catalogFromModelOptions("/h", manyModels(1000, 900), 0);
+    const state = catalogState(catalog);
+    expect(Buffer.byteLength(JSON.stringify(state))).toBeLessThanOrEqual(65536);
+    const ids = state.models.map((m) => m.id);
+    expect(ids[0]).toBe(catalog.models[0]!.id);
+    expect(ids).toContain(catalog.current);
+    expect(state.models.find((m) => m.isDefault)!.supportedReasoningEfforts).toHaveLength(8);
+    const kept = ids.filter((id) => id !== catalog.current);
+    expect(kept).toEqual(catalog.models.slice(0, kept.length).map((m) => m.id));
   });
 });
 
