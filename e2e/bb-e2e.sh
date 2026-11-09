@@ -6,7 +6,8 @@
 #   e2e/bb-e2e.sh install <repo>     with bb-app stopped: server only, sbb plugin install <repo> --yes, folder → the test root
 #                                    (a reinstall keeps the old machine in data.db: with a daemon up it would reach ~/.hermes)
 #   e2e/bb-e2e.sh dev <repo>         sbb plugin dev <repo>, in the background
-#   e2e/bb-e2e.sh fake <folder>      the strict fake (npm run fake-hermes) in <folder> under /private/tmp/bb-hermes-test/
+#   e2e/bb-e2e.sh fake <folder> […]  the strict fake (npm run fake-hermes) in <folder> under /private/tmp/bb-hermes-test/,
+#                                    with the fake's flags after it (e.g. --unserved solo)
 #   e2e/bb-e2e.sh hermes <folder>    or an isolated Hermes there (e2e/isolated-hermes.ts: stub model, dashboard for Conduit)
 #   e2e/bb-e2e.sh connect <folder>   setConnection: the machine = the isolated host daemon, the folder = <folder>
 #   e2e/bb-e2e.sh check [<id>]       diagnostics.instance_id must equal <id> (default: the running fake's or Hermes'); else exit 1
@@ -134,7 +135,7 @@ case "${1:-}" in
     alive fake || alive hermes && die "a Hermes folder is already served"
     rm -f "$run/fake.json" "$run/hermes.json"
     entry=test/fake-hermes/run.ts; [ "$1" = hermes ] && entry=e2e/isolated-hermes.ts
-    ( cd "$repo"; nohup node --import tsx "$entry" "$2" >"$run/$1.json" 2>"$run/$1.log" & echo $! >"$run/$1.pid" )
+    ( cd "$repo"; nohup node --import tsx "$entry" "$2" "${@:3}" >"$run/$1.json" 2>"$run/$1.log" & echo $! >"$run/$1.pid" )
     for _ in $(seq 1 240); do [ -s "$run/$1.json" ] && break; alive "$1" || die "$1 exited (log $run/$1.log)"; sleep 0.5; done
     cat "$run/$1.json" ;;
   connect)
@@ -147,5 +148,5 @@ case "${1:-}" in
     got=$("$sbb" plugin rpc call hermes diagnostics --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);console.log((j.result??j).instance_id)})')
     [ "$got" = "$want" ] || die "diagnostics.instance_id is $got, not $want: abort (R3 M3)"
     echo "instance_id ok: $got" ;;
-  *) sed -n '2,12p' "$0"; exit 2 ;;
+  *) sed -n '2,13p' "$0"; exit 2 ;;
 esac

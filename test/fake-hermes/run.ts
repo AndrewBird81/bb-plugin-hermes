@@ -1,5 +1,5 @@
 // Standalone strict fake for the isolated-bb e2e (03 §E2E step 5):
-//   npm run fake-hermes -- <folder under /private/tmp/bb-hermes-test/> [--profiles alex,bob] [--rotating bob]
+//   npm run fake-hermes -- <folder under /private/tmp/bb-hermes-test/> [--profiles alex,bob] [--unserved solo] [--rotating bob]
 //                          [--second-ms 1000] [--changed-contract]
 // Serves the session engine (engine.ts) for the profiles given (default alex, bob) and every REST recording.
 // Prints one JSON line {folder, instance_id, api_origin, control} and writes the same to <folder>/fake-hermes.json;
@@ -40,15 +40,16 @@ const flag = (name: string) => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : undefined;
 };
-const folder = args.find((a, i) => !a.startsWith("--") && !args[i - 1]?.match(/^--(profiles|rotating|second-ms)$/));
+const folder = args.find((a, i) => !a.startsWith("--") && !args[i - 1]?.match(/^--(profiles|unserved|rotating|second-ms)$/));
 if (!folder) {
-  console.error("usage: npm run fake-hermes -- <folder> [--profiles alex,bob] [--rotating bob] [--second-ms 1000] [--changed-contract]");
+  console.error("usage: npm run fake-hermes -- <folder> [--profiles alex,bob] [--unserved solo] [--rotating bob] [--second-ms 1000] [--changed-contract]");
   process.exit(2);
 }
 const list = (v: string | undefined) => (v ? v.split(",").filter(Boolean) : undefined);
 const fake = await startFakeHermes({
   folder,
   profiles: list(flag("profiles")),
+  unserved: list(flag("unserved")),
   rotating: list(flag("rotating")),
   secondMs: flag("second-ms") ? Number(flag("second-ms")) : undefined,
   contract: args.includes("--changed-contract") ? "changed" : "vendored",

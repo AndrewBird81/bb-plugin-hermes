@@ -21,8 +21,15 @@ export function healthText(health: Health): string {
   }
 }
 
-/** "Worker last seen …", or null before the worker's first answer. */
+/** The health line's dot: connected and supported, connected but not (or not yet known), or not connected. */
+export function healthTone(health: Health): "ok" | "warning" | "off" {
+  if (health.state === "connected") return health.supported === false ? "warning" : "ok";
+  return health.state === "not_supported" || health.state === "connecting" ? "warning" : "off";
+}
+
+/** "Worker last seen …" to the minute, or null before the worker's first answer. */
 export function workerSeenText(health: Health): string | null {
   if (health.worker_last_seen_at === null) return null;
-  return `Worker last seen ${new Date(health.worker_last_seen_at).toLocaleString()}.`;
+  const at = new Date(health.worker_last_seen_at).toLocaleString(undefined, { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return `Worker last seen ${at}.`;
 }

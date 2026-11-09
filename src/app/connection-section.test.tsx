@@ -73,10 +73,21 @@ describe("settings section", () => {
     expect(await slot.findByText(text)).toBeTruthy();
   });
 
-  it("shows when the worker was last seen", async () => {
-    const at = Date.UTC(2026, 10, 8, 12);
+  it("shows when the worker was last seen, to the minute", async () => {
+    const at = Date.UTC(2026, 10, 8, 12, 34, 56);
     const slot = render({ health: () => health("connected", { worker_last_seen_at: at }) });
-    expect(await slot.findByText(`Worker last seen ${new Date(at).toLocaleString()}.`)).toBeTruthy();
+    const line = await slot.findByText(/^Worker last seen /);
+    expect(line.textContent).toMatch(/\d:\d\d\b/);
+    expect(line.textContent).not.toMatch(/\d:\d\d:\d\d/);
+  });
+
+  it("ux-v1.1 §1: no hint under the picker (the section says it); Save beside the picker; one dot by state", async () => {
+    const slot = render({ health: () => health("connected", { version: "0.9.1", supported: true }) });
+    await slot.findByRole("option", { name: "studio" });
+    expect(slot.queryByText("The bb machine that runs Hermes.")).toBeNull();
+    expect(slot.getByLabelText("Hermes machine").getAttribute("aria-describedby")).toBeNull();
+    expect(slot.getByRole("button", { name: "Save" }).parentElement).toBe(slot.getByLabelText("Hermes machine").parentElement);
+    expect(slot.getByRole("status").querySelector(".bg-success")).toBeTruthy();
   });
 
   it("lists bb machines and Not connected", async () => {

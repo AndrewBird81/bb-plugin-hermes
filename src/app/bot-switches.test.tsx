@@ -3,14 +3,11 @@ import { renderSlot, type PluginRpcTestHandlers } from "@get-bb/plugin-sdk/testi
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { BOTS_CHANNEL, rpcContract, type BotRow, type RpcContract } from "../shared/rpc-contract.js";
-import { grantText } from "./bot-switches.js";
+import { GRANT_TEXT, GRANT_TITLE } from "./bot-switches.js";
 import { bot, loadApp } from "./test-fixtures.js";
 
 const app = await loadApp();
 const section = app.settingsSections.find((s) => s.id === "bots")!;
-
-const GRANT_NEO =
-  "On: chat with Neo in bb, see Neo's Hermes chats in bb, and let Neo operate bb: read, start, message, stop and archive any bb thread on any machine. Hermes doesn't ask before running bb commands. Restrictions come later.";
 
 function render<M extends keyof RpcContract>(rpc: PluginRpcTestHandlers<Pick<RpcContract, M>>) {
   return renderSlot<object, Pick<RpcContract, M>>(section, {}, { rpc, experimental_rpcContract: rpcContract });
@@ -19,35 +16,57 @@ function render<M extends keyof RpcContract>(rpc: PluginRpcTestHandlers<Pick<Rpc
 describe("bot switches", () => {
   afterEach(cleanup);
 
-  it("one row per bot, every bot off, with the grant text", async () => {
+  it("the grant once, in a warning card above the rows, also with no bot; every bot off", async () => {
     const slot = render({ bots: () => ({ bots: [bot("neo"), bot("alex")] }) });
     const neo = (await slot.findByRole("switch", { name: "Neo" })) as HTMLInputElement;
     expect(neo.checked).toBe(false);
     expect(neo.disabled).toBe(false);
     expect((slot.getByRole("switch", { name: "Alex" }) as HTMLInputElement).checked).toBe(false);
-    expect(slot.getByText(GRANT_NEO)).toBeTruthy();
-    expect(neo.getAttribute("aria-describedby")).toBeTruthy();
-    expect(document.getElementById(neo.getAttribute("aria-describedby")!)!.textContent).toBe(GRANT_NEO);
+    const card = slot.getByRole("region", { name: GRANT_TITLE });
+    expect(card.textContent).toBe(GRANT_TITLE + GRANT_TEXT);
+    expect(slot.getAllByText(GRANT_TEXT)).toHaveLength(1);
+    expect(GRANT_TEXT).toBe("It can read, start, message, stop and archive any bb thread on any machine. Hermes doesn't ask before running bb commands. Restrictions come later.");
+    // Each switch is described by the card.
+    expect(neo.getAttribute("aria-describedby")).toBe(card.id);
+    cleanup();
+    const empty = render({ bots: () => ({ bots: [] }) });
+    await empty.findByText("No bots yet: connect to Hermes above.");
+    expect(empty.getByRole("region", { name: GRANT_TITLE })).toBeTruthy();
   });
 
-  it("the default bot (Hermes) reads \"see its chats\", never Hermes's Hermes chats", () => {
-    expect(grantText("Hermes")).toContain("see its chats in bb");
-    expect(grantText("Hermes")).not.toContain("Hermes's");
+  it("one line per row by state: imports (count > 0, off), unserved, nothing when on or with no count; no avatar", async () => {
+    const slot = render({
+      bots: () => ({
+        bots: [
+          bot("neo", { import_count: 12 }),
+          bot("bob", { import_count: 1 }),
+          bot("alex", { import_count: 0 }),
+          bot("dan"),
+          bot("eve", { enabled: true, import_count: 3 }),
+          bot("zed", { served: false }),
+        ],
+      }),
+    });
+    await slot.findByRole("switch", { name: "Neo" });
+    const line = (name: string) => {
+      const ids = slot.getByRole("switch", { name }).getAttribute("aria-describedby")!.split(" ");
+      return ids.length > 1 ? document.getElementById(ids[1]!)!.textContent : null;
+    };
+    expect(["Neo", "Bob", "Alex", "Dan", "Eve", "Zed"].map(line)).toEqual([
+      "Imports 12 chats from the last 30 days.",
+      "Imports 1 chat from the last 30 days.",
+      null,
+      null,
+      null,
+      "Not served by this machine's gateway.",
+    ]);
+    expect(slot.container.querySelectorAll("img")).toHaveLength(0);
   });
 
-  it("shows the import count only when it is a number", async () => {
-    const slot = render({ bots: () => ({ bots: [bot("neo", { import_count: 12 }), bot("alex"), bot("bob", { import_count: 1 })] }) });
-    expect(await slot.findByText("Imports 12 chats from the last 30 days.")).toBeTruthy();
-    expect(slot.getByText("Imports 1 chat from the last 30 days.")).toBeTruthy();
-    expect(slot.queryAllByText(/^Imports/)).toHaveLength(2);
-  });
-
-  it("an unserved bot: switch disabled, Not served by this machine's gateway", async () => {
+  it("an unserved bot: switch disabled", async () => {
     const slot = render({ bots: () => ({ bots: [bot("neo", { served: false })] }) });
     const neo = (await slot.findByRole("switch", { name: "Neo" })) as HTMLInputElement;
     expect(neo.disabled).toBe(true);
-    expect(slot.getByText("Not served by this machine's gateway")).toBeTruthy();
-    expect(slot.queryByText(GRANT_NEO)).toBeNull();
   });
 
   it("an unserved bot that is on can still turn off", async () => {
@@ -86,16 +105,18 @@ describe("bot switches", () => {
     expect(slot.inspection.rpcCalls.filter((c) => c.method === "bots")).toHaveLength(2);
   });
 
-  it("shows a setBot error and the row's real state", async () => {
+  it("shows a setBot error as the row's line, and the row's real state", async () => {
     const slot = render({
-      bots: () => ({ bots: [bot("neo")] }),
+      bots: () => ({ bots: [bot("neo", { import_count: 2 })] }),
       setBot: () => {
         throw new Error("Hermes isn't connected.");
       },
     });
-    const neo = (await slot.findByRole("switch", { name: "Neo" })) as HTMLInputElement;
+    const neo = (await slot.findByRole("switch", { name: "Neo", description: /Imports 2 chats/ })) as HTMLInputElement;
     fireEvent.click(neo);
+    // The error takes the row's one line.
     expect((await slot.findByRole("alert")).textContent).toBe("Hermes isn't connected.");
+    expect(slot.queryByText(/^Imports/)).toBeNull();
     expect(neo.checked).toBe(false);
   });
 

@@ -21,7 +21,7 @@ export const registerApp: Setup = (app) => {
   app.slots.settingsSection({
     id: "bots",
     title: "Bots",
-    description: "Which Hermes bots you use in bb. Every bot starts off.",
+    description: "Chat with a bot in bb and see its Hermes chats as threads. Every bot starts off.",
     component: BotSwitches,
   });
   app.slots.experimental_threadRowMetadata<RowData>({ id: "hermes", useData: useRowData, component: RowBadge });

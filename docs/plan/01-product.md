@@ -21,9 +21,8 @@ AC:
 
 - One row per bot the host's gateway serves (S8 §Per-profile reach). A profile with its own gateway shows "Not served by this machine's gateway", switch disabled while off (a bot that is on can always be switched off).
 - **Every bot starts off** (D43). Off = absent from bb: no chat, no mirroring, no bb access.
-- Row text, before turning on:
-  - "On: chat with Neo in bb, see Neo's Hermes chats in bb (`default`: "see its chats"), and let Neo operate bb: read, start, message, stop and archive any bb thread on any machine. Hermes doesn't ask before running bb commands. Restrictions come later." (r12 §4)
-  - "Imports 12 chats from the last 30 days." (count from the history reader: the chats that become mirrored threads; the Bot Chat goes into the bot thread and isn't counted)
+- The grant, once, in a warning card above the rows (ux-v1.1 §1, r12 §4): "A bot that's on can operate bb. It can read, start, message, stop and archive any bb thread on any machine. Hermes doesn't ask before running bb commands. Restrictions come later."
+- Each row: the bot's name, its switch on the right, and at most one line: the error; else, while off, "Not served by this machine's gateway." or "Imports 12 chats from the last 30 days." (count from the history reader: the chats that become mirrored threads; the Bot Chat goes into the bot thread and isn't counted; none for 0). No avatar.
 - **On:**
   1. The worker writes the bot's bb skill and the shared wrapper, then refreshes that profile's prompts (02 flow 1).
   2. The bot thread appears, pinned (§3).
