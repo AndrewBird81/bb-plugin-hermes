@@ -406,6 +406,38 @@ describe("T2.1–T2.2: discovery and 30-day import", () => {
     expect(mirrors(w).map((t) => t.title)).toEqual(["Chat c1", "Chat c2", "Chat c3", "Chat c4", "Chat c5"]);
   });
 
+  for (const step of ["threads.update", "threads.archive", "threads.stop"] as const) {
+    it(`an import whose ${step} at the end fails frees its slot: the next import starts; the thread is redone at the next full reconcile`, async () => {
+      const w = await botChatWorld([]);
+      chat(w, "c1", { last_activity_at: Date.now() - 4 * DAY, archived: true });
+      chat(w, "c2", { last_activity_at: Date.now() - 3 * DAY, archived: true });
+      chat(w, "c3", { last_activity_at: Date.now() - 2 * DAY });
+      await on(w);
+      // Both slots' imports fail at their end: only a freed slot starts c3.
+      const failing = new Set(["c1", "c2"].map((id) => bindingByLineage(w.db, NEO, id)!.thread_id));
+      w.harness.inspection.sdk.stub(step, async (args: { threadId: string; visibility?: string }) => {
+        if (failing.delete(args.threadId)) throw Object.assign(new Error("HTTP 503"), { code: "unavailable" });
+        const t = w.thread(args.threadId);
+        if (step === "threads.update" && args.visibility) t.visibility = args.visibility as "visible";
+        if (step === "threads.archive") t.archivedAt = 1;
+        return w.dto(args.threadId);
+      });
+      await drain(w);
+      expect(failing.size).toBe(0);
+      expect(bindingByLineage(w.db, NEO, "c3")).toMatchObject({ state: "live" });
+      expect(bindingByLineage(w.db, NEO, "c1")?.state).toBe("replaying");
+      expect((await w.rpc<Diagnostics>("diagnostics")).errors).toContain("unavailable");
+      w.state.boot = "boot_2";
+      await w.connect();
+      await drain(w);
+      for (const id of ["c1", "c2"]) {
+        expect(w.thread(bindingByLineage(w.db, NEO, id)!.thread_id)).toMatchObject({ visibility: "visible" });
+        expect(bindingByLineage(w.db, NEO, id)).toMatchObject({ state: "live" });
+      }
+      expect(mirrors(w)).toHaveLength(3);
+    });
+  }
+
   it("switch-off mid-import: the import stops (thread and binding go, no tombstone) and runs again at switch-on", async () => {
     const w = await botChatWorld([]);
     chat(w, "c1");

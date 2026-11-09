@@ -169,17 +169,24 @@ export function createDiscovery(deps: SyncDeps & { sync: Sync }) {
     await sync.importNow(bindingByThread(db, thread.id)!, bot.enabled_at, target, turns);
   }
 
-  /** The import is over (every turn ran, confirmed): shown, archived as in Hermes (never pinned), stopped, live. */
+  /**
+   * The import is over (every turn ran, confirmed): shown, archived as in Hermes (never pinned), stopped, live.
+   * A failed step leaves it `replaying` (redone at the next full reconcile); its slot goes to the next import anyway.
+   */
   async function endImportNow(threadId: string): Promise<void> {
     const entry = sync.importing.get(threadId);
     sync.importing.delete(threadId);
     if (entry && bindingByThread(db, threadId)) {
-      await bb.sdk.threads.update({ threadId, visibility: "visible" });
-      if (entry.archived) await bb.sdk.threads.archive({ threadId });
-      // Its bridge process goes; the next send or wake starts one.
-      await bb.sdk.threads.stop({ threadId });
-      updateBinding(db, threadId, { state: "live" });
-      if (sync.readAtIdle.has(threadId)) await bb.sdk.threads.markRead({ threadId });
+      try {
+        await bb.sdk.threads.update({ threadId, visibility: "visible" });
+        if (entry.archived) await bb.sdk.threads.archive({ threadId });
+        // Its bridge process goes; the next send or wake starts one.
+        await bb.sdk.threads.stop({ threadId });
+        updateBinding(db, threadId, { state: "live" });
+        if (sync.readAtIdle.has(threadId)) await bb.sdk.threads.markRead({ threadId });
+      } catch (error) {
+        fail(errorCode(error, "import_end_failed"));
+      }
     }
     const target = targetOf(connection);
     if (target) await startImportsNow(target);
