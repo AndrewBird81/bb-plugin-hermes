@@ -74,7 +74,7 @@ AC:
 - **Replies** stream live: text, reasoning, tools.
 - **Approvals and `clarify`** (D11): a bb card with Hermes' choices only and the request's deadline (`timeout_s`: `approvals.timeout`, 60 s on the owner's setup, R6; 600 s for `clarify`). A push goes out. Timed out → "Timed out in Hermes"; answered in another app → "Answered elsewhere". bb never answers for you (A2).
 - **Steer:** into bb's own running turn; otherwise queued as the next message.
-- **`/new`, `/reset`:** a compaction of the same chat, never a new session (S8 step 7; README confirm item 7).
+- **`/new`, `/reset`:** a compaction of the same chat, never a new session (S8 step 7; README confirm item 7). Hermes keeps a chat's first and last messages, so a short chat's `/new` compacts nothing: bb says so.
 - **Working folder:** the bot's `terminal.cwd`, else `~` (R1 S10).
 - **Phone** (D19): the bot thread works as any thread. If plugin slots don't render on mobile (A30), new side chats come from desktop or `bb thread spawn`.
 
@@ -84,7 +84,7 @@ AC:
 - An image is described; a non-image file warns and the text still goes.
 - An abandoned empty chat: 0 Hermes sessions, 0 unread, 0 pushes.
 - `deny` leaves the target untouched; `once` runs once; a timeout closes the card; the `clarify` answer is used.
-- `/new` in the bot thread: same lineage root, `context.compacted` shown.
+- `/new` in the bot thread: same lineage root, `context.compacted` shown. A chat too short to compact (Hermes answers `noop`): no `context.compacted`, Hermes' report as a notice.
 - On the phone: start a side chat and chat in a bot thread.
 
 ## 5. Stop [P1]
@@ -109,7 +109,7 @@ AC: Stop on a CLI turn leaves it running in Hermes; its reply appears in bb when
 - One conversation: each model call sees every earlier turn from both apps (S8 E2). Conduit keeps working after any bb action (E10).
 - **Conduit's own turns:** your message appears at once; the reply when the turn ends. They don't stream (S8 step 6).
 - **Conduit sends while bb's turn runs:** Hermes queues it; it streams live in bb after bb's turn, tagged `[Outside bb]`.
-- **bb sends while Conduit's turn runs:** bb's turn shows "Waiting for another Hermes process…", then streams.
+- **bb sends while Conduit's turn runs:** bb's turn shows "Waiting for another Hermes process…", then streams. Conduit's turn then shows after bb's, though Hermes stores it first (P1 dogfood). bb can't show Hermes' order here: bb places your bubble when you send and only appends turns after it, and Conduit's own turn has no live events, so bb sees it only from the store when its wake runs, after bb's turn (02 flow 6). The model's context has Hermes' order.
 - **No Bot Chat yet:** bb creates it on your first message, never at setup (S8 step 2).
 
 ![What bb does when Conduit holds the chat](../diagrams/shared-wait.svg)
