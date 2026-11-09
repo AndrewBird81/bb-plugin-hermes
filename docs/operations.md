@@ -142,6 +142,8 @@ A range never offers the next major, and bb refuses to reinstall a managed plugi
 6. `bb plugin rpc call hermes health --json` → `connected` (`folder_changed`: save the connection again in Settings).
 7. `bb plugin rpc call hermes stopHosted`; `diagnostics`: the same bindings, duplicates 0, `1.0.0+…` on the worker and bridges; `bb plugin source hermes`: range `^1`, tag `v1.0.0`.
 
+Live (2026-11-09, UTC): `v1.0.0` released (tag `9f9a436c`); the steps above, in order. The plugin was gone for 12 s. Backup: 102,400 bytes, sha256 matched, 22 bindings and 5 bots. After: health connected with no re-save; bindings 22 = 22, duplicates 0, errors none; worker and bridges `1.0.0+2b1292dd32b0`; source `^1`, tag `v1.0.0`. Hermes threads: the same 15 open, 8 archived and 4 pinned, titles unchanged, none unread; bots unchanged (`todoist` off); 0 pushes; 0 Hermes writes.
+
 ## Approvals
 
 Gated steps (pushes, tags, releases, the live install, each live bot switch-on) check this log first (04 §Rollout).
@@ -160,3 +162,4 @@ Gated steps (pushes, tags, releases, the live install, each live bot switch-on) 
 | 2026-11-09 | P1 live dogfood steps 4–14, with the `default`, alex and david switch-ons | Approved ("The tests are approved, and you can proceed") |
 | 2026-11-09 | "Proceed as proposed" | Approved |
 | 2026-11-09 | "You can release 1.0": read as `v0.3.0` for the P2 live dogfood (its live update and 30-day import included), then `v1.0.0` (T2.6) | Approved |
+| 2026-11-09 | Moving the live install to `@^1` (`bb plugin remove`, then a fresh install), after the isolated test | Done under "You can release 1.0"; no data lost |
