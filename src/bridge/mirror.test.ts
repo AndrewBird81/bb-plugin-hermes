@@ -139,18 +139,17 @@ describe("compaction and rotation (flow 7, A8)", () => {
   it("a rotating compress: the live session stays the root, history follows the tip; one compacted, nothing renders twice", async () => {
     const v = opts("bob", { kind: "chat" });
     await startThread(rig, "thr_rot", v);
-    await turn(rig, "thr_rot", [text("one")], v);
-    await turn(rig, "thr_rot", [text("two")], v);
+    for (const t of ["one", "two", "three", "four"]) await turn(rig, "thr_rot", [text(t)], v);
     const root = rig.requests("prompt.submit")[0]!.params.session_id as string;
     await turn(rig, "thr_rot", [text("/new")], v);
     const tip = rig.fake.engine.tipOf(rig.fake.session("bob", root)!).id;
     expect(tip).not.toBe(root);
-    await turn(rig, "thr_rot", [text("three")], v);
+    await turn(rig, "thr_rot", [text("five")], v);
     // As recorded (rotating-viewer.json): the root keeps the live session; bb keeps submitting by it.
-    expect(rig.requests("prompt.submit").map((r) => r.params.session_id)).toEqual([root, root, root]);
+    expect(rig.requests("prompt.submit").map((r) => r.params.session_id)).toEqual(Array(5).fill(root));
     // One compacted, from the compress result: a `stored_session_id` that stays the root adds none.
     expect(events(rig, "thr_rot").filter((e) => e.type === "thread/compacted")).toHaveLength(1);
-    expect(agentTexts(rig, "thr_rot")).toEqual(["echo(2): one", "echo(4): two", expect.stringContaining("three")]);
+    expect(agentTexts(rig, "thr_rot")).toEqual(["echo(2): one", "echo(4): two", "echo(6): three", "echo(8): four", expect.stringContaining("five")]);
     // The persisted state names the tip for history, the root as the lineage root.
     const state = deltas(rig, "thr_rot").filter((d) => d.extensionKind === "hermes/persisted-turn").at(-1)!.payload as { lineage_root: string; session_id: string };
     expect(state).toMatchObject({ lineage_root: root, session_id: tip });

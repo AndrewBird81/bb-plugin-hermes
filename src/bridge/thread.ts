@@ -25,6 +25,16 @@ export const EARLIER_TEXT = "Earlier messages stay in Hermes.";
 export const invalidMarkerText = (error: string) => `The Hermes plugin sent a message this version can't read (${error}); nothing was sent to Hermes.`;
 export const STOPPED_WATCHING_TEXT = "Stopped watching in bb; the full reply shows below when it ends.";
 export const INIT_REFUSED_TEXT = "This chat is already set up.";
+/**
+ * A compress that removed nothing (`status: "noop"`, `session_mutation_compress.py:96-103`): Hermes' own report
+ * (`manual_compression_feedback.py`); its note says why when the summary failed or would have grown the chat.
+ */
+export const nothingCompactedText = (summary: { headline?: unknown; note?: unknown }) => {
+  const headline = typeof summary.headline === "string" && summary.headline ? summary.headline : "No changes from compression";
+  return typeof summary.note === "string" && summary.note
+    ? `Nothing compacted: ${headline}. ${summary.note}`
+    : `Nothing to compact yet: Hermes keeps the first and last messages (${headline}).`;
+};
 /** Flow 3 step 4: 2, 5, 10, 30 s, then every 60 s. */
 export const HOLD_RETRY_MS = [2000, 5000, 10_000, 30_000, 60_000];
 /** How long Stop waits for Hermes to settle an interrupted turn before settling it here. */
@@ -464,7 +474,7 @@ export class HostedThread {
   }
 
   /** `session.mutate` with the fences; one retry at fresh fences (a value pick is harmless to re-apply). */
-  private async mutate(session: SessionState, operation: string, payload: Record<string, unknown>): Promise<void> {
+  private async mutate(session: SessionState, operation: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
     for (let attempt = 0; ; attempt++) {
       if (!session.client.cursors.has(session.id)) await session.client.resume({ profile: session.profile, session_id: session.id, omit_messages: true });
       const cursor = session.client.cursors.get(session.id)!;
@@ -487,7 +497,7 @@ export class HostedThread {
           session.stored = target;
           if (this.ctx) this.ctx.sessionId = target;
         }
-        return;
+        return result as unknown as Record<string, unknown>;
       } catch (error) {
         const reason = reasonOf(error);
         if (attempt > 0 || (reason !== "revision_conflict" && reason !== "stale_generation")) throw error;
@@ -680,11 +690,17 @@ export class HostedThread {
     // A bot with no Bot Chat yet has nothing to compact: `/new` is no reason to create one (S8 step 2).
     const session = ctx.kind === "bot" ? await this.withHold(turn, () => this.openBotChat(ctx, false)) : await this.ensureSession(turn, ctx);
     if (!session) return;
+    let result: Record<string, unknown>;
     try {
-      await this.mutate(session, "compress", {});
+      result = await this.mutate(session, "compress", {});
     } catch (error) {
       if (reasonOf(error) === "session_busy") throw new UserFacingError("Hermes is busy with this chat; send /new again when it's done.");
       throw error;
+    }
+    if (result.status === "noop") {
+      const summary = result.summary && typeof result.summary === "object" ? (result.summary as Record<string, unknown>) : {};
+      this.emit([{ kind: "provider.warning", summary: nothingCompactedText(summary) }]);
+      return;
     }
     this.emit([{ kind: "context.compacted" }]);
   }

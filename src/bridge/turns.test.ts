@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { encodeMarker, spawnStart } from "../shared/marker.js";
 import { otherMachineText, switchedOffText } from "../shared/provider-options.js";
 import { noBotText } from "./context.js";
-import { DELETED_TEXT } from "./thread.js";
+import { DELETED_TEXT, nothingCompactedText } from "./thread.js";
 import { AUTO, creq, type Rig, startRig, startThread, text, turn } from "./testing/harness.js";
 import { agentTexts, deltas, errors, events, statuses } from "./testing/read.js";
 
@@ -17,6 +17,7 @@ afterEach(async () => {
 
 const opts = (profile = "alex", view: object | null = {}) => ({ providerOptions: rig.options(profile, view as never) });
 const home = (profile: string) => rig.fake.profiles.find((p) => p.name === profile)!.home;
+const warnings = (threadId: string) => deltas(rig, threadId).filter((d) => d.kind === "provider.warning").map((d) => d.summary);
 
 describe("side chat", () => {
   it("creates the session lazily, submits with bb's ids, streams, then announces identity after the boundary", async () => {
@@ -188,15 +189,28 @@ describe("Stop and steer fencing (S8 step 8, R1 M4)", () => {
 describe("/new and /reset (S8 step 7, A46)", () => {
   it("compresses the same chat with expected_generation; never a new session", async () => {
     await startThread(rig, "thr_n", opts());
-    await turn(rig, "thr_n", [text("one")], opts());
+    for (const t of ["one", "two", "three", "four"]) await turn(rig, "thr_n", [text(t)], opts());
     await turn(rig, "thr_n", [text("/new")], opts());
+    for (const t of ["five", "six"]) await turn(rig, "thr_n", [text(t)], opts());
     await turn(rig, "thr_n", [text("/reset")], opts());
     expect(rig.requests("session.create")).toHaveLength(1);
-    expect(rig.requests("prompt.submit")).toHaveLength(1);
+    expect(rig.requests("prompt.submit")).toHaveLength(6);
     const mutates = rig.requests("session.mutate");
     expect(mutates.map((m) => m.params.operation)).toEqual(["compress", "compress"]);
     expect(mutates.every((m) => typeof m.params.expected_generation === "number" && !m.refused)).toBe(true);
     expect(events(rig, "thr_n").filter((e) => e.type === "thread/compacted")).toHaveLength(2);
+    expect(warnings("thr_n")).toEqual([]);
+  });
+
+  it("a chat too short to compact: Hermes' noop → no context.compacted, a notice instead", async () => {
+    await startThread(rig, "thr_ns", opts());
+    for (const t of ["one", "two", "three"]) await turn(rig, "thr_ns", [text(t)], opts());
+    await turn(rig, "thr_ns", [text("/new")], opts());
+    expect(rig.requests("session.mutate").map((m) => m.params.operation)).toEqual(["compress"]);
+    expect(events(rig, "thr_ns").filter((e) => e.type === "thread/compacted")).toEqual([]);
+    expect(warnings("thr_ns")).toEqual([nothingCompactedText({ headline: "No changes from compression: 6 messages", note: null })]);
+    expect(warnings("thr_ns")[0]).toBe("Nothing to compact yet: Hermes keeps the first and last messages (No changes from compression: 6 messages).");
+    expect(statuses(rig, "thr_ns")).toEqual(["completed", "completed", "completed", "completed"]);
   });
 });
 

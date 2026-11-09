@@ -960,6 +960,9 @@ export class Engine {
     let result: Json;
     if (operation === "compress") {
       if (s.running) throw new Refusal("session_busy");
+      const noop = this.compressNoop(s);
+      // A read-only report: no receipt, no revision, no publication (`session_mutations.py:250-254`).
+      if (noop) return noop;
       result = this.compress(s);
     } else {
       if (operation === "model") {
@@ -983,6 +986,22 @@ export class Engine {
    * keeps its title and stays the live session: its subscribers keep every event under the root id and epoch,
    * resuming any id gives the root (T1.0 rotating-viewer.json, rotated-bot-chat.json).
    */
+  /**
+   * Nothing removable: `{session_id, operation, status: "noop", summary}` (`session_mutation_compress.py:96-103`).
+   * Hermes' compressor needs more than its head (`protect_first_n`, 3 by default) + 3 + 1 of the user, assistant
+   * and tool messages (`context_compressor.py` `insufficient_messages`); its token-budget tail check isn't simulated.
+   */
+  private compressNoop(s: Session): Json | null {
+    const n = this.tipOf(s).rows.filter((r) => r.active && ["user", "assistant", "tool"].includes(r.role)).length;
+    if (n > 3 + 3 + 1) return null;
+    return {
+      session_id: s.id,
+      operation: "compress",
+      status: "noop",
+      summary: { noop: true, aborted: false, refused_would_grow: false, fallback_used: false, headline: `No changes from compression: ${n} messages`, token_line: "Approx request size: ~0 tokens (unchanged)", note: null },
+    };
+  }
+
   private compress(s: Session): Json {
     const tip = this.tipOf(s);
     const before = tip.rows.filter((r) => r.active);

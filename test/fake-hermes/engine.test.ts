@@ -472,18 +472,31 @@ describe("engine: fences", () => {
     expect(active.length).toBeLessThan(chain.messages.length);
   });
 
+  it("compress on a short chat: Hermes' read-only noop report; nothing committed or published (session_mutation_compress.py)", async () => {
+    const f = await fake();
+    const k = await client(f);
+    const { session_id: sid } = await k.create("alex", "bb:thr_short");
+    for (let i = 1; i <= 3; i++) await k.turn("alex", sid, `turn ${i}`);
+    const snap = await k.c.resume({ profile: "alex", session_id: sid, omit_messages: true });
+    const updates = k.of("session.updated", sid).length;
+    const result = await k.c.mutate({ profile: "alex", session_id: sid, request_id: "bb:cx:short", expected_revision: snap.revision, expected_generation: snap.execution_generation, operation: "compress", payload: {} });
+    expect(result).toEqual({ session_id: sid, operation: "compress", status: "noop", summary: expect.objectContaining({ noop: true, headline: "No changes from compression: 6 messages" }) });
+    expect(await k.c.resume({ profile: "alex", session_id: sid, omit_messages: true })).toMatchObject({ revision: snap.revision, execution_generation: snap.execution_generation });
+    expect(k.of("session.updated", sid)).toHaveLength(updates);
+  });
+
   it("compress rotating: a tip segment with the same chat_id takes the rows and title; the root stays the live session (rotating-viewer.json)", async () => {
     const f = await fake({ rotating: ["bob"] });
     const k = await client(f);
     const root = (await k.c.create({ profile: "bob", title: "Bot Chat", hidden: true, request_id: "bb:botchat:b" })).session_id;
-    for (let i = 1; i <= 3; i++) await k.turn("bob", root, `turn ${i}`);
+    for (let i = 1; i <= 4; i++) await k.turn("bob", root, `turn ${i}`);
     const before = groupTurns((await readChain(f.folder, "bob", root)).messages).map((t) => t.anchor_uid);
     const snap = await k.c.resume({ profile: "bob", session_id: root, omit_messages: true });
     const lookupBefore = await k.c.sessionList({ profile: "bob", title: "Bot Chat", include_hidden: true });
     const result = (await k.c.mutate({ profile: "bob", session_id: root, request_id: "bb:cx:r", expected_revision: snap.revision, expected_generation: snap.execution_generation, operation: "compress", payload: {} })) as unknown as { target_session_id: string };
     const tip = result.target_session_id;
     expect(tip).not.toBe(root);
-    expect(result).toMatchObject({ session_id: root, previous_target_session_id: root, revision: 4, execution_generation: 4 });
+    expect(result).toMatchObject({ session_id: root, previous_target_session_id: root, revision: 5, execution_generation: 5 });
     // Subscribers of the root get the result as `session.updated`, under the root id and epoch.
     const updated = k.of("session.updated", root).at(-1)!;
     expect(updated.payload).toEqual(result);
@@ -493,7 +506,7 @@ describe("engine: fences", () => {
     expect((await k.c.resume({ profile: "bob", session_id: tip, omit_messages: true })).session_id).toBe(root);
     // session.list{title} answers the root's own row, before and after the compress (rotated-bot-chat.json).
     const lookup = await k.c.sessionList({ profile: "bob", title: "Bot Chat", include_hidden: true });
-    expect(lookup.sessions).toEqual([expect.objectContaining({ session_id: root, id: root, resolved_id: root, title: "Bot Chat", root_title: "Bot Chat", message_count: 6, running: true })]);
+    expect(lookup.sessions).toEqual([expect.objectContaining({ session_id: root, id: root, resolved_id: root, title: "Bot Chat", root_title: "Bot Chat", message_count: 8, running: true })]);
     expect(lookup).toEqual(lookupBefore);
     expect(f.session("bob", tip)).toMatchObject({ title: "Bot Chat" });
     expect(f.engine.tipOf(f.session("bob", root)!)).toMatchObject({ id: tip, title: null });
@@ -512,8 +525,8 @@ describe("engine: fences", () => {
     expect(byRoot.session_id).toBe(tip);
     expect(new Set(byRoot.messages.map((m) => m.message_uid)).size).toBeLessThan(byRoot.messages.length);
     const turns = groupTurns(byRoot.messages).map((t) => t.anchor_uid);
-    expect(turns.slice(0, 3)).toEqual(before);
-    expect(turns).toHaveLength(4);
+    expect(turns.slice(0, 4)).toEqual(before);
+    expect(turns).toHaveLength(5);
   });
 });
 
@@ -697,10 +710,11 @@ describe("engine: REST projection", () => {
     await k.until(() => k.of("tool.start", a).length === 1);
     await k.c.steer({ profile: "alex", session_id: a, execution_generation: 2, text: "steer" });
     await k.until(() => k.completes(a).length === 2);
+    await k.turn("alex", a, "more"); // past Hermes' minimum for a compress that removes something
     const s = await k.c.resume({ profile: "alex", session_id: a, omit_messages: true });
     await k.c.mutate({ profile: "alex", session_id: a, request_id: "c1", expected_revision: s.revision, expected_generation: s.execution_generation, operation: "compress", payload: {} });
     const b = (await k.create("bob", "bb:thr_k2")).session_id;
-    for (const t of ["one", "two", "three"]) await k.turn("bob", b, t);
+    for (const t of ["one", "two", "three", "four"]) await k.turn("bob", b, t);
     const sb: Snapshot = await k.c.resume({ profile: "bob", session_id: b, omit_messages: true });
     await k.c.mutate({ profile: "bob", session_id: b, request_id: "c2", expected_revision: sb.revision, expected_generation: sb.execution_generation, operation: "compress", payload: {} });
     const legacy = f.legacySession("alex", { turns: ["conduit"] });

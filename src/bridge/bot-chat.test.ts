@@ -135,7 +135,7 @@ describe("/new in a bot thread", () => {
 
   it("compacts the same Bot Chat: same lineage, context.compacted (01 §4 AC)", async () => {
     await startThread(rig, "thr_bc", bot("alex"));
-    await turn(rig, "thr_bc", [text("one")], bot("alex"));
+    for (const t of ["one", "two", "three", "four"]) await turn(rig, "thr_bc", [text(t)], bot("alex"));
     await turn(rig, "thr_bc", [text("/new")], bot("alex"));
     expect(rig.requests("session.create")).toHaveLength(1);
     expect(rig.requests("session.mutate").map((m) => m.params.operation)).toEqual(["compress"]);
@@ -148,8 +148,7 @@ describe("a rotated Bot Chat (S8 E8; rotating-viewer.json)", () => {
     await rig.close();
     rig = await startRig({ rotating: ["bob"] });
     await startThread(rig, "thr_rot", bot());
-    await turn(rig, "thr_rot", [text("one")], bot());
-    await turn(rig, "thr_rot", [text("two")], bot());
+    for (const t of ["one", "two", "three", "four"]) await turn(rig, "thr_rot", [text(t)], bot());
     const root = rig.requests("prompt.submit")[0]!.params.session_id as string;
     // Another app compresses: bb's socket hears nothing about the tip.
     const cli = await rig.cli();
@@ -157,9 +156,9 @@ describe("a rotated Bot Chat (S8 E8; rotating-viewer.json)", () => {
     await cli.mutate({ profile: "bob", session_id: root, request_id: "desk-compress", expected_revision: snap.revision, expected_generation: snap.execution_generation, operation: "compress", payload: {} });
     const tip = rig.fake.engine.tipOf(rig.fake.session("bob", root)!).id;
     expect(tip).not.toBe(root);
-    await turn(rig, "thr_rot", [text("three")], bot());
+    await turn(rig, "thr_rot", [text("five")], bot());
     expect(rig.requests("session.create").filter((r) => r.params.title === BOT_CHAT_TITLE)).toHaveLength(1);
-    expect(statuses(rig, "thr_rot")).toEqual(["completed", "completed", "completed"]);
+    expect(statuses(rig, "thr_rot")).toEqual(Array(5).fill("completed"));
     const state = deltas(rig, "thr_rot").filter((d) => d.extensionKind === "hermes/persisted-turn").at(-1)!.payload as { lineage_root: string; session_id: string };
     expect(state).toEqual(expect.objectContaining({ lineage_root: root, session_id: tip }));
   });
