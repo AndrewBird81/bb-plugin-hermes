@@ -85,6 +85,19 @@ Results (2026-11-09, UTC). Steps 1–9, 11 and 14 passed; step 10 failed (BUG 4)
   - BUG 4 (step 10): from `$WORK_HOST`, `bb thread spawn` without `--model` fails "HTTP 503: The hermes model catalog is empty…" with no thread; with `--model` it says "add `--machine the Hermes machine`" (provider options carry no machine name).
   - The bot thread's `titleFallback` is the raw init marker: bb derives it from every text part of the spawn input, agent-only included.
 
+## P2 e2e results (T2.5, 2026-11-09)
+
+Isolated bb (`~/.bb-hermes-e2e`, bb-app 0.49.0) on the strict fake (`e2e/checks/p2-fake.mjs`: 60 of 62 checks pass, the 2 failures are one log-only finding below) and on an isolated Hermes c314285f07 with real rows (`e2e/hermes-ctl.ts`).
+- **Import:** switch row "Imports 6 chats" = 6 mirrored threads = `e2e/eligibility` 6 = the REST rules 6 (isolated Hermes; fake: 7 = 7); every thread read (`lastReadAt ≥ latestAttentionAt`), Hermes' title, a Hermes-archived chat archived, none pinned, tags dated; `state.db` unchanged (revisions, generations, messages, admissions, `state_meta`); 0 pushes; off, then on, imports 0.
+- **Out:** no thread for cron, `oneshot`, ACP, a chat app, hidden, empty, 40-day-old or bb-created chats; a chat titled `Bot Chat` binds only to the bot thread.
+- **Long imports:** 25-turn chat, 30- and 45-turn Bot Chats (one with bb restarted mid-import), 25-turn Bot Chat and chat on real Hermes: every reply once; the next user send's reply pushes once.
+- **Live:** a new `hermes chat` → a live, unread thread 4–5 s after the CLI exits; a bb reply continues that session (`hermes chat --resume` has it); a Conduit chat adopted in place (`legacy` cleared), its later turns mirror; title follow within 2 s, stopped by a bb rename; D15 refuses both tagged sends; D48 brings the same threads back with the turn made while off and imports a chat started while off; turns arriving during an import wake after it as `[Outside bb]`, unread; a user send queued behind an import runs once, not muted.
+- **Mirror rules:** 3 re-lists → 1 bubble; a compaction adds 0 turns; `/retry` adds 1 (also on real Hermes).
+- **A38:** bb stopped with a hidden import at 2 of 41 turns: after restart the thread is deleted and the chat imported once, no 409, 0 duplicates. **A49:** a wake into an archived thread is refused quietly; on unarchive the turn arrives in ~180 ms. **A53:** `titleFallback` null on all 15 Hermes threads.
+- **P1 bugs:** a 120-model catalog arrives at 65 512 bytes with no `provider/unhandled`; `/new` on a short chat shows "Nothing to compact yet…"; a chat deleted in Hermes stays quiet (send: "Deleted in Hermes"; no errors across restarts).
+- **Open (log only):** stopping bb mid-way through a bot thread's import logs ~100 errors (`job_failed`, `finalize_failed`) as the daemon disconnects; `diagnostics` after the restart is clean and the import completes once.
+- Live Hermes untouched by every run: gateway pid unchanged; `live-audit` showed nothing from the runs; only `sqlite3 -readonly` counts touched it.
+
 ## P2 live dogfood (owner present)
 
 Run in order on `v0.3.0`; each gated step checks §Approvals first. The import writes nothing to Hermes; live Hermes writes come only from the owner's own actions (steps 5–7). Every read below is read-only (`sqlite3 -readonly`, `diagnostics`, `bb thread get`).

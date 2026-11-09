@@ -99,7 +99,7 @@ Critical path: T0.1 → T0.3 → T0.4 → T1.1 → T1.4 → T1.6 → T1.13 → T
 | A30 | Plugin slots render on bb mobile. Dogfood only | T1.14 |
 | A36 | VERIFIED (T0.5, isolated; live: 5 of 5 served profiles answered one read-only list) | T0.5 |
 | A37 | VERIFIED (T1.14, isolated bb): `hermes/persisted-turn` reaches the server; it binds side chats from bb's stored turns | T1.1 |
-| A38 | Deleting a hidden import thread frees its `providerThreadId` (no 409, R4 S8) | T2.5 |
+| A38 | VERIFIED (T2.5, isolated bb 0.49.0, fake): bb stopped mid-import; after restart the hidden thread was deleted and the chat imported once, re-announcing the same `providerThreadId`: no 409, 0 duplicates | T2.5 |
 | A-S8a | Conduit finds Bot Chats by exact title (S). Dogfood only: the two-client harness drives Hermes' own dashboard client, not the closed Conduit app | T1.14, real app |
 | A-S8b | Conduit refreshes the open chat on `sessions.changed` (S). Dogfood only: the two-client harness drives Hermes' own dashboard client, not the closed Conduit app | T1.14, real app |
 | A-S8c | Conduit looks up before minting a Bot Chat (S). Dogfood only: the two-client harness drives Hermes' own dashboard client, not the closed Conduit app | T1.14, real app |
@@ -114,7 +114,7 @@ Critical path: T0.1 → T0.3 → T0.4 → T1.1 → T1.4 → T1.6 → T1.13 → T
 | A50 | PARTLY (T1.0, isolated): `prompt.submit.attachments` `{path, mime}` takes only `image/png\|jpeg\|gif\|webp`, and the file must be a direct child of `<profile home>/cache/images/` (else `invalid_params`). T1.14 (isolated bb): an image from bb is staged as `<profile>/cache/images/bb-<uuid>.png` and the turn completes; a PDF warns and the text still goes. A described image on a real model: dogfood | T1.0, T1.14 |
 | A51 | VERIFIED for the installer's default layout (`scripts/install.sh:97` clones into `$HERMES_HOME/hermes-agent`; the file is tracked). Other layouts → "version unknown" (tested) | T0.8 |
 | A52 | VERIFIED (T1.14, isolated bb): with `experimental_providerIcon` registered, the composer shows the Hermes icon next to the bot chip while the provider is hidden | T1.12 |
-| A53 | bb runs a spawn whose only input is one empty agent-only text (`spawnStart`) as a turn the bridge ends with no Hermes call, and leaves `titleFallback` null (bb-app 0.49.0 `deriveTitleFallback` reads every text part, agent-only included; bridge test) | T2.5 |
+| A53 | VERIFIED (T2.5, isolated bb): a spawn whose only input is one empty agent-only text (`spawnStart`) runs as a turn the bridge ends with no Hermes call, and `titleFallback` stays null (15 of 15 Hermes threads; bb-app 0.49.0 `deriveTitleFallback` reads every text part, agent-only included) | T2.5 |
 | A54 | VERIFIED (P1 live dogfood): bb can report a thread `idle` with nothing queued while it still dispatches a queued turn, whose idle then moves `latestAttentionAt` past an earlier `markRead`; an import's end is confirmed by a quiet re-read | P1 dogfood |
 | A55 | VERIFIED (source c314285f07, live list keys): REST `last_active` is a chat's latest activity (heartbeat, newest message, start); the raw `last_activity_at` is heartbeats only, null on older rows, the root's on a rotated chain (`docs/operations.md` §Surfaces) | T2.1 |
 | A56 | VERIFIED (source c314285f07, live counts): no recorded surface has a single writer, so no badge names an app; Hermes stores bb's side chats `local`/`desktop`, like Desktop's: bb-created chats are found by `expected_id` and a `bb:` first submission, never by surface | T2.1 |
