@@ -7,6 +7,7 @@
 //   conduit <profile> <text>            the dashboard's legacy socket (Conduit's path): create + send → desktop, no chat_id
 //   conduit-turn <profile> <id> <text>  a dashboard send into that chat
 //   botchat <profile> <text>            Conduit mints the profile's Bot Chat (hidden, legacy) and sends
+//   owned-botchat <profile> <text>      a gateway-owned Bot Chat, as Desktop makes it (canonical create, hidden) + a turn
 //   cron <profile> <text>               `hermes cron create` + `cron run` (the gateway's scheduler) → cron/cron (stays out)
 //   acp <profile> <text>                canonical `session.create{source:"acp"}` + a turn → local/acp (stays out)
 //   chat-app <profile> <platform>       no platform client here: a copy of the newest local/cli row and its messages,
@@ -122,6 +123,7 @@ const ops: Record<string, () => Promise<unknown>> = {
       await d.send(profile, String(made.session_id), rest[0]!);
       return { session_id: String(made.stored_session_id) };
     }),
+  "owned-botchat": () => created(profile, { source: "gui", title: "Bot Chat", hidden: true, follow_profile_config: true }, rest[0]),
   "conduit-turn": () =>
     dashboard(async (d) => {
       const live = await d.open(profile, rest[0]!);
