@@ -46,7 +46,7 @@ Choice (README confirm item 4): Hermes' REST projection, as Hermes Desktop reads
 | `lineage_root`, `session_id` | logical id (`chat_id` owner) and current tip. Null until the first send creates the session |
 | `expected_id` | bb-created session id, computed before the first send (identity rules) |
 | `kind` | `bot` · `chat` · `mirror` |
-| `source`, `tag` | raw `source`/`created_source`, and the tag shown (`CLI`, `TUI`, `Desktop`, `Conduit`). A bot thread's outside turns: the turn's surface when Hermes records one (none at c314285f07), else `Conduit` |
+| `source`, `tag` | raw `source`/`created_source`: the chat's own recorded surface (for a later badge, never a label). `tag` stays null: every outside turn reads `[Outside bb]`, since Hermes records no per-turn source (owner ruling) |
 | `cursor_uid` | the last anchor wakes have read past (migration 2) |
 | `state` | `pending` (no session yet) · `replaying` · `live` |
 | `legacy` | not gateway-owned yet (D16) |
@@ -81,7 +81,7 @@ Identity rules:
 | `replay` | `anchor_uid` | later import turns | Render that turn from history |
 | `mirror` | `anchor_uid, rest?` | wake | Render or watch the outside turn (flow 6) |
 
-Input parsing (R1 M6): bb may merge queued sends into one turn. The bridge splits input into ordered segments: each marker, with its label (the visible part right before it, when that part starts with a source tag), and bb prompts (the other parts between markers). `segmentInput` in `marker.ts`.
+Input parsing (R1 M6): bb may merge queued sends into one turn. The bridge splits input into ordered segments: each marker, with its label (the visible part right before it, when the marker says `labeled`), and bb prompts (the other parts between markers). `segmentInput` in `marker.ts`.
 
 ### Server ↔ host worker (`src/shared/host-contract.ts`)
 
@@ -109,8 +109,8 @@ Signals (worker → server): `changed{profile_homes[]}`, debounced; `watch{state
 
 ### Provider options and extension states
 
-- `deriveProviderOptions` (synchronous, every command; `src/shared/provider-options.ts`): `{folder, machine{id, name}, thread}`, read leniently: bb's daemon merges its own keys in (`additionalWorkspaceWriteRoots`, T1.14). `thread` is the server's binding view `{kind, profile, profile_home, bot_label, enabled, lineage_root, session_id, legacy, tag, cwd}`, null when unbound (S1-S3 fact 1 pattern (a)).
-- Extension states the bridge publishes (`src/shared/extension-state.ts`): `persisted-turn` (bb's own turns as stored, cumulative, last 20; A37) and `status` (the thread banner: `held`, `running_elsewhere{app}`; A47).
+- `deriveProviderOptions` (synchronous, every command; `src/shared/provider-options.ts`): `{folder, machine{id, name}, thread}`, read leniently: bb's daemon merges its own keys in (`additionalWorkspaceWriteRoots`, T1.14). `thread` is the server's binding view `{kind, profile, profile_home, bot_label, enabled, lineage_root, session_id, legacy, cwd}`, null when unbound (S1-S3 fact 1 pattern (a)).
+- Extension states the bridge publishes (`src/shared/extension-state.ts`): `persisted-turn` (bb's own turns as stored, cumulative, last 20; A37) and `status` (the thread banner: `held` "Open in another Hermes app: sends when it's free", `running_elsewhere` "Running outside bb", never an app's name; A47).
 
 ## Protocol mapping
 
@@ -180,19 +180,19 @@ Hermes events → bb deltas:
    1. Resolve each send: `session.list{profile, title:"Bot Chat", include_hidden:true}`. It adopts an unheld legacy Bot Chat (`resolve_titled_session` → `adopt_legacy_session`, T1.7 isolated), so only a bb send uses it; re-lists use the read-only `findBotChat`. `profiles.list.canonical_session: null` doesn't mean none (S8 E6). Cache `chat_id` for dedupe and reads only.
    2. None: re-check, then `session.create{profile, title:"Bot Chat", hidden:true, follow_profile_config:true, request_id:"bb:botchat:<profile_home>"}`. It returns any Bot Chat created meanwhile (E1). Lazy, never at setup: keeps the double-mint window (E12) to the user's first send.
    3. `session.resume{omit_messages:true}` (adopts a legacy row once) → `prompt.submit`. Always submit; the gateway orders it.
-   4. `runtime_coordination_required` from lookup, create or resume: keep the bb turn open, banner "Open in Conduit: sends when it's free" (A47), retry at 2, 5, 10, 30 s, then every 60 s. Never create, never take over. Stop drops the wait.
-   5. Conduit busy: bb's turn queues and shows Hermes' waiting status; no retry (E3a). bb busy, Conduit sends: a foreign admission on bb's subscription, rendered live tagged `[Conduit]` (E3b).
+   4. `runtime_coordination_required` from lookup, create or resume: keep the bb turn open, banner "Open in another Hermes app: sends when it's free" (A47), retry at 2, 5, 10, 30 s, then every 60 s. Never create, never take over. Stop drops the wait.
+   5. Conduit busy: bb's turn queues and shows Hermes' waiting status; no retry (E3a). bb busy, Conduit sends: a foreign admission on bb's subscription, rendered live tagged `[Outside bb]` (E3b).
    6. Title moved (deleted, renamed or re-minted in Hermes, r12 §1): the binding follows the new `lineage_root`, which the bridge reports in `persisted-turn`; bb keeps the old turns.
 4. **Turn controls:** track bb's own `admission_id`s from `AdmissionStatus`. Approvals, `clarify`, Stop and steer follow the tables; cards show the request's deadline.
 5. **Import and replay** (server, one serial queue)
    1. Per chat, oldest first: `readTurns{since}` → binding `replaying` → `turns` rows `replay`.
-   2. Mirrored chat: `threads.spawn{visibility:"hidden", title, input:["[<tag> · Oct 12] "+user0, bind]}`; bot thread: `threads.send` into it. Then `threads.send(queue-if-active, [tag+user_i, replay])` per turn (S1-S3 §S1b). bb's own past turns render untagged.
+   2. Mirrored chat: `threads.spawn{visibility:"hidden", title, input:["[Outside bb · Oct 12] "+user0, bind{labeled}]}`; bot thread: `threads.send` into it. Then `threads.send(queue-if-active, [tag+user_i, replay{labeled}])` per turn (S1-S3 §S1b). bb's own past turns render untagged; no turn names an app.
    3. On idle: `update{visibility:"visible"}`, archive if Hermes archived it, `markRead`, `threads.stop`, `state=live`.
    - The bridge renders from history only; no canonical call (D16).
    - Interrupted (restart, sleep): on boot a `replaying` binding's hidden thread is deleted with its rows and re-queued (R3 S2; A38).
 6. **Wake and mirror**
    1. Hint or WAL stat → `changed` → debounced re-list → `readTurns` for each `live` binding of enabled bots. [P2] Unbound allowed chats → flow 5, turns since `enabled_at − 30 d`.
-   2. Anchors not in `turns` and not bb's (`submission_id` starts `bb:`, A4): `INSERT OR IGNORE` as `queued`; if inserted, `threads.send{queue-if-active, ["[<tag>] <text>", mirror{anchor_uid}]}`. Hidden user row → marker only. A done anchor with a new reply uid → `mirror{rest:true}`. A `/retry` adds a new user row (new uid) and keeps the first turn (T0.5), so it mirrors as a new turn, as Hermes' own view shows it (owner default). bb's own `/retry` turn never mirrors a second time (`persisted_turn` record).
+   2. Anchors not in `turns` and not bb's (`submission_id` starts `bb:`, A4): `INSERT OR IGNORE` as `queued`; if inserted, `threads.send{queue-if-active, ["[Outside bb] <text>", mirror{anchor_uid, labeled}]}`. Hidden user row → marker only. A done anchor with a new reply uid → `mirror{rest:true}`. A `/retry` adds a new user row (new uid) and keeps the first turn (T0.5), so it mirrors as a new turn, as Hermes' own view shows it (owner default). bb's own `/retry` turn never mirrors a second time (`persisted_turn` record).
    3. Server sets the thread's level to `input-only` for the mirror turn (approvals and `clarify` still push; S1-S3 §S3c), then restores it.
    4. Bridge, by turn state: complete → render rows. Running as canonical work (CLI, TUI, Desktop, forwarded Conduit) → `session.resume` + `events.since` from the turn's first seq, close on its `message.complete` (A19; R1 S2). No canonical admission (Conduit's own) → render the user row, close `partial`; reply rows arrive by re-list as `mirror{rest:true}` (S8 step 6). No store polling.
    5. On idle: `turns` → `done`. The finished turn marks the thread unread (bb).

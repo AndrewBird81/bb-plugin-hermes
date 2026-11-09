@@ -111,9 +111,9 @@ describe("segmentation (R1 M6)", () => {
     await cli.submit({ profile: "alex", session_id: snap.session_id, text: "outside ask", submission_id: "cli-sub-1" });
     await rig.waitFor(() => rig.fake.session("alex", snap.session_id)!.rows.length === 2);
     const anchor = rig.fake.session("alex", snap.session_id)!.rows[0]!.message_uid;
-    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id, tag: "CLI" };
+    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id };
     await startThread(rig, "thr_s", opts("alex", view));
-    await turn(rig, "thr_s", [text("first"), text("[CLI] outside ask"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true }), text("second")], opts("alex", view));
+    await turn(rig, "thr_s", [text("first"), text("[Outside bb] outside ask"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true }), text("second")], opts("alex", view));
     expect(rig.requests("prompt.submit").map((r) => r.params.text)).toEqual(["outside ask", "first", "second"]);
     expect(agentTexts(rig, "thr_s")).toEqual(["echo(4): first", "echo(2): outside ask", "echo(6): second"]);
     expect(statuses(rig, "thr_s")).toHaveLength(1);

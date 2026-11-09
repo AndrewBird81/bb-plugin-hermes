@@ -49,14 +49,14 @@ describe("segmentInput (R1 M6)", () => {
   const labeledMirror = encodeMarker({ op: "mirror", anchor_uid: "a1", labeled: true });
 
   it("a labeled marker takes the visible part right before it as its label", () => {
-    expect(segmentInput([text("[CLI] ls -la"), labeledMirror])).toEqual([
-      { kind: "marker", marker: { op: "mirror", anchor_uid: "a1", labeled: true }, label: "[CLI] ls -la" },
+    expect(segmentInput([text("[Outside bb] ls -la"), labeledMirror])).toEqual([
+      { kind: "marker", marker: { op: "mirror", anchor_uid: "a1", labeled: true }, label: "[Outside bb] ls -la" },
     ]);
-    expect(segmentInput([text("[Conduit · Oct 12] hey"), labeledMirror])[0]).toMatchObject({ label: "[Conduit · Oct 12] hey" });
+    expect(segmentInput([text("[Outside bb · Oct 12] hey"), labeledMirror])[0]).toMatchObject({ label: "[Outside bb · Oct 12] hey" });
   });
 
   it("an unlabeled marker takes no label: the user's own text before it is a prompt, even tagged", () => {
-    expect(segmentInput([text("[CLI] typed by me"), mirror]).map((s) => s.kind)).toEqual(["prompt", "marker"]);
+    expect(segmentInput([text("[Outside bb] typed by me"), mirror]).map((s) => s.kind)).toEqual(["prompt", "marker"]);
   });
 
   it("a hidden user row's wake has no label", () => {
@@ -68,10 +68,10 @@ describe("segmentInput (R1 M6)", () => {
   });
 
   it("a bb prompt queued before a wake is not swallowed as its label", () => {
-    const segments = segmentInput([text("mine"), text("[TUI] theirs"), labeledMirror, text("after")]);
+    const segments = segmentInput([text("mine"), text("[Outside bb] theirs"), labeledMirror, text("after")]);
     expect(segments).toEqual([
       { kind: "prompt", parts: [text("mine")] },
-      { kind: "marker", marker: { op: "mirror", anchor_uid: "a1", labeled: true }, label: "[TUI] theirs" },
+      { kind: "marker", marker: { op: "mirror", anchor_uid: "a1", labeled: true }, label: "[Outside bb] theirs" },
       { kind: "prompt", parts: [text("after")] },
     ]);
   });

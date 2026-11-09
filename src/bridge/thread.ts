@@ -10,7 +10,6 @@ import type { RestMessage } from "../hermes/history.js";
 import type { AdmissionStatus, GatewayEvent, PendingPrompt, Snapshot } from "../hermes/types.js";
 import { DEAD_REQUESTS_KEPT, EXTENSION_KINDS, PERSISTED_TURNS_KEPT, type PersistedTurnState, type StatusState } from "../shared/extension-state.js";
 import { type Marker, type Segment, segmentInput } from "../shared/marker.js";
-import type { SourceTag } from "../shared/sources.js";
 import { BOT_CHAT_TITLE } from "../shared/sources.js";
 import { botIdentity, chatIdentity, isPending, resolveContext, type ThreadContext, UserFacingError } from "./context.js";
 import { readThread, updateThread } from "./files.js";
@@ -79,8 +78,6 @@ interface Unit {
   renderer: StreamRenderer;
   settled: Deferred<Outcome & { persisted: PersistedTurn | null }>;
   done: boolean;
-  /** Outside unit only: the tag for "Running in <app>". */
-  tag: SourceTag | null;
   /** Seqs already rendered: a re-attach never renders an event twice. */
   fed: Set<number>;
   /** Stop cut its reply mid-stream: that reply row isn't recorded as shown, so `rest` brings it whole. */
@@ -222,7 +219,7 @@ export class HostedThread {
     this.turn = turn;
     this.botChatCreated = false;
     this.emit([{ kind: "input.accepted", clientRequestId: params.clientRequestId }, { kind: "turn.open" }]);
-    // "Running in <app>" ends with the next turn here (the `rest` wake when the reply lands). A new bridge
+    // "Running outside bb" ends with the next turn here (the `rest` wake when the reply lands). A new bridge
     // process doesn't know the banner an earlier one set, so the clear goes out whenever none is held.
     if (this.banner?.kind !== "held") {
       this.banner = null;
@@ -350,7 +347,7 @@ export class HostedThread {
     }
     const choice = chooseModel(await this.catalog(ctx), params.options.model, params.options.reasoningLevel);
     for (const summary of [...warnings, ...(choice.warning ? [choice.warning] : [])]) this.emit([{ kind: "provider.warning", summary }]);
-    const unit = this.newUnit(true, null);
+    const unit = this.newUnit(true);
     unit.submissionId = turn.nextSubmissionId(this.threadId, requestId);
     turn.units.push(unit);
     try {
@@ -751,7 +748,7 @@ export class HostedThread {
     if (unit) this.feedUnit(unit, ev);
   }
 
-  private newUnit(own: boolean, tag: SourceTag | null): Unit {
+  private newUnit(own: boolean): Unit {
     return {
       own,
       admissionId: null,
@@ -759,7 +756,6 @@ export class HostedThread {
       renderer: new StreamRenderer(`adm-${randomUUID().slice(0, 8)}`, this.ctx?.cwd ?? homedir()),
       settled: new Deferred(),
       done: false,
-      tag,
       fed: new Set(),
     };
   }
@@ -960,7 +956,7 @@ export class HostedThread {
         unit.cut = cut.length > 0;
         this.emit([...cut, ...this.closeUnit(unit, { status: "interrupted" })]);
         if (unit.cut) this.emit(textItem({ providerItemId: `${unit.admissionId}:cut` }, STOPPED_WATCHING_TEXT));
-        if (unit.tag) this.setBanner({ kind: "running_elsewhere", app: unit.tag });
+        this.setBanner({ kind: "running_elsewhere" });
       }
     } catch (error) {
       if (reasonOf(error) === "stale_generation" || reasonOf(error) === "not_found") this.emit(this.closeUnit(unit, { status: "interrupted" }));
@@ -1011,7 +1007,7 @@ export class HostedThread {
       }
     }
     const ctx = this.ctx ?? this.resolve(params);
-    const unit = this.newUnit(true, null);
+    const unit = this.newUnit(true);
     unit.submissionId = turn.nextSubmissionId(this.threadId, clientRequestId);
     turn.units.push(unit);
     turn.queued.push(
@@ -1106,8 +1102,7 @@ export class HostedThread {
     if (session) {
       const admission = this.runningOutside(found?.turn.user ? rowText(found.turn.user) : null);
       if (admission) {
-        // A bot binding has no tag: its outside turns come from Conduit (the server tags them `[Conduit]`).
-        const unit = this.newUnit(false, ctx.tag ?? (ctx.kind === "bot" ? "Conduit" : null));
+        const unit = this.newUnit(false);
         turn.units.push(unit);
         await this.replayGap(session, admission);
         this.attach(unit, admission.id);

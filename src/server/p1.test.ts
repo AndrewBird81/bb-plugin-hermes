@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderOptions } from "../shared/provider-options.js";
 import type { BotRow, Diagnostics, ThreadInfo } from "../shared/rpc-contract.js";
 import { segmentInput } from "../shared/marker.js";
-import { formatTag } from "../shared/sources.js";
+import { outsideTag } from "../shared/sources.js";
 import { HELD_RETRY_MS } from "./bots.js";
 import { bindingByThread, botRecord, claimRest, claimTurn, getKv, setKv, MIGRATIONS, openMappingDb, turnRow } from "./db.js";
 import { BOB, MACHINE, NEO, turn, UID, world, type World } from "./fake-world.js";
@@ -228,7 +228,7 @@ describe("Bot Chat import (T1.11)", () => {
       session_id: "tip_bc",
       truncated: true,
       turns: [
-        turn("u1", { surface: null, ts }),
+        turn("u1", { ts }),
         turn("u2", { submission_id: "bb:thr_x:1", user_text: "mine", ts }),
         turn("u3", { user_hidden: true, user_text: null, ts }),
       ],
@@ -241,11 +241,11 @@ describe("Bot Chat import (T1.11)", () => {
       { op: "replay", anchor_uid: "u2", labeled: true },
       { op: "replay", anchor_uid: "u3" },
     ]);
-    expect(w.texts("thr_1")).toEqual([`${formatTag("Conduit", new Date(ts))}text u1`, "mine"]);
+    expect(w.texts("thr_1")).toEqual([`${outsideTag(new Date(ts))}text u1`, "mine"]);
     // The bridge never takes a label for a prompt: bb's own untagged message is never submitted again.
     const segments = w.thread("thr_1").inputs.slice(1).flatMap((input) => segmentInput(input));
     expect(segments.map((s) => s.kind)).toEqual(["marker", "marker", "marker"]);
-    expect(segments.map((s) => (s.kind === "marker" ? s.label : null))).toEqual([`${formatTag("Conduit", new Date(ts))}text u1`, "mine", null]);
+    expect(segments.map((s) => (s.kind === "marker" ? s.label : null))).toEqual([`${outsideTag(new Date(ts))}text u1`, "mine", null]);
     expect(bindingByThread(w.db, "thr_1")).toMatchObject({ state: "replaying", cursor_uid: "u3" });
     expect(turnRow(w.db, "thr_1", "u2")).toMatchObject({ kind: "replay", state: "queued" });
 
@@ -292,7 +292,7 @@ describe("wakes (T1.11)", () => {
     await w.changed(NEO);
     await w.changed(NEO);
     expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u2", labeled: true }]);
-    expect(w.texts("thr_1").at(-1)).toBe("[CLI] text u2");
+    expect(w.texts("thr_1").at(-1)).toBe("[Outside bb] text u2");
     expect(w.levels.get("thr_1")).toBe("input-only");
 
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -318,14 +318,14 @@ describe("wakes (T1.11)", () => {
     expect(w.markers("thr_1").filter((m) => m.op === "mirror")).toEqual([{ op: "mirror", anchor_uid: "u2", labeled: true }]);
 
     // Conduit's own turn: the bridge shows the bubble only and closes partial; the reply rows come later.
-    chat.turns.push(turn("u3", { surface: null, reply_uids: [] }));
+    chat.turns.push(turn("u3", { reply_uids: [] }));
     await w.changed(NEO);
-    expect(w.texts("thr_1").at(-1)).toBe("[Conduit] text u3");
+    expect(w.texts("thr_1").at(-1)).toBe("[Outside bb] text u3");
     const mirrored = [record("u2", ["u2-a", "u2-b"], false, 1), record("u3", [], true, 2)];
     w.persisted("thr_1", { profile_home: NEO, lineage_root: "root_bc", session_id: "tip_bc", turns: [], mirrored });
     await w.idle("thr_1");
     expect(turnRow(w.db, "thr_1", "u3")).toMatchObject({ state: "partial", reply_uids: [] });
-    chat.turns[2] = turn("u3", { surface: null, reply_uids: ["u3-r"] });
+    chat.turns[2] = turn("u3", { reply_uids: ["u3-r"] });
     await w.changed(NEO);
     await w.changed(NEO);
     expect(w.markers("thr_1").filter((m) => m.op === "mirror").at(-1)).toEqual({ op: "mirror", anchor_uid: "u3", rest: true });
@@ -486,26 +486,36 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     expect(turnRow(w.db, chat, "s1")).toMatchObject({ kind: "bb", state: "done" });
 
     // An outside turn after it wakes; bb's never does.
-    w.history.get(sid)!.turns.push(turn("s2", { surface: "tui" }));
+    w.history.get(sid)!.turns.push(turn("s2"));
     await w.changed(NEO);
     expect(w.markers(chat).slice(1)).toEqual([{ op: "mirror", anchor_uid: "s2", labeled: true }]);
-    expect(w.texts(chat).at(-1)).toBe("[TUI] text s2");
+    expect(w.texts(chat).at(-1)).toBe("[Outside bb] text s2");
   });
 
-  it("side chat: an outside turn with no recorded surface is tagged [Desktop]; the thread view says Desktop", async () => {
+  it("no outside turn names an app: bot thread (live and legacy) and side chat, live and imported, all read [Outside bb]", async () => {
+    const APP = /\b(CLI|TUI|Desktop|Conduit|GUI)\b/;
     const w = await world();
     await w.connect();
+    const ts = Date.now() - 86_400_000;
+    w.botChats.set(NEO, { state: "found", lineage_root: "root_bc", session_id: "root_bc", legacy: false });
+    w.history.set("root_bc", { session_id: "root_bc", turns: [turn("i1", { ts })] });
     await on(w);
+    await w.idle("thr_1");
+    await w.idle("thr_1");
+    w.history.get("root_bc")!.turns.push(turn("l1"));
+    await w.changed(NEO);
     const { thread_id: chat } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
     await w.idle(chat);
-    expect(deriveProviderOptions(w.db, { settings: {}, threadId: chat }).thread?.tag).toBe("Desktop");
-    expect(deriveProviderOptions(w.db, { settings: {}, threadId: "thr_1" }).thread?.tag).toBeNull();
     const sid = bindingByThread(w.db, chat)!.expected_id!;
-    w.history.set(sid, { session_id: sid, turns: [turn("s1", { submission_id: `bb:${chat}:c1` }), turn("s2", { surface: null })] });
+    w.history.set(sid, { session_id: sid, turns: [turn("s1", { submission_id: `bb:${chat}:c1` }), turn("s2")] });
     w.persisted(chat, { profile_home: NEO, lineage_root: sid, session_id: sid, turns: [{ submission_id: `bb:${chat}:c1`, anchor_uids: ["s1"], reply_uids: [], at: 1 }] });
     await w.idle(chat);
     await w.changed(NEO);
-    expect(w.texts(chat).at(-1)).toBe("[Desktop] text s2");
+    expect(w.texts("thr_1")).toEqual([`${outsideTag(new Date(ts))}text i1`, "[Outside bb] text l1"]);
+    expect(w.texts(chat)).toEqual(["[Outside bb] text s2"]);
+    for (const t of [...w.texts("thr_1"), ...w.texts(chat)]) expect(t).not.toMatch(APP);
+    // Nothing app-shaped reaches the bridge either: the thread view has no tag.
+    for (const id of ["thr_1", chat]) expect(Object.keys(deriveProviderOptions(w.db, { settings: {}, threadId: id }).thread ?? {})).not.toContain("tag");
   });
 
   it("a bb turn with no persisted record yet is never woken while its thread runs", async () => {
@@ -556,7 +566,7 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     const ts = Date.now() - 86_400_000;
     w.history.set("root_conduit", {
       session_id: "root_conduit",
-      turns: [turn("c1", { surface: null, ts }), turn("c2", { surface: "desktop", ts }), turn("b1", { submission_id: null, user_text: "hi", ts: ts + 1 })],
+      turns: [turn("c1", { ts }), turn("c2", { ts }), turn("b1", { submission_id: null, user_text: "hi", ts: ts + 1 })],
     });
     await w.active("thr_1");
     w.persisted("thr_1", { profile_home: NEO, lineage_root: "root_conduit", session_id: "root_conduit", turns: [{ submission_id: "bb:thr_1:c1", anchor_uids: ["b1"], reply_uids: ["b1-r"], at: 1 }] });
@@ -569,7 +579,7 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     ]);
     // bb's own turn is already in the thread: never imported, never woken.
     expect(turnRow(w.db, "thr_1", "b1")).toMatchObject({ kind: "bb" });
-    expect(w.texts("thr_1")).toEqual([`${formatTag("Conduit", new Date(ts))}text c1`, `${formatTag("Desktop", new Date(ts))}text c2`]);
+    expect(w.texts("thr_1")).toEqual([`${outsideTag(new Date(ts))}text c1`, `${outsideTag(new Date(ts))}text c2`]);
     await w.idle("thr_1");
     expect(bindingByThread(w.db, "thr_1")).toMatchObject({ state: "live", cursor_uid: "b1" });
     await w.changed(NEO);
@@ -624,7 +634,7 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
   it("threadInfo answers every key; deriveProviderOptions gives the thread view", async () => {
     const w = await liveBotThread();
     const info = await w.rpc<Record<string, ThreadInfo | null>>("threadInfo", { keys: ["thr_1", "thr_other"] });
-    expect(info).toEqual({ thr_1: { kind: "bot", profile_home: NEO, bot_label: "Neo", enabled: true, tag: null }, thr_other: null });
+    expect(info).toEqual({ thr_1: { kind: "bot", profile_home: NEO, bot_label: "Neo", enabled: true }, thr_other: null });
     const options: ProviderOptions = deriveProviderOptions(w.db, { settings: {}, threadId: "thr_1" });
     expect(options).toEqual({
       folder: "~/.hermes",
@@ -638,7 +648,6 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
         lineage_root: "root_bc",
         session_id: "tip_bc",
         legacy: false,
-        tag: null,
         cwd: "/w/neo",
       },
     });

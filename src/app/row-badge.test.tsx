@@ -42,17 +42,15 @@ describe("row badge", () => {
     expect([...asset.matchAll(/ d="([^"]+)"/g)].map((m) => m[1])).toEqual(HERMES_PATHS);
   });
 
-  it("bot thread, side chat and mirrored chat texts, with the icon", async () => {
-    const slot = render([thread("thr_bot"), thread("thr_side"), thread("thr_cli"), thread("thr_conduit")], () => ({
+  it("bot thread, side chat and mirrored chat texts, with the icon; never an app's name", async () => {
+    const slot = render([thread("thr_bot"), thread("thr_side"), thread("thr_mirror")], () => ({
       thr_bot: info("bot"),
       thr_side: info("chat"),
-      thr_cli: info("mirror", { tag: "CLI" }),
-      thr_conduit: info("mirror", { tag: "Conduit", bot_label: "Hermes" }),
+      thr_mirror: info("mirror", { bot_label: "Hermes" }),
     }));
     expect(await slot.findByText("Hermes · Neo · Bot Chat")).toBeTruthy();
     expect(slot.getByTestId("thr_side").textContent).toBe("Hermes · Neo");
-    expect(slot.getByTestId("thr_cli").textContent).toBe("Hermes · Neo · CLI");
-    expect(slot.getByTestId("thr_conduit").textContent).toBe("Hermes · Hermes · Conduit");
+    expect(slot.getByTestId("thr_mirror").textContent).toBe("Hermes · Hermes");
     expect(slot.getByTitle("Hermes · Neo · Bot Chat").querySelector("svg")).toBeTruthy();
   });
 

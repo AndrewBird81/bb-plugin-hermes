@@ -5,7 +5,6 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { newChatTitle } from "../shared/bots.js";
 import { encodeMarker } from "../shared/marker.js";
 import type { ThreadInfo } from "../shared/rpc-contract.js";
-import { SOURCE_TAGS, type SourceTag } from "../shared/sources.js";
 import { labelOf, spawnPlacement } from "./bots.js";
 import { errorCode } from "./connection.js";
 import { allBindings, type Binding, bindingByThread, botByName, botRecord, type Db, getKv, insertBinding, updateBinding } from "./db.js";
@@ -32,8 +31,6 @@ function profileOption(value: unknown, depth = 0): string | null {
   }
   return null;
 }
-
-const asTag = (value: string | null): SourceTag | null => ((SOURCE_TAGS as readonly string[]).includes(value ?? "") ? (value as SourceTag) : null);
 
 export function createChats(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; describe: (target: Target) => Promise<{ uid: number }> }) {
   const { bb, db, connection, notify, sync, enqueue } = deps;
@@ -164,7 +161,7 @@ export function createChats(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; des
     for (const key of keys) {
       const binding = bindingByThread(db, key);
       const bot = binding ? botRecord(db, binding.profile_home) : null;
-      out[key] = !binding || !bot ? null : { kind: binding.kind, profile_home: binding.profile_home, bot_label: labelOf(bot), enabled: bot.enabled, tag: asTag(binding.tag) };
+      out[key] = !binding || !bot ? null : { kind: binding.kind, profile_home: binding.profile_home, bot_label: labelOf(bot), enabled: bot.enabled };
     }
     return out;
   }

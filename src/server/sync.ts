@@ -8,7 +8,7 @@ import { EXTENSION_KINDS, persistedTurnStateSchema, type PersistedTurnState, sta
 import type { HistoryTurn } from "../shared/host-contract.js";
 import { encodeMarker, type Marker } from "../shared/marker.js";
 import { THREAD_INFO_TAG } from "../shared/rpc-contract.js";
-import { formatTag, SOURCE_TAGS, tagFor, type SourceTag } from "../shared/sources.js";
+import { outsideTag } from "../shared/sources.js";
 import { type Connection, errorCode, type HostClient } from "./connection.js";
 import {
   bindingByLineage,
@@ -39,7 +39,7 @@ const MAX_TURN_PAGES = 20;
 export const expectedId = (profileHome: string, uid: number, threadId: string) =>
   `local-${createHash("sha256").update(JSON.stringify([profileHome, `uid:${uid}`, `bb:${threadId}`])).digest("hex")}`;
 
-/** `threadInfo` reads refresh: a binding came or went, or its kind, label, tag or switch changed. */
+/** `threadInfo` reads refresh: a binding came or went, or its kind, label or switch changed. */
 export const invalidateThreadInfo = (bb: BbPluginApi) => bb.rpc.experimental_invalidate([THREAD_INFO_TAG]);
 
 /** Where Hermes I/O goes now; null while not connected (no Hermes I/O, R3 M3). */
@@ -75,27 +75,19 @@ export interface SyncDeps {
 
 const text = (value: string): PromptInput => ({ type: "text", mentions: [], text: value });
 const isBbSubmission = (turn: HistoryTurn) => turn.submission_id?.startsWith("bb:") === true;
-const asTag = (value: string | null): SourceTag | null => (SOURCE_TAGS as readonly string[]).includes(value ?? "") ? (value as SourceTag) : null;
-
-/** A chat's own tag: a side chat is a `gui` session (Desktop lists it); the Bot Chat is Conduit's (S8 §Today, A5, 01 §6). */
-export const chatTag = (binding: Pick<Binding, "kind" | "tag">): SourceTag => asTag(binding.tag) ?? (binding.kind === "chat" ? "Desktop" : "Conduit");
-
-/** The tag an outside turn carries: the surface its user row records, else the chat's own. */
-export function turnTag(binding: Binding, turn: HistoryTurn): SourceTag {
-  const fromSurface = turn.surface ? tagFor({ source: turn.surface, created_source: turn.surface, legacy: binding.legacy }) : null;
-  return fromSurface ?? chatTag(binding);
-}
-
-/** The visible user bubble before a marker; none for a hidden user row (01 §7). bb's own turns are untagged. */
-function label(binding: Binding, turn: HistoryTurn, imported: boolean): PromptInput[] {
+/**
+ * The visible user bubble before a marker; none for a hidden user row (01 §7). bb's own turns are untagged;
+ * every other one reads `[Outside bb]`: Hermes records no per-turn source, so bb never names an app.
+ */
+function label(turn: HistoryTurn, imported: boolean): PromptInput[] {
   if (turn.user_hidden || turn.user_text === null) return [];
   if (isBbSubmission(turn)) return [text(turn.user_text)];
-  return [text(formatTag(turnTag(binding, turn), imported ? new Date(turn.ts) : undefined) + turn.user_text)];
+  return [text(outsideTag(imported ? new Date(turn.ts) : undefined) + turn.user_text)];
 }
 
 /** A turn's input: its label, then the marker, `labeled` when a label is there, so the bridge never submits it. */
-function turnInput(binding: Binding, turn: HistoryTurn, imported: boolean, marker: Exclude<Marker, { op: "init" }>): PromptInput[] {
-  const visible = label(binding, turn, imported);
+function turnInput(turn: HistoryTurn, imported: boolean, marker: Exclude<Marker, { op: "init" }>): PromptInput[] {
+  const visible = label(turn, imported);
   return [...visible, encodeMarker(visible.length ? { ...marker, labeled: true } : marker)];
 }
 
@@ -173,7 +165,7 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
             ...(read.truncated ? { since } : {}),
           };
       readAtIdle.add(binding.thread_id);
-      if (!(await sendClaimed(binding, turn.anchor_uid, turnInput(binding, turn, true, marker), "muted"))) return;
+      if (!(await sendClaimed(binding, turn.anchor_uid, turnInput(turn, true, marker), "muted"))) return;
       bound = true;
     }
     unfinished.delete(binding.thread_id);
@@ -216,7 +208,7 @@ export function createSync({ bb, db, host, connection, notify }: SyncDeps) {
           continue;
         }
         if (!claimTurn(db, { thread_id: binding.thread_id, anchor_uid: turn.anchor_uid, kind: "mirror", at: turn.ts, reply_uids: turn.reply_uids })) continue;
-        const input = turnInput(binding, turn, false, { op: "mirror", anchor_uid: turn.anchor_uid });
+        const input = turnInput(turn, false, { op: "mirror", anchor_uid: turn.anchor_uid });
         // Keep Hermes' order: stop at a failed send; the next re-list retries from there.
         if (!(await sendClaimed(binding, turn.anchor_uid, input, "input-only"))) break;
       } else if (row.kind !== "bb" && row.state !== "queued" && turn.complete && hasNew(turn.reply_uids, row.reply_uids)) {

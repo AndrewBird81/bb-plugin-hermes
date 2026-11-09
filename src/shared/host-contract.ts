@@ -116,8 +116,6 @@ export const historyTurnSchema = z
     user_text: z.string().nullable(),
     /** The user row is hidden (`display_kind: hidden`, e.g. a Conduit Pulse prompt): render the reply only. */
     user_hidden: z.boolean(),
-    /** The surface the user row records, when Hermes records one; null otherwise. The server falls back to the binding's tag. */
-    surface: z.string().nullable(),
     /** `display_metadata.submission_id`; `bb:` on bb's own submits (A4: not on steers or `/retry` rows). */
     submission_id: z.string().nullable(),
     /** Reply rows shown so far, in order (assistant and tool rows; hidden rows skipped). */

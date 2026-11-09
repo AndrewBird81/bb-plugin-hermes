@@ -128,7 +128,7 @@ describe("approvals", () => {
     const snap = await cli.create({ profile: "alex", request_id: "cli-ask", source: "cli" });
     rig.fake.outsideTurn("alex", snap.session_id, "outside asks", { script: { tool: true, approval: { kind: "command", timeout_s: 600 } } });
     await rig.waitFor(() => rig.fake.session("alex", snap.session_id)!.prompts.size === 1);
-    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id, tag: "CLI" };
+    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id };
     await startThread(rig, "thr_rr", opts("alex", view));
     await start("thr_rr", "reply from bb", opts("alex", view));
     const [req] = await rig.waitFor(() => (requests().length ? requests() : null));

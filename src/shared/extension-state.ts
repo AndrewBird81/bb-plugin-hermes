@@ -1,7 +1,6 @@
 // Extension states the bridge publishes (`extension.state`), declared in the provider's `extensionKinds`
 // under these local names (bb namespaces them with the plugin id). No Node imports: the app reads `status`.
 import { z } from "zod";
-import { SOURCE_TAGS } from "./sources.js";
 
 export const EXTENSION_KINDS = {
   /** bb's own turns as Hermes stored them: the server records them as `bb` turns so they never mirror (A37, R4 M3c). */
@@ -52,8 +51,9 @@ export const PERSISTED_TURNS_KEPT = 20;
 
 /**
  * The thread banner (01 §5, §6):
- * - `held`: "Open in Conduit: sends when it's free" (flow 3 step 4);
- * - `running_elsewhere`: "Running in <app>" (Stop on an outside turn bb can't stop).
+ * - `held`: "Open in another Hermes app: sends when it's free" (flow 3 step 4);
+ * - `running_elsewhere`: "Running outside bb" (Stop on an outside turn bb can't stop).
+ * Never an app's name: Hermes records no per-turn source (owner ruling, 2026-11-08).
  * `null` clears it. The offline banner comes from health, not from here (flow 10).
  * `dead_requests`: the `interaction/request` ids (bb's `providerRequestId`) of cards whose Hermes prompt
  * settled elsewhere or timed out, newest `DEAD_REQUESTS_KEPT`. bb 0.49.0 gives a bridge no way to close
@@ -64,7 +64,7 @@ export const statusStateSchema = z
     banner: z
       .discriminatedUnion("kind", [
         z.object({ kind: z.literal("held") }).strict(),
-        z.object({ kind: z.literal("running_elsewhere"), app: z.enum(SOURCE_TAGS) }).strict(),
+        z.object({ kind: z.literal("running_elsewhere") }).strict(),
       ])
       .nullable(),
     /** Unix ms the banner was set. */
@@ -76,4 +76,4 @@ export type StatusState = z.infer<typeof statusStateSchema>;
 export const DEAD_REQUESTS_KEPT = 20;
 
 export const bannerText = (banner: NonNullable<StatusState["banner"]>): string =>
-  banner.kind === "held" ? "Open in Conduit: sends when it's free" : `Running in ${banner.app}`;
+  banner.kind === "held" ? "Open in another Hermes app: sends when it's free" : "Running outside bb";

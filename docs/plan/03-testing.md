@@ -33,7 +33,8 @@ Rules for every layer:
 - `/new` → `session.mutate compress` with `expected_generation`; 0 new sessions.
 - Reconnect: bb's own `unknown` admission → 1 `prompt.resolve_unknown`, turn failed; 0 duplicates, 0 gaps after `events.since` (S0-S4 §S4e).
 - Approvals: choices never widened; settled elsewhere and timeouts close; `already_resolved` silent; an outside approval while ours waits is raised (R1 S1).
-- Dispatch hook: a send starting with `[CLI] ` and no marker is refused; our wake passes (D15). Not on the Hermes machine → `provider.error` naming `--machine`; a switched-off bot → the switched-off error.
+- Dispatch hook: a send starting with `[Outside bb] ` and no marker is refused; our wake passes (D15).
+- No app names: an outside turn in a bot thread (live and legacy) or a side chat, live or imported, reads `[Outside bb]`; banners read "Open in another Hermes app: sends when it's free" and "Running outside bb" (owner ruling). Not on the Hermes machine → `provider.error` naming `--machine`; a switched-off bot → the switched-off error.
 - Migrations: a db from each earlier release upgrades in one transaction (R3 S3).
 
 Conformance scenarios: `handshake/initialize`, `session/start-identity`, `session/resume-identity`, `session/resume-id-uniqueness`, `turn/lifecycle`, `turn/settles-without-activity`, `stop/interrupt-settles-before-result`, `stop/release-not-interrupted`, `events/schema-valid`, `item/opens-before-delta`. Placeholder identity: A15.

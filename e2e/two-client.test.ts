@@ -91,7 +91,7 @@ const options = (profile: string, view: Partial<ThreadView>): { providerOptions:
   providerOptions: {
     folder: H,
     machine: { id: "host-e2e", name: "hermes-mac" },
-    thread: { kind: "chat", profile, profile_home: h.profileHome(profile), bot_label: botLabel(profile), enabled: true, lineage_root: null, session_id: null, legacy: false, tag: null, cwd: null, ...view },
+    thread: { kind: "chat", profile, profile_home: h.profileHome(profile), bot_label: botLabel(profile), enabled: true, lineage_root: null, session_id: null, legacy: false, cwd: null, ...view },
   },
 });
 const bot = (profile: string) => options(profile, { kind: "bot" });
@@ -170,14 +170,14 @@ describe("two clients on one Hermes conversation (S8)", () => {
   });
 
   it("E2: Conduit A1 → bb B1 → Conduit A2 → bb B2: one transcript in order; each call saw every earlier turn; bb shows all four", async () => {
-    await startThread("thr_e2", options("alex", { kind: "bot", lineage_root: alexBot, session_id: alexBot, tag: "Conduit" }));
-    const v = options("alex", { kind: "bot", lineage_root: alexBot, session_id: alexBot, tag: "Conduit" });
+    await startThread("thr_e2", options("alex", { kind: "bot", lineage_root: alexBot, session_id: alexBot }));
+    const v = options("alex", { kind: "bot", lineage_root: alexBot, session_id: alexBot });
     for (const [who, ask] of [["conduit", "A1"], ["bb", "B1"], ["conduit", "A2"], ["bb", "B2"]] as const) {
       if (who === "conduit") {
         await conduitSends(conduit, "alex", alexLive, ask);
         const anchor = (await userRows("alex", alexBot)).at(-1)!;
         expect(anchor.content).toBe(ask);
-        expect(await turn("thr_e2", wake({ op: "mirror", anchor_uid: anchor.message_uid }, `[Conduit] ${ask}`), v)).toBe("completed");
+        expect(await turn("thr_e2", wake({ op: "mirror", anchor_uid: anchor.message_uid }, `[Outside bb] ${ask}`), v)).toBe("completed");
       } else expect(await turn("thr_e2", [text(ask)], v)).toBe("completed");
     }
     const asks = (await userRows("alex", alexBot)).map((m) => String(m.content).split("\n")[0]);
@@ -209,7 +209,7 @@ describe("two clients on one Hermes conversation (S8)", () => {
   });
 
   it("E3b: Conduit sends during a bb turn: forwarded into the gateway's queue; bb renders it through its wake", async () => {
-    const v = options("alex", { kind: "bot", lineage_root: alexBot, session_id: alexBot, tag: "Conduit" });
+    const v = options("alex", { kind: "bot", lineage_root: alexBot, session_id: alexBot });
     const before = statuses("thr_alex").length;
     await begin("thr_alex", [text("slow bb turn for E3b")], v);
     await waitFor("bb streams", () => check.events.length >= 0 && bridgeCalls("prompt.submit").some((s) => s.params.text === "slow bb turn for E3b"));
@@ -222,7 +222,7 @@ describe("two clients on one Hermes conversation (S8)", () => {
     const anchor = (await userRows("alex", alexBot)).find((m) => m.content === "conduit during bb")!;
     expect(String(anchor.display_metadata?.submission_id)).toMatch(/^desktop-forward-/);
     const shown = agentTexts("thr_alex").length;
-    expect(await turn("thr_alex", wake({ op: "mirror", anchor_uid: anchor.message_uid }, "[Conduit] conduit during bb"), v)).toBe("completed");
+    expect(await turn("thr_alex", wake({ op: "mirror", anchor_uid: anchor.message_uid }, "[Outside bb] conduit during bb"), v)).toBe("completed");
     expect(agentTexts("thr_alex").slice(shown)).toEqual([expect.stringContaining("conduit during bb")]);
     expect(lastCall("conduit during bb")!.user_texts.map((t) => t.split("\n")[0]).slice(-2)).toEqual(["slow bb turn for E3b", "conduit during bb"]);
     await conduitSends(conduit, "alex", alexLive, "conduit after E3b");
@@ -302,10 +302,10 @@ describe("two clients on one Hermes conversation (S8)", () => {
     const live = String(made.session_id);
     const legacy = String(made.stored_session_id);
     await conduitSends(d, "alex", live, "a conduit chat");
-    const v = options("alex", { kind: "mirror", lineage_root: legacy, session_id: legacy, legacy: true, tag: "Conduit" });
+    const v = options("alex", { kind: "mirror", lineage_root: legacy, session_id: legacy, legacy: true });
     await startThread("thr_e10", v);
     const anchor = (await userRows("alex", legacy))[0]!;
-    expect(await turn("thr_e10", wake({ op: "bind", profile_home: h.profileHome("alex"), lineage_root: legacy, legacy: true, anchor_uid: anchor.message_uid }, "[Conduit] a conduit chat"), v)).toBe("completed");
+    expect(await turn("thr_e10", wake({ op: "bind", profile_home: h.profileHome("alex"), lineage_root: legacy, legacy: true, anchor_uid: anchor.message_uid }, "[Outside bb] a conduit chat"), v)).toBe("completed");
     expect(bridgeCalls("session.resume", legacy)).toHaveLength(0);
     expect(bridgeCalls("session.mutate", legacy)).toHaveLength(0);
     expect(h.dbRow("alex", legacy)).toMatchObject({ row: { chat_id: null }, state_meta: [] });

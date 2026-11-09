@@ -41,7 +41,7 @@ const neo: HermesProfile = { name: "neo", home: NEO, handle: null, terminal_cwd:
 const bob: HermesProfile = { name: "bob", home: BOB, handle: null, terminal_cwd: null, served: false };
 
 export function turn(anchor: string, over: Partial<HistoryTurn> = {}): HistoryTurn {
-  return { anchor_uid: anchor, user_text: `text ${anchor}`, user_hidden: false, surface: "cli", submission_id: null, reply_uids: [`${anchor}-r`], ts: Date.now() - 86_400_000, complete: true, ...over };
+  return { anchor_uid: anchor, user_text: `text ${anchor}`, user_hidden: false, submission_id: null, reply_uids: [`${anchor}-r`], ts: Date.now() - 86_400_000, complete: true, ...over };
 }
 
 export async function world({ profiles = [neo, bob], seed }: WorldOptions = {}) {

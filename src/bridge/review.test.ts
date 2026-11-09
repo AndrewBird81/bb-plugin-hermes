@@ -36,19 +36,19 @@ it("a labeled replay: bb's own earlier message is the label, never a prompt", as
 });
 
 describe("a wake in a bot thread watches the bound session", () => {
-  it("no title lookup, no create, no hold; attaches to the running turn; Stop shows Running in Conduit", async () => {
+  it("no title lookup, no create, no hold; attaches to the running turn; Stop shows Running outside bb (never an app's name)", async () => {
     const cli = await rig.cli();
     const chat = await cli.create({ profile: "bob", title: BOT_CHAT_TITLE, hidden: true, request_id: "desk-w" });
     rig.fake.outsideTurn("bob", chat.session_id, "from conduit", { script: { chunkMs: 60, reply: "a b c d e f g h i j" } });
     const anchor = await userRow("bob", chat.session_id, "from conduit");
     const view = { kind: "bot", lineage_root: chat.session_id, session_id: chat.session_id };
     await startThread(rig, "thr_bw", opts("bob", view));
-    await rig.call("turn/start", { threadId: "thr_bw", providerThreadId: "x", input: [text("[Conduit] from conduit"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })], clientRequestId: creq(), options: { ...AUTO, ...opts("bob", view) } });
+    await rig.call("turn/start", { threadId: "thr_bw", providerThreadId: "x", input: [text("[Outside bb] from conduit"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })], clientRequestId: creq(), options: { ...AUTO, ...opts("bob", view) } });
     await rig.waitFor(() => events(rig, "thr_bw").some((e) => e.type === "item/agentMessage/delta"));
     await rig.call("thread/stop", { threadId: "thr_bw", providerThreadId: "x", intent: "interrupt", activeTurnId: null });
     expect(statuses(rig, "thr_bw")).toEqual(["interrupted"]);
     const banners = deltas(rig, "thr_bw").filter((d) => d.extensionKind === "hermes/status").map((d) => d.payload);
-    expect(banners).toEqual([{ banner: null, since: null }, { banner: { kind: "running_elsewhere", app: "Conduit" }, since: expect.any(Number) }]);
+    expect(banners).toEqual([{ banner: null, since: null }, { banner: { kind: "running_elsewhere" }, since: expect.any(Number) }]);
     expect(rig.requests("session.list")).toHaveLength(0);
     expect(rig.requests("session.create").filter((r) => r.params.request_id !== "desk-w")).toHaveLength(0);
   });
@@ -59,7 +59,7 @@ describe("a wake in a bot thread watches the bound session", () => {
     const anchor = await userRow("bob", legacy, "conduit asks");
     const view = { kind: "bot", lineage_root: legacy, session_id: legacy, legacy: true };
     await startThread(rig, "thr_bl", opts("bob", view));
-    await turn(rig, "thr_bl", [text("[Conduit] conduit asks"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })], opts("bob", view));
+    await turn(rig, "thr_bl", [text("[Outside bb] conduit asks"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })], opts("bob", view));
     await pending;
     expect(rig.fake.requests.filter((r) => ["session.list", "session.resume", "session.create"].includes(r.method))).toEqual([]);
     expect(mirrored("thr_bl")).toEqual([expect.objectContaining({ anchor_uid: anchor, partial: true })]);
@@ -113,7 +113,7 @@ it("an outside turn whose text matches no running admission isn't guessed at", a
   const snap = await cli.create({ profile: "alex", request_id: "cli-g", source: "cli" });
   rig.fake.outsideTurn("alex", snap.session_id, "another turn", { script: { holdMs: 300 } });
   await rig.waitFor(() => rig.fake.session("alex", snap.session_id)!.running);
-  const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id, tag: "CLI" };
+  const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id };
   await startThread(rig, "thr_g", opts("alex", view));
   // A hidden user row (no text): the wake has no label and nothing to match.
   await turn(rig, "thr_g", [encodeMarker({ op: "mirror", anchor_uid: "uid-of-a-hidden-row" })], opts("alex", view));
@@ -136,7 +136,7 @@ describe("second review", () => {
     await cli.submit({ profile: "alex", session_id: snap.session_id, text: "outside ask", submission_id: "cli-st-1" });
     const anchor = await userRow("alex", snap.session_id, "outside ask");
     await rig.waitFor(() => rig.fake.session("alex", snap.session_id)!.rows.length === 2);
-    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id, tag: "CLI" };
+    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id };
     await startThread(rig, "thr_sw", opts("alex", view));
     rig.fake.nextTurn("alex", { holdMs: 200 });
     await rig.call("turn/start", { threadId: "thr_sw", providerThreadId: "x", input: [text("mine")], clientRequestId: creq(), options: { ...AUTO, ...opts("alex", view) } });
@@ -146,7 +146,7 @@ describe("second review", () => {
       providerThreadId: "x",
       expectedTurnId: "t",
       clientRequestId: creq(),
-      input: [text("[CLI] outside ask"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })],
+      input: [text("[Outside bb] outside ask"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })],
       options: { ...AUTO, ...opts("alex", view) },
     });
     expect(res.result).toEqual({});
@@ -159,7 +159,7 @@ describe("second review", () => {
   it("a malformed marker fails the turn and nothing of it reaches Hermes, its label included", async () => {
     await startThread(rig, "thr_iv", opts("alex"));
     const bad = { type: "text" as const, mentions: [], text: '<hermes-bb>{"op":"mirror"}</hermes-bb>', visibility: "agent-only" as const };
-    await turn(rig, "thr_iv", [text("before"), text("[CLI] label"), bad], opts("alex"));
+    await turn(rig, "thr_iv", [text("before"), text("[Outside bb] label"), bad], opts("alex"));
     expect(statuses(rig, "thr_iv")).toEqual(["failed"]);
     expect(rig.requests("prompt.submit")).toHaveLength(0);
     expect(rig.requests("session.create")).toHaveLength(0);
@@ -168,11 +168,11 @@ describe("second review", () => {
   it("after Stop, a later outside turn with the same text isn't matched to the stale admission", async () => {
     const cli = await rig.cli();
     const snap = await cli.create({ profile: "alex", request_id: "cli-stale", source: "cli" });
-    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id, tag: "CLI" };
+    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id };
     await startThread(rig, "thr_stale", opts("alex", view));
     rig.fake.outsideTurn("alex", snap.session_id, "same", { script: { chunkMs: 40, reply: "one two three four five six" } });
     const first = await userRow("alex", snap.session_id, "same");
-    const wake = (anchor: string) => [text("[CLI] same"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })];
+    const wake = (anchor: string) => [text("[Outside bb] same"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })];
     await rig.call("turn/start", { threadId: "thr_stale", providerThreadId: "x", input: wake(first), clientRequestId: creq(), options: { ...AUTO, ...opts("alex", view) } });
     await rig.waitFor(() => events(rig, "thr_stale").some((e) => e.type === "item/agentMessage/delta"));
     await rig.call("thread/stop", { threadId: "thr_stale", providerThreadId: "x", intent: "interrupt", activeTurnId: null });
@@ -202,11 +202,11 @@ describe("T1.14 on the isolated bb", () => {
   it("Stop on a streaming CLI turn: the partial reply ends cut with a note; the rest wake brings the full reply once; the banner clears", async () => {
     const cli = await rig.cli();
     const snap = await cli.create({ profile: "alex", request_id: "cli-cut", source: "cli" });
-    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id, tag: "CLI" };
+    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id };
     await startThread(rig, "thr_cut", opts("alex", view));
     rig.fake.outsideTurn("alex", snap.session_id, "long ask", { script: { chunkMs: 40, reply: "one two three four five six seven eight" } });
     const anchor = await userRow("alex", snap.session_id, "long ask");
-    const wake = (rest?: boolean) => (rest ? [encodeMarker({ op: "mirror", anchor_uid: anchor, rest: true })] : [text("[CLI] long ask"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })]);
+    const wake = (rest?: boolean) => (rest ? [encodeMarker({ op: "mirror", anchor_uid: anchor, rest: true })] : [text("[Outside bb] long ask"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })]);
     await rig.call("turn/start", { threadId: "thr_cut", providerThreadId: "x", input: wake(), clientRequestId: creq(), options: { ...AUTO, ...opts("alex", view) } });
     await rig.waitFor(() => events(rig, "thr_cut").filter((e) => e.type === "item/agentMessage/delta").length >= 2);
     await stop("thr_cut");
@@ -214,7 +214,7 @@ describe("T1.14 on the isolated bb", () => {
     expect(partial).toMatch(/^one .*…$/);
     expect(note).toMatch(/^Stopped watching in bb/);
     expect(mirrored("thr_cut")).toEqual([expect.objectContaining({ anchor_uid: anchor, partial: true })]);
-    expect(statusStates("thr_cut").at(-1)).toEqual({ kind: "running_elsewhere", app: "CLI" });
+    expect(statusStates("thr_cut").at(-1)).toEqual({ kind: "running_elsewhere" });
     // The reply lands; the server's rest wake renders it whole, once, and the banner clears.
     await rig.waitFor(() => !rig.fake.session("alex", snap.session_id)!.running);
     await turn(rig, "thr_cut", wake(true), opts("alex", view));
@@ -225,11 +225,11 @@ describe("T1.14 on the isolated bb", () => {
   it("a card outlives its bb turn: answered after Stop on the outside turn, the answer reaches Hermes", async () => {
     const cli = await rig.cli();
     const snap = await cli.create({ profile: "alex", request_id: "cli-ap", source: "cli" });
-    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id, tag: "CLI" };
+    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id };
     await startThread(rig, "thr_live_card", opts("alex", view));
     rig.fake.outsideTurn("alex", snap.session_id, "ask me", { script: { tool: true, approval: { kind: "command", timeout_s: 600 } } });
     const anchor = await userRow("alex", snap.session_id, "ask me");
-    await rig.call("turn/start", { threadId: "thr_live_card", providerThreadId: "x", input: [text("[CLI] ask me"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })], clientRequestId: creq(), options: { ...AUTO, ...opts("alex", view) } });
+    await rig.call("turn/start", { threadId: "thr_live_card", providerThreadId: "x", input: [text("[Outside bb] ask me"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })], clientRequestId: creq(), options: { ...AUTO, ...opts("alex", view) } });
     const req = await rig.waitFor(() => rig.rpc.messages.find((m) => m.method === "interaction/request"));
     await stop("thr_live_card");
     expect(rig.rpc.messages.filter((m) => m.method === "notifications/cancelled")).toEqual([]);
@@ -270,11 +270,11 @@ describe("T1.14 on the isolated bb", () => {
   const liveCard = async (threadId: string) => {
     const cli = await rig.cli();
     const snap = await cli.create({ profile: "alex", request_id: `cli-${threadId}`, source: "cli" });
-    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id, tag: "CLI" };
+    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id };
     await startThread(rig, threadId, opts("alex", view));
     rig.fake.outsideTurn("alex", snap.session_id, "ask me", { script: { tool: true, approval: { kind: "command", timeout_s: 600 } } });
     const anchor = await userRow("alex", snap.session_id, "ask me");
-    await rig.call("turn/start", { threadId, providerThreadId: "x", input: [text("[CLI] ask me"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })], clientRequestId: creq(), options: { ...AUTO, ...opts("alex", view) } });
+    await rig.call("turn/start", { threadId, providerThreadId: "x", input: [text("[Outside bb] ask me"), encodeMarker({ op: "mirror", anchor_uid: anchor, labeled: true })], clientRequestId: creq(), options: { ...AUTO, ...opts("alex", view) } });
     const req = await rig.waitFor(() => rig.rpc.messages.find((m) => m.method === "interaction/request" && (m.params as { threadId: string }).threadId === threadId));
     await stop(threadId);
     return { sid: snap.session_id, view, req };

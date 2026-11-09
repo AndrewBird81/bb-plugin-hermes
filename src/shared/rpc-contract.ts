@@ -4,7 +4,6 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { workerDiagnosticsSchema } from "./host-contract.js";
 import { folderSchema, machineSchema } from "./settings.js";
-import { SOURCE_TAGS } from "./sources.js";
 
 /**
  * - `not_configured`: no machine set; no Hermes I/O.
@@ -74,7 +73,6 @@ export const threadInfoSchema = z
     profile_home: z.string(),
     bot_label: z.string(),
     enabled: z.boolean(),
-    tag: z.enum(SOURCE_TAGS).nullable(),
   })
   .strict();
 export type ThreadInfo = z.infer<typeof threadInfoSchema>;
@@ -107,7 +105,7 @@ export const rpcContract = defineRpcContract({
   /**
    * Keyed (`experimental_useRpcKeyedQuery`): `keys` are thread ids. Every key answers (bb rejects a keyed
    * read that omits one); null = not a Hermes thread, or not bound yet. The server invalidates
-   * `THREAD_INFO_TAG` whenever a binding is created or its kind, label, tag or switch changes.
+   * `THREAD_INFO_TAG` whenever a binding is created or its kind, label or switch changes.
    */
   threadInfo: {
     input: z.object({ keys: z.array(z.string()).max(500) }).strict(),

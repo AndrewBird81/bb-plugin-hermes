@@ -42,15 +42,15 @@ Later (out of v1):
 |---|---|
 | D1 | Plugin code on the Hermes machine reaches chats only through the gateway: tickets from `<folder>/gateway.sock`, canonical `hermes-gateway-v1`, and Hermes' REST projection with a `native-http` ticket (same trust model, R6 C3). No Hermes config edit, network credential or new port |
 | D2 | Every Hermes chat bb shows is a real bb thread: Hermes icon, bb-side pin/archive/rename, no machine or harness picker, provider hidden from bb's pickers, works with `bb thread tell/spawn/…` |
-| D7 | Outside activity mirrors live with progress. An outside user message is the user's bubble with a source tag. Notifications follow the v1 rule (01 §8) |
+| D7 | Outside activity mirrors live with progress. An outside user message is the user's bubble tagged `[Outside bb]` (never an app's name). Notifications follow the v1 rule (01 §8) |
 | D11 | Approvals and `clarify` become bb interactions. Never auto-approve |
 | D14 | Delegated build: one writer per seam in its own jj workspace; a gate per phase; Claude-family subagents in the background |
-| D15 | Tagged outside messages may enter bb's prompt history; bb refuses a send that starts with a source tag |
+| D15 | Tagged outside messages may enter bb's prompt history; bb refuses a send that starts with the `[Outside bb]` tag |
 | D16 | A legacy (not gateway-owned) row is adopted only by the first bb send; no Hermes mutation for it before (A23). Plus S8's wait-and-retry |
 | D17 | Reasoning in v1. One permission mode, `auto`, declared and tested never to answer an approval (A2) |
 | D19 | P1 gate: on the phone, start a chat and chat with a bot from bb; the bot thread then continues in Conduit (S8 §Plan changes) |
 | D22 | Hermes icon on rows: a row-metadata badge (A28) |
-| D27 | Narrowed: Stop works on bb's own turns and on Conduit turns forwarded into the gateway. Other outside turns show "Running in <app>" |
+| D27 | Narrowed: Stop works on bb's own turns and on Conduit turns forwarded into the gateway. Other outside turns show "Running outside bb" |
 | D30 | Narrowed: one setting picks the Hermes machine; the folder defaults to `~/.hermes` |
 | D42 | Full mirroring: every session of an enabled bot started outside bb appears as a bb thread and keeps updating. No "Continue in bb" step, no P2-lite |
 | D43 | One switch per bot. On = chat in bb **and** full access to operate bb, through a plugin-owned skill (S8 §Secondary option 1). Restrictions later. Every bot starts off |
@@ -62,7 +62,7 @@ Later (out of v1):
 | D49 | No Discord or other chat-app sessions in v1, DMs included |
 | D50 | Leave `compression.in_place` as is (Q24, S8's open question 5); don't file the race bugs (Q25); plugin code lives in this public repo |
 | Q1 default | No cross-delete. bb delete → tombstone, never re-imported. Deleted in Hermes → the thread stays; sends fail "Deleted in Hermes" |
-| Q7 default | Imported bubbles carry source and date (`[CLI · Oct 12]`); oldest first; item times are import time |
+| Q7 default | Imported bubbles carry the outside tag and date (`[Outside bb · Oct 12]`), never an app's name; oldest first; item times are import time |
 
 Superseded, one line each:
 - D3 profile chip and handoff → the bot is fixed per chat; handoff Later.
@@ -97,7 +97,7 @@ Superseded, one line each:
 | side chat | A chat started in bb with a bot: its own new Hermes session (Desktop calls these side-chats) |
 | mirrored thread | A bb thread for a session started outside bb: CLI, TUI, Desktop or Conduit |
 | outside turn | A turn not sent from bb |
-| Conduit | A phone app that reaches Hermes through the dashboard's legacy chat socket, as remote Desktop and dashboard chat do (S8 §How Conduit and Desktop share). "Conduit" in UI text means any of them (A5) |
+| Conduit | A phone app that reaches Hermes through the dashboard's legacy chat socket, as remote Desktop and dashboard chat do (S8 §How Conduit and Desktop share). bb's UI never says "Conduit" (or any app) unless Hermes records it for that exact chat or turn; outside messages read `[Outside bb]` |
 | canonical | `hermes-gateway-v1` on the gateway's `/api/ws` (r08 §1). CLI, TUI and local Desktop turns are canonical |
 | legacy row | A session the gateway doesn't own yet, e.g. a Conduit chat (`source=desktop`, no `chat_id`); `session.resume` adopts it (r12 §6) |
 | adoption | The gateway taking ownership of a legacy row; irreversible (R1 M7) |

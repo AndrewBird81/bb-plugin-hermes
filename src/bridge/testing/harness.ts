@@ -98,7 +98,6 @@ export async function startRig(opts: { profiles?: string[]; enabled?: string[]; 
               lineage_root: null,
               session_id: null,
               legacy: false,
-              tag: null,
               cwd: null,
               ...view,
             };

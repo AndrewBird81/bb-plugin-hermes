@@ -2,7 +2,6 @@
 // the Hermes machine, and the server's view of this thread's binding, read synchronously from the mapping
 // db on each command. Ids only: provider options ride the daemon wire and persist with the session.
 import { z } from "zod";
-import { SOURCE_TAGS } from "./sources.js";
 
 export const threadViewSchema = z
   .object({
@@ -19,8 +18,6 @@ export const threadViewSchema = z
     session_id: z.string().nullable(),
     /** Not gateway-owned yet: adopted only by the first bb send (D16, A23). */
     legacy: z.boolean(),
-    /** The tag outside turns carry in this thread; null for a side chat. */
-    tag: z.enum(SOURCE_TAGS).nullable(),
     /** The bot's `terminal.cwd`, for `session.create` (null → `~`, R1 S10). */
     cwd: z.string().nullable(),
   })

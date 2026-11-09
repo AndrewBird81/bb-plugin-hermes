@@ -41,9 +41,8 @@ describe("thread banners", () => {
   });
 
   it.each<[StatusState["banner"], string]>([
-    [{ kind: "held" }, "Open in Conduit: sends when it's free"],
-    [{ kind: "running_elsewhere", app: "CLI" }, "Running in CLI"],
-    [{ kind: "running_elsewhere", app: "Conduit" }, "Running in Conduit"],
+    [{ kind: "held" }, "Open in another Hermes app: sends when it's free"],
+    [{ kind: "running_elsewhere" }, "Running outside bb"],
   ])("status %j shows its text", async (state, text) => {
     const slot = render("status", {}, { banner: state, since: 1 });
     expect(slot.container.textContent).toBe(text);

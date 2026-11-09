@@ -253,7 +253,7 @@ describe("readTurns", () => {
     expect(all.session_id).toBe(LINEAGE);
     expect(all.truncated).toBe(false);
     expect(all.turns.map((t) => t.user_text?.slice(0, 16))).toEqual(["in place turn 1 ", "in place turn 2 ", "in place turn 3 ", "in place turn 4 ", "after compaction"]);
-    expect(all.turns.every((t) => t.complete && !t.user_hidden && t.reply_uids.length === 1 && t.surface === null)).toBe(true);
+    expect(all.turns.every((t) => t.complete && !t.user_hidden && t.reply_uids.length === 1)).toBe(true);
     expect(all.turns[0]!.ts).toBe(1794165213947);
     expect(JSON.stringify(all)).not.toMatch(/system_prompt|model_config|origin_json/);
 

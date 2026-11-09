@@ -47,9 +47,10 @@ The owner's model: **each bot has one thread, its Bot Chat.** A bot can also hav
 |---|---|---|---|
 | **Bot thread** (one per bot) | the plugin, at switch-on | the profile's Bot Chat, found by title on every send (S8 step 1) | Pinned; title = bot name ("Neo"); badge "Hermes · Neo · Bot Chat" |
 | **Side chat** (any number) | you: rail "New chat with Neo", or `bb thread spawn` | a new session, created on the first message | Normal row; title from your first message; badge "Hermes · Neo" |
-| **Mirrored chat** (any number) | the plugin, when a CLI, TUI, Desktop or Conduit chat of Neo exists | that session | Normal row; Hermes' title; badge "Hermes · Neo · CLI"; outside bubbles tagged `[CLI]` |
+| **Mirrored chat** (any number) | the plugin, when a CLI, TUI, Desktop or Conduit chat of Neo exists | that session | Normal row; Hermes' title; badge "Hermes · Neo"; outside bubbles tagged `[Outside bb]` |
 
 - The composer of each shows the Hermes icon and the bot's name in a one-value chip, so the bot is visible and fixed (A52).
+- UI text names an app only when Hermes records it for that exact chat or turn. Hermes records no per-turn source, so every outside turn, in every thread, reads `[Outside bb] …` (owner ruling, 2026-11-08).
 - Turns in the Bot Chat from any app (Desktop, Conduit, Bot Mode DMs from other bots, r12 §2) show in the bot thread, never in a new thread.
 - A Hermes side chat that bb started shows in Hermes Desktop's sidebar like Desktop's own side chats.
 - Deleting the bot thread in bb: it is re-created, pinned, at the next reconcile (D44). The Hermes Bot Chat is untouched.
@@ -95,9 +96,9 @@ AC:
 | bb's own, running | interrupts it (≤ 1 s, S0-S4 §S4d) |
 | bb's own, queued or waiting for Conduit | drops it; it never reaches Hermes |
 | Conduit's, forwarded into the gateway | interrupts it (S8 step 8) |
-| Conduit's own (dashboard) | nothing: banner "Running in Conduit" |
+| Conduit's own (dashboard) | nothing: banner "Running outside bb" |
 | any outside turn waiting on an approval | Stop interrupts bb's card (bb's own thread stop, T1.14); the approval can then be answered only in the other app |
-| CLI, TUI or Desktop | bb stops watching; banner "Running in CLI" (in a bot thread "Running in Conduit": Hermes records no per-turn surface at c314285f07, so the bot thread names every outside turn Conduit). The reply still shows when the turn ends (D27 narrowed) |
+| CLI, TUI or Desktop | bb stops watching; banner "Running outside bb" (never an app's name: Hermes records no per-turn source). The reply still shows when the turn ends (D27 narrowed) |
 
 AC: Stop on a CLI turn leaves it running in Hermes; its reply appears in bb when done.
 
@@ -107,13 +108,13 @@ AC: Stop on a CLI turn leaves it running in Hermes; its reply appears in bb when
 
 - One conversation: each model call sees every earlier turn from both apps (S8 E2). Conduit keeps working after any bb action (E10).
 - **Conduit's own turns:** your message appears at once; the reply when the turn ends. They don't stream (S8 step 6).
-- **Conduit sends while bb's turn runs:** Hermes queues it; it streams live in bb after bb's turn, tagged `[Conduit]`.
+- **Conduit sends while bb's turn runs:** Hermes queues it; it streams live in bb after bb's turn, tagged `[Outside bb]`.
 - **bb sends while Conduit's turn runs:** bb's turn shows "Waiting for another Hermes process…", then streams.
 - **No Bot Chat yet:** bb creates it on your first message, never at setup (S8 step 2).
 
 ![What bb does when Conduit holds the chat](../diagrams/shared-wait.svg)
 
-- **Conduit holds a chat the gateway hasn't adopted:** your message stays queued in bb with the banner "Open in Conduit: sends when it's free". bb retries; it never creates a second chat or takes over (S8 step 3).
+- **Conduit holds a chat the gateway hasn't adopted:** your message stays queued in bb with the banner "Open in another Hermes app: sends when it's free". bb retries; it never creates a second chat or takes over (S8 step 3).
 - Conduit's other chats that bb mirrors follow the same rules (D44).
 - **Hermes restarted during bb's turn:** the turn fails "Hermes restarted: resend?"; Conduit isn't blocked (S8 step 9, E11b).
 - Accepted (D50): sends from both apps within ~50 ms, and rotating compaction, can confuse Hermes' order; no message is lost (S8 §Failure cases).
@@ -130,7 +131,7 @@ AC (two-client harness, then the real app):
 - **What mirrors** (D42, D49): every visible chat of an enabled bot from CLI, TUI, Desktop and Conduit, plus its Bot Chat. Everything else stays in Hermes (README confirm item 5).
 - **Import** at switch-on (README confirm items 1–2):
   - chats active in the last 30 days with no bb thread, oldest first, each replayed hidden, then shown read: no unread, no push;
-  - your messages are your bubbles tagged with source and date, `[CLI · Oct 12] …`; bb's own earlier messages carry no tag;
+  - your messages are your bubbles tagged `[Outside bb · Oct 12] …` (never an app's name); bb's own earlier messages carry no tag;
   - title: Hermes' title, else your first message cut to 60 characters;
   - archived in Hermes → archived in bb. Hermes' pin is never copied.
 - **Live:** new outside turns appear in their thread within ~3 s (A13); a new outside chat becomes a new thread.
@@ -143,7 +144,7 @@ AC (two-client harness, then the real app):
 - **Title** follows Hermes' title until you rename the thread in bb. bb renames, pins and archives stay in bb (D38 Later).
 - bb deletes a mirrored thread → never re-imported (Q1). Deleted in Hermes → the thread stays; sends fail "Deleted in Hermes".
 - Activity in a thread you archived: bb's own rule for archived threads (A49).
-- A recalled `[CLI] …` line sent from bb is refused: "Remove the [CLI] tag to send." (D15)
+- A recalled `[Outside bb] …` line sent from bb is refused: "Remove the [Outside bb] tag to send." (D15)
 
 AC:
 - Imported count == the switch row's count == `e2e/eligibility`; a re-run imports 0.

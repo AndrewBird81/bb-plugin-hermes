@@ -6,7 +6,7 @@ import { z } from "zod";
 const nonEmpty = z.string().min(1);
 /**
  * The visible text part right before this marker is its label: the user's bubble for that Hermes turn,
- * tagged (`[CLI] …`) or not (bb's own earlier message in an import). Never a prompt (02 §Invariants).
+ * tagged (`[Outside bb] …`) or not (bb's own earlier message in an import). Never a prompt (02 §Invariants).
  */
 const labeled = z.literal(true).optional();
 

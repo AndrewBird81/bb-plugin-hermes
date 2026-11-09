@@ -100,9 +100,11 @@ describe("provider options and extension states", () => {
   });
 
   it("status banners have fixed text", () => {
-    expect(statusStateSchema.safeParse({ banner: { kind: "running_elsewhere", app: "CLI" }, since: 1 }).success).toBe(true);
-    expect(bannerText({ kind: "held" })).toBe("Open in Conduit: sends when it's free");
-    expect(bannerText({ kind: "running_elsewhere", app: "CLI" })).toBe("Running in CLI");
+    expect(statusStateSchema.safeParse({ banner: { kind: "running_elsewhere" }, since: 1 }).success).toBe(true);
+    // Never an app's name (owner ruling): an `app` field is refused.
+    expect(statusStateSchema.safeParse({ banner: { kind: "running_elsewhere", app: "CLI" }, since: 1 }).success).toBe(false);
+    expect(bannerText({ kind: "held" })).toBe("Open in another Hermes app: sends when it's free");
+    expect(bannerText({ kind: "running_elsewhere" })).toBe("Running outside bb");
     expect(switchedOffText("Neo")).toBe("Neo is switched off in the Hermes plugin settings.");
   });
 });

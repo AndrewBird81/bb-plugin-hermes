@@ -20,7 +20,7 @@ export function bot(name: string, extra: Partial<BotRow> = {}): BotRow {
 }
 
 export function info(kind: ThreadInfo["kind"], extra: Partial<ThreadInfo> = {}): ThreadInfo {
-  return { kind, profile_home: "/hermes/profiles/neo", bot_label: "Neo", enabled: true, tag: null, ...extra };
+  return { kind, profile_home: "/hermes/profiles/neo", bot_label: "Neo", enabled: true, ...extra };
 }
 
 export function health(state: Health["state"], name: string | null = "studio"): Health {

@@ -10,10 +10,9 @@ import { HERMES_PROVIDER, useThreadInfo } from "./thread-info.js";
 
 export type RowData = ReturnType<typeof useThreadInfo>;
 
-/** Bot thread "Hermes · Neo · Bot Chat"; side chat "Hermes · Neo"; mirrored chat "Hermes · Neo · CLI". */
+/** Bot thread "Hermes · Neo · Bot Chat"; side chat and mirrored chat "Hermes · Neo". Never an app's name. */
 export function badgeText(info: ThreadInfo): string {
-  const last = info.kind === "bot" ? BOT_CHAT_TITLE : info.tag;
-  return ["Hermes", info.bot_label, last].filter((part) => part !== null).join(" · ");
+  return ["Hermes", info.bot_label, ...(info.kind === "bot" ? [BOT_CHAT_TITLE] : [])].join(" · ");
 }
 
 export function useRowData({ threads }: ExperimentalThreadRowMetadataDataInput): RowData {

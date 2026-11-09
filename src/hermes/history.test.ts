@@ -188,7 +188,6 @@ describe("summarizeTurn", () => {
       anchor_uid: rows[2]!.message_uid,
       user_text: "please use a tool",
       user_hidden: false,
-      surface: null,
       submission_id: "bb:thr_rec_steer:2",
       reply_uids: [rows[3]!.message_uid, rows[4]!.message_uid, rows[6]!.message_uid],
       ts: Math.round(rows[2]!.timestamp * 1000),

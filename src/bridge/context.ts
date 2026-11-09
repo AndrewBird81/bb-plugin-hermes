@@ -4,7 +4,6 @@
 import { botLabel } from "../shared/bots.js";
 import type { EnabledBot, WorkerFile } from "../shared/bridge-files.js";
 import { otherMachineText, type ProviderOptions, readProviderOptions, switchedOffText, type ThreadView } from "../shared/provider-options.js";
-import type { SourceTag } from "../shared/sources.js";
 import { expandHome, readWorkerFile, sameFolder, type ThreadEntry } from "./files.js";
 
 /** A refusal shown to the user as the turn's error. */
@@ -26,7 +25,6 @@ export interface ThreadContext {
   lineageRoot: string | null;
   sessionId: string | null;
   legacy: boolean;
-  tag: SourceTag | null;
   /** `terminal.cwd`, else null (→ `~`). */
   cwd: string | null;
   /** The server hasn't bound this thread yet: the bridge derived it. */
@@ -62,7 +60,6 @@ export function resolveContext(input: ResolveInput): ThreadContext {
       lineageRoot: view.lineage_root,
       sessionId: view.session_id,
       legacy: view.legacy,
-      tag: view.tag,
       cwd: view.cwd,
       derived: false,
     };
@@ -79,7 +76,6 @@ export function resolveContext(input: ResolveInput): ThreadContext {
     lineageRoot: null,
     sessionId: null,
     legacy: false,
-    tag: null,
     cwd: bot.cwd,
     derived: true,
   };

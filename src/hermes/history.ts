@@ -163,14 +163,13 @@ export function groupTurns(messages: RestMessage[]): ChainTurn[] {
   return turns;
 }
 
-/** The host contract's view of a turn; the caller sets `complete`. Hermes c314285f07 records no surface on a row. */
+/** The host contract's view of a turn; the caller sets `complete`. */
 export function summarizeTurn(turn: ChainTurn): Omit<HistoryTurn, "complete"> {
   const hidden = turn.user?.display_kind === "hidden";
   return {
     anchor_uid: turn.anchor_uid,
     user_text: turn.user && !hidden ? (turn.user.display_content ?? turn.user.content) : null,
     user_hidden: hidden,
-    surface: null,
     submission_id: turn.submission_id,
     reply_uids: turn.replies.map((m) => m.message_uid),
     ts: turn.ts,

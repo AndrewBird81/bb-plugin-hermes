@@ -102,7 +102,7 @@ describe("model and reasoning", () => {
   it("the first bb send into an existing chat keeps its model", async () => {
     const cli = await rig.cli();
     const snap = await cli.create({ profile: "alex", request_id: "cli-chat", source: "cli" });
-    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id, tag: "CLI" };
+    const view = { kind: "mirror", lineage_root: snap.session_id, session_id: snap.session_id };
     await startThread(rig, "thr_ex", opts("alex", view));
     await turn(rig, "thr_ex", [text("hi")], { ...opts("alex", view), model: "stub/stub", reasoningLevel: "high" });
     expect(rig.requests("session.mutate")).toHaveLength(0);

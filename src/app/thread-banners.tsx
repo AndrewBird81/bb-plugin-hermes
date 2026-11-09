@@ -14,7 +14,7 @@ function useThreadId(): string | null {
   return scope.kind === "thread" ? scope.threadId : null;
 }
 
-/** The bridge's `status` state: "Open in Conduit: sends when it's free", "Running in CLI". */
+/** The bridge's `status` state: "Open in another Hermes app: sends when it's free", "Running outside bb". */
 export function StatusBanner() {
   const threadId = useThreadId();
   const parsed = statusStateSchema.safeParse(experimental_useThreadExtensionState(threadId ?? "", EXTENSION_KINDS.status));
