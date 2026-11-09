@@ -78,8 +78,8 @@ describe("switches (T1.9)", () => {
     await w.connect();
     await on(w);
     await w.idle("thr_1");
-    const { thread_id: chat } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
-    const { thread_id: userArchived } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+    const chat = await w.newThread("neo");
+    const userArchived = await w.newThread("neo");
     w.thread(userArchived).archivedAt = 5;
 
     await off(w);
@@ -349,7 +349,7 @@ describe("wakes (T1.11)", () => {
     const w = await liveBotThread();
     const chats: string[] = [];
     for (const c of ["c1", "c2"]) {
-      const { thread_id: chat } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+      const chat = await w.newThread("neo");
       await w.idle(chat);
       const sid = bindingByThread(w.db, chat)!.expected_id!;
       w.history.set(sid, { session_id: sid, turns: [turn(`${c}-s1`, { submission_id: `bb:${chat}:${c}` })] });
@@ -482,36 +482,19 @@ describe("wakes (T1.11)", () => {
 });
 
 describe("side chats and bb's own turns (T1.10, T1.11)", () => {
-  it("newChat: placeholder title, init marker, expected_id; refuses off and unknown bots", async () => {
-    const w = await world();
-    await w.connect();
-    await expect(w.harness.behavior.callRpc("newChat", { profile: "neo" })).rejects.toThrow("Neo is switched off in the Hermes plugin settings.");
-    await expect(w.harness.behavior.callRpc("newChat", { profile: "zed" })).rejects.toThrow("Unknown bot");
-    await on(w);
-    const { thread_id } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
-    expect(w.thread(thread_id).spawn).toMatchObject({ title: "New Neo chat", sessionOptions: { profile: "neo" }, pluginMetadata: { hermes: { origin: "newChat" } } });
-    expect(w.thread(thread_id).pinned).toBe(false);
-    expect(w.markers(thread_id)).toEqual([{ op: "init", profile: "neo" }]);
-    const expected = `local-${createHash("sha256").update(JSON.stringify([NEO, `uid:${UID}`, `bb:${thread_id}`])).digest("hex")}`;
-    expect(bindingByThread(w.db, thread_id)).toMatchObject({ kind: "chat", state: "pending", expected_id: expected });
-    expect(w.levels.get(thread_id)).toBe("muted");
-    await w.idle(thread_id);
-    expect(calls(w, "threads.markRead")).toContain(thread_id);
-  });
-
   it("re-listed before its first boundary → no mirror; bb's own turn never wakes, even without its submission_id", async () => {
     const w = await world();
     await w.connect();
     await on(w);
     await w.idle("thr_1");
-    const { thread_id: chat } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+    const chat = await w.newThread("neo");
     await w.idle(chat);
     const sid = bindingByThread(w.db, chat)!.expected_id!;
     // bb's first send created the session; Hermes lists it before the bridge's turn boundary.
     await w.active(chat);
     w.history.set(sid, { session_id: sid, turns: [turn("s1", { submission_id: null, complete: false })] });
     await w.changed(NEO);
-    expect(w.markers(chat)).toHaveLength(1);
+    expect(w.markers(chat)).toEqual([]);
 
     // The turn settles: the bridge publishes `persisted-turn`; the `submission_id` read still failed.
     w.history.set(sid, { session_id: sid, turns: [turn("s1", { submission_id: null })] });
@@ -523,7 +506,7 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     // An outside turn after it wakes; bb's never does.
     w.history.get(sid)!.turns.push(turn("s2"));
     await w.changed(NEO);
-    expect(w.markers(chat).slice(1)).toEqual([{ op: "mirror", anchor_uid: "s2", labeled: true }]);
+    expect(w.markers(chat)).toEqual([{ op: "mirror", anchor_uid: "s2", labeled: true }]);
     expect(w.texts(chat).at(-1)).toBe("[Outside bb] text s2");
   });
 
@@ -539,7 +522,7 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     await w.idle("thr_1");
     w.history.get("root_bc")!.turns.push(turn("l1"));
     await w.changed(NEO);
-    const { thread_id: chat } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+    const chat = await w.newThread("neo");
     await w.idle(chat);
     const sid = bindingByThread(w.db, chat)!.expected_id!;
     w.history.set(sid, { session_id: sid, turns: [turn("s1", { submission_id: `bb:${chat}:c1` }), turn("s2")] });
@@ -622,36 +605,17 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     expect(w.markers("thr_1")).toHaveLength(3);
   });
 
-  it("the first visible message becomes the title, cut to 60 characters", async () => {
+  it("thread.created binds a `bb thread spawn` chat with its expected_id; our own spawns and off bots' are skipped", async () => {
     const w = await world();
     await w.connect();
-    await on(w);
-    const { thread_id } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
-    const long = "  Plan   my week: " + "x".repeat(80);
-    // Whether or not bb records the spawn's agent-only init, the title comes from the first visible message.
-    const init = w.thread(thread_id).inputs[0]!;
-    w.prompts.set(thread_id, [
-      { createdAt: 0, id: "p0", input: init },
-      { createdAt: 1, id: "p1", input: [{ type: "text", mentions: [], text: long }] },
-    ]);
-    await w.idle(thread_id);
-    expect(w.thread(thread_id).title).toBe(("Plan my week: " + "x".repeat(80)).slice(0, 60));
-    // Renamed in bb afterwards: never touched again.
-    w.thread(thread_id).title = "Mine";
-    await w.idle(thread_id);
-    expect(w.thread(thread_id).title).toBe("Mine");
-  });
-
-  it("thread.created binds a `bb thread spawn` chat; our own spawns are skipped", async () => {
-    const w = await world();
-    await w.connect();
-    await on(w);
-    w.threads.set("thr_cli", { ...w.thread("thr_1"), id: "thr_cli", originPluginId: null, pinned: false, inputs: [] });
-    w.event("thr_cli", "client/thread/start", { request: { method: "thread/start", params: { options: { sessionOptions: { profile: "neo" } } } } });
-    await w.emit("thread.created", "thr_cli");
-    expect(bindingByThread(w.db, "thr_cli")).toMatchObject({ kind: "chat", state: "pending", profile_home: NEO });
-    await w.emit("thread.created", "thr_1");
-    expect(bindingByThread(w.db, "thr_1")?.kind).toBe("bot");
+    expect(bindingByThread(w.db, await w.newThread("neo"))).toBeNull();
+    const bot = (await on(w)).thread_id!;
+    const chat = await w.newThread("neo");
+    const expected = `local-${createHash("sha256").update(JSON.stringify([NEO, `uid:${UID}`, `bb:${chat}`])).digest("hex")}`;
+    expect(bindingByThread(w.db, chat)).toMatchObject({ kind: "chat", state: "pending", profile_home: NEO, expected_id: expected });
+    expect(bindingByThread(w.db, await w.newThread("zed"))).toBeNull();
+    await w.emit("thread.created", bot);
+    expect(bindingByThread(w.db, bot)?.kind).toBe("bot");
   });
 
   it("stopHosted stops idle threads now and busy ones at their idle", async () => {
@@ -659,7 +623,7 @@ describe("side chats and bb's own turns (T1.10, T1.11)", () => {
     await w.connect();
     await on(w);
     await w.idle("thr_1");
-    const { thread_id: chat } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+    const chat = await w.newThread("neo");
     w.thread(chat).status = "active";
     expect(await w.rpc("stopHosted")).toEqual({ stopped: 1, pending: 1, failed: 0 });
     expect(calls(w, "threads.stop")).toEqual(["thr_1"]);

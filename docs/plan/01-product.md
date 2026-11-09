@@ -46,7 +46,7 @@ The owner's model: **each bot has one thread, its Bot Chat.** A bot can also hav
 | Thread | Created by | Hermes session | In the sidebar |
 |---|---|---|---|
 | **Bot thread** (one per bot) | the plugin, at switch-on | the profile's Bot Chat, found by title on every send (S8 step 1) | Pinned; title = bot name ("Neo"); badge "Hermes · Neo · Bot Chat" |
-| **Side chat** (any number) | you: rail "New chat with Neo", or `bb thread spawn` | a new session, created on the first message | Normal row; title from your first message; badge "Hermes · Neo" |
+| **Side chat** (any number) | you: bb's New Thread with Neo in the Bot chip (D51), or `bb thread spawn` | a new session, created on the first message | Normal row; bb's title from your first message; badge "Hermes · Neo" |
 | **Mirrored chat** (any number) | the plugin, when a CLI, TUI, Desktop or Conduit chat of Neo exists | that session | Normal row; Hermes' title; badge "Hermes · Neo" (no app: Hermes' record names none unambiguously, `docs/operations.md` §Surfaces); outside bubbles tagged `[Outside bb]` |
 
 - The composer of each shows the Hermes icon and the bot's name in a one-value chip, so the bot is visible and fixed (A52).
@@ -64,9 +64,9 @@ AC:
 
 ![A chat from bb](../diagrams/chat-from-bb.svg)
 
-- **Start:** rail panel (`navPanel`, Hermes icon): each enabled bot with its unread dot, and "New chat with <bot>". The bot thread itself is a chat too.
-  - A new chat opens empty in 5–8 s with the model list ready (S7 §2); the first message replaces the "New Neo chat" title (S7 finding 4).
-  - The Hermes session is created on the first message: an abandoned chat leaves nothing in Hermes.
+- **Start:** bb's New Thread (D51): pick Hermes on the Hermes machine, then the bot in the Bot chip, which lists every enabled bot (r13 §3). `bb thread spawn --option profile=<bot>` does the same. The bot thread itself is a chat too.
+  - bb names the chat from its first message.
+  - The Hermes session is created on the first message: an abandoned draft leaves nothing in Hermes.
 - **Composer:** bb's own: text, attachments, voice dictation, bb's model chip, reasoning.
   - **Model:** the bot's `model.options`; default = the bot's current model. Validated against the last-known list; never blocks a turn. An unoffered model → the bot's default plus a warning (S7 finding 6).
   - **Reasoning** (D17): Hermes levels per model; `default` = the bot's level (r11 §1). Mid-chat changes apply from the next turn.
@@ -76,7 +76,7 @@ AC:
 - **Steer:** into bb's own running turn; otherwise queued as the next message.
 - **`/new`, `/reset`:** a compaction of the same chat, never a new session (S8 step 7; README confirm item 7). Hermes keeps a chat's first and last messages, so a short chat's `/new` compacts nothing: bb says so.
 - **Working folder:** the bot's `terminal.cwd`, else `~` (R1 S10).
-- **Phone** (D19): the bot thread works as any thread. If plugin slots don't render on mobile (A30), new side chats come from desktop or `bb thread spawn`.
+- **Phone** (D19): the bot thread works as any thread. New side chats come from bb's New Thread, as on desktop.
 
 AC:
 - Each enabled bot's first reply comes from that profile (`session.info.profile_name`).

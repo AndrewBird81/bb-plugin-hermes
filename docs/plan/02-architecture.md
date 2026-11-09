@@ -4,12 +4,12 @@
 
 | Component | Runs on | Entry | Owns |
 |---|---|---|---|
-| Server part | bb server | `server.ts` | Provider registration (hidden, `models.scope:"workspace"`); mapping db; switches; import queue; wakes; RPC (`diagnostics`, `bots`, `setBot`, `newChat`, `stopHosted`, `threadInfo`); `message.dispatch` hook (D15) |
+| Server part | bb server | `server.ts` | Provider registration (hidden, `models.scope:"workspace"`); mapping db; switches; import queue; wakes; RPC (`diagnostics`, `bots`, `setBot`, `stopHosted`, `threadInfo`); `message.dispatch` hook (D15) |
 | Host worker | Hermes machine, bb host daemon | `host.ts` default export (`experimental_defineHostEntry`) | One host-scoped canonical connection; change watch; history reads; Bot Chat lookup; models; skill and wrapper files; version check |
 | Bridge | Hermes machine, one process per hosted thread (S1-S3 fact 2) | `host.ts` export `experimental_providerBridge` | Its own canonical connection; turns, deltas, interactions; replay and mirror rendering; S8's send rules |
 | Canonical client | library (worker, bridge) | `src/hermes/client.ts` | Discovery, ticket, dial, RPC, replay cursors; ported from `spike/hermes` `src/hermes/` |
 | History reader | library (worker, bridge) | `src/hermes/history.ts` | Read-only REST reads (below) |
-| App | bb UI | `app.tsx` | Settings page, rail panel, row badge, thread banners; `useBbNavigate` |
+| App | bb UI | `app.tsx` | Settings page, row badge, thread banners |
 
 How Hermes' other apps reach the same chats:
 
@@ -174,9 +174,8 @@ Hermes events → bb deltas:
    - On needs a connected Hermes; off works offline, and the skill removal is retried at the next reconnect.
    - Off: `bots.enabled = 0`; `threads.stop` each hosted thread of the bot; archive its unarchived threads with `archived_by_switch = 1`; worker deletes the skill dir (only with our marker) and the wrapper if no bot is on, then `refresh-prompts`; watch and wakes skip the profile.
 2. **Side chat**
-   1. Rail → RPC `newChat{profile}` → `threads.spawn{…, title:"New <bot> chat", pluginMetadata:{hermes:{origin:"newChat"}}, input:[spawnStart]}`, then `threads.send[init{profile}]`; binding `chat`/`pending` with `expected_id`; notification level `muted` during init, then `markRead` and restore.
-   2. First visible turn: model check → `session.create` → `prompt.submit` → stream → boundary → identity. The server sets the title to the first message cut to 60 characters (S7 finding 4).
-   - `bb thread spawn --provider hermes` → `thread.created` → bind the same way (A18).
+   1. bb's New Thread with the Bot chip (D51), or `bb thread spawn --provider hermes --option profile=<bot>` (A18) → `thread.created` → binding `chat`/`pending` with `expected_id`. bb names the thread.
+   2. First visible turn: model check → `session.create` → `prompt.submit` → stream → boundary → identity.
 3. **Bot thread send** (S8 §Recommended protocol; also legacy Conduit chats from step 3 on)
    1. Resolve each send: `session.list{profile, title:"Bot Chat", include_hidden:true}`. It adopts an unheld legacy Bot Chat (`resolve_titled_session` → `adopt_legacy_session`, T1.7 isolated), so only a bb send uses it; re-lists use the read-only `findBotChat`. `profiles.list.canonical_session: null` doesn't mean none (S8 E6). Cache `chat_id` for dedupe and reads only.
    2. None: re-check, then `session.create{profile, title:"Bot Chat", hidden:true, follow_profile_config:true, request_id:"bb:botchat:<profile_home>"}`. It returns any Bot Chat created meanwhile (E1). Lazy, never at setup: keeps the double-mint window (E12) to the user's first send.

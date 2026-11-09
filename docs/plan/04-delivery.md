@@ -6,14 +6,14 @@
 package.json          bb manifest (server, app, host); engines bb >=0.49.0; bbPluginSdk 0.6.132 (live bb, 2026-11-08);
                       scripts pin the bb bundled in bb-app@0.49.0 for builds (scripts/bb.mjs)
 server.ts host.ts app.tsx   entries only
-assets/hermes.svg     provider, rail and row icon
+assets/hermes.svg     provider and row icon
 assets/skill/         the bb skill template (SKILL.md) written into enabled profiles
 src/shared/           marker.ts, host-contract.ts, rpc-contract.ts, sources.ts (allow-list)   (lead)
 src/hermes/           client.ts (canonical), history.ts (REST reader)                        (client)
 src/bridge/           turns, segmentation, mapper, interactions, Bot Chat rules, replay/mirror (bridge)
 src/server/           mapping db, switches, import, wakes, dispatch hook, diagnostics        (server)
 src/worker/           watch, history reads, Bot Chat lookup, models, skill files, version check (worker)
-src/app/              settings page, rail panel, row badge, banners                          (app)
+src/app/              settings page, row badge, banners                                      (app)
 test/fake-hermes/     strict fake; vendored contract; recorded REST responses                 (client)
 test/fixtures/        recorded frames and REST responses, redacted                            (e2e)
 e2e/                  isolated-bb scripts, sbb, two-client harness, eligibility               (e2e)

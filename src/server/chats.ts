@@ -1,14 +1,12 @@
-// Side chats (02 flow 2), threads made elsewhere (`bb thread spawn`, A18), redeploy (flow 12) and the
+// Side chats, which bb makes (New Thread, `bb thread spawn`; 02 flow 2, A18), redeploy (flow 12) and the
 // per-thread facts the app shows (`threadInfo`).
 import { createHash } from "node:crypto";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { newChatTitle } from "../shared/bots.js";
-import { decodeMarker, spawnStart } from "../shared/marker.js";
 import type { ThreadInfo } from "../shared/rpc-contract.js";
-import { labelOf, spawnPlacement } from "./bots.js";
+import { labelOf } from "./bots.js";
 import { errorCode } from "./connection.js";
-import { allBindings, type Binding, bindingByThread, botByName, botRecord, type Db, getKv, insertBinding, updateBinding } from "./db.js";
-import { type Enqueue, expectedId, invalidateThreadInfo, type Sync, type SyncDeps, type Target, targetOf } from "./sync.js";
+import { allBindings, type Binding, bindingByThread, botByName, botRecord, getKv, insertBinding } from "./db.js";
+import { expectedId, invalidateThreadInfo, type SyncDeps, type Target, targetOf } from "./sync.js";
 
 export const TITLE_MAX = 60;
 
@@ -32,8 +30,8 @@ function profileOption(value: unknown, depth = 0): string | null {
   return null;
 }
 
-export function createChats(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; describe: (target: Target) => Promise<{ uid: number }> }) {
-  const { bb, db, connection, notify, sync, enqueue } = deps;
+export function createChats(deps: SyncDeps & { describe: (target: Target) => Promise<{ uid: number }> }) {
+  const { bb, db, connection } = deps;
   const fail = (code: string) => connection.recordError(code);
   /** Busy Hermes threads `stopHosted` stops at their `thread.idle`. */
   const stopAtIdle = new Set<string>();
@@ -43,7 +41,7 @@ export function createChats(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; des
     return typeof uid === "number" ? uid : (await deps.describe(target)).uid;
   }
 
-  function chatBinding(threadId: string, profileHome: string, uid: number, titleSet: string | null): Omit<Binding, "cursor_uid"> {
+  function chatBinding(threadId: string, profileHome: string, uid: number): Omit<Binding, "cursor_uid"> {
     return {
       thread_id: threadId,
       profile_home: profileHome,
@@ -56,35 +54,8 @@ export function createChats(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; des
       state: "pending",
       legacy: false,
       archived_by_switch: false,
-      title_set: titleSet,
+      title_set: null,
     };
-  }
-
-  /** Flow 2: an empty chat with an enabled bot; Hermes' session comes with the first message. */
-  async function newChat(profile: string): Promise<{ thread_id: string }> {
-    const bot = botByName(db, profile);
-    if (!bot) throw new Error(`Unknown bot ${profile}.`);
-    if (!bot.enabled) throw new Error(`${labelOf(bot)} is switched off in the Hermes plugin settings.`);
-    const target = targetOf(connection);
-    if (!target) throw new Error("Hermes isn't connected.");
-    return enqueue(async () => {
-      const uid = await workerUid(target);
-      const title = newChatTitle(labelOf(bot));
-      const thread = await bb.sdk.threads.spawn({
-        ...(await spawnPlacement(bb, target.machine)),
-        sessionOptions: { profile: bot.name },
-        title,
-        input: [spawnStart()],
-        pluginMetadata: { hermes: { origin: "newChat" } },
-      });
-      // Right after the spawn, so a re-list never takes the new session for an outside chat (02 identity rules).
-      insertBinding(db, chatBinding(thread.id, bot.profile_home, uid, sha256(title)));
-      invalidateThreadInfo(bb);
-      sync.readAtIdle.add(thread.id);
-      await notify.hold(thread.id, "muted");
-      await sync.sendInit(thread.id, { op: "init", profile: bot.name });
-      return { thread_id: thread.id };
-    });
   }
 
   /**
@@ -102,40 +73,8 @@ export function createChats(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; des
     const name = profileOption(events);
     const bot = name ? botByName(db, name) : null;
     if (!bot?.enabled) return;
-    insertBinding(db, chatBinding(thread.id, bot.profile_home, await workerUid(target), null));
+    insertBinding(db, chatBinding(thread.id, bot.profile_home, await workerUid(target)));
     invalidateThreadInfo(bb);
-  }
-
-  /** A side chat still titled "New <bot> chat" takes its first message as title (S7 finding 4). */
-  async function retitleNow(threadId: string): Promise<void> {
-    const binding = bindingByThread(db, threadId);
-    const bot = binding ? botRecord(db, binding.profile_home) : null;
-    if (!binding || binding.kind !== "chat" || !bot) return;
-    const placeholder = newChatTitle(labelOf(bot));
-    if (binding.title_set !== sha256(placeholder)) return;
-    const thread = await bb.sdk.threads.get({ threadId });
-    if (thread.title !== placeholder) return;
-    const history = await bb.sdk.threads.promptHistory({ threadId });
-    const hasMarker = (entry: (typeof history)[number]) =>
-      entry.input.some((part) => {
-        if (part.type !== "text" || (part as { visibility?: string }).visibility !== "agent-only") return false;
-        try {
-          return decodeMarker(part.text) !== null;
-        } catch {
-          return true;
-        }
-      });
-    // A plugin turn (a wake's `[Outside bb] …` label) never names the chat.
-    const visible = (entry: (typeof history)[number]) =>
-      hasMarker(entry)
-        ? ""
-        : entry.input.flatMap((part) => (part.type === "text" && (part as { visibility?: string }).visibility !== "agent-only" ? [part.text] : [])).join(" ");
-    // The first entry with visible text: an agent-only `init`, if bb records one, never names the chat.
-    const message = [...history].sort((a, b) => a.createdAt - b.createdAt).map(visible).find((t) => titleFrom(t) !== null);
-    const title = message ? titleFrom(message) : null;
-    if (!title) return;
-    await bb.sdk.threads.update({ threadId, title });
-    updateBinding(db, threadId, { title_set: sha256(title) });
   }
 
   /** Flow 12: idle Hermes threads stop now, busy ones at their `thread.idle`. */
@@ -179,5 +118,5 @@ export function createChats(deps: SyncDeps & { sync: Sync; enqueue: Enqueue; des
     return out;
   }
 
-  return { newChat, onCreatedNow, retitleNow, stopHosted, onIdle, threadInfo };
+  return { onCreatedNow, stopHosted, onIdle, threadInfo };
 }

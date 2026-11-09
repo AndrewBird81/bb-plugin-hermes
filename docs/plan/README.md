@@ -35,6 +35,7 @@ Later (out of v1):
 - Profiles with their own gateway, outside the host's `served_profiles` (S8 §Per-profile reach).
 - Upstream: S8's two race bugs (D50).
 - Community marketplace listing.
+- Several Hermes installations, one per machine (owner direction, 2026-11-09). Until then, no new single-machine assumption where a per-machine shape costs the same.
 - The Hermes icon before each Hermes row's title, as Pi rows have. bb's thread list draws it only for providers in bb's provider list (the New Thread picker and Settings → Providers), so it needs Hermes listed there, reversing D2. The phone layout's Recent list already shows it. Deferred by the owner (2026-11-09).
 
 ## Decisions that bind v1
@@ -62,6 +63,7 @@ Later (out of v1):
 | D48 | Switching a bot off archives its bb threads; on unarchives them and mirroring resumes |
 | D49 | No Discord or other chat-app sessions in v1, DMs included |
 | D50 | Leave `compression.in_place` as is (Q24, S8's open question 5); don't file the race bugs (Q25); plugin code lives in this public repo |
+| D51 | bb's native New Thread, with the Bot chip, is the way to start a chat. The rail panel is gone (owner, 2026-11-09: "it's not providing any value") |
 | Q1 default | No cross-delete. bb delete → tombstone (mirrored chats and side chats; a bot thread is re-created instead), never re-imported. Deleted in Hermes → the thread stays; sends fail "Deleted in Hermes" |
 | Q7 default | Imported bubbles carry the outside tag and date (`[Outside bb · Oct 12]`), never an app's name; oldest first; item times are import time |
 
@@ -135,6 +137,6 @@ Settled by this plan; each is reversible:
 5. **Which outside chats mirror:** an allow-list, CLI, TUI, Desktop and Conduit, visible sessions plus the Bot Chat. ACP, API server, `a2a`, tool, subagent, cron, one-shot, chat-app and hidden sessions stay out.
 6. **The skill reaches existing chats:** after writing or deleting the skill, the worker runs `hermes -p <profile> sessions refresh-prompts`. A continuing session (the Bot Chat) otherwise keeps its old system prompt (`hermes_state_prompt_refresh.py:1-8`). Cost: one prompt-cache miss per continuing session of that bot.
 7. **`/new` and `/reset`** become a compaction in every Hermes thread, not only bot threads: a bb thread keeps one Hermes chat.
-8. **Entry points:** the pinned bot thread, the rail panel's "New chat with <bot>", and `bb thread spawn`. The home-composer row and the shortcut are Later.
+8. **Entry points:** the pinned bot thread, bb's New Thread with the Bot chip (D51), and `bb thread spawn`. The home-composer row and the shortcut are Later.
 
 Flagged gold-plating, kept because a decision requires it: live streaming of outside CLI/TUI/Desktop turns (D7; one mirror mode and A19 could go); the source-tag refusal (D15).

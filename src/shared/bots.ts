@@ -7,6 +7,5 @@ export function botLabel(name: string, handle: string | null = null): string {
   return shown.charAt(0).toUpperCase() + shown.slice(1);
 }
 
-/** The bot thread's title (01 §3) and the side chat's placeholder title (02 flow 2). */
+/** The bot thread's title (01 §3). */
 export const botThreadTitle = (label: string) => label;
-export const newChatTitle = (label: string) => `New ${label} chat`;

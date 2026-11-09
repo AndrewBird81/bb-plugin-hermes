@@ -79,16 +79,14 @@ async function botChatWorld(turns = [turn("u1"), turn("u2")]) {
 }
 
 describe("P1 follow-ups: spawn input", () => {
-  it("no spawn input holds a marker: bot thread and side chat spawn with spawnStart(), the init follows in a send", async () => {
+  it("no spawn input holds a marker: the bot thread spawns with spawnStart(), the init follows in a send", async () => {
     const w = await botChatWorld();
     await on(w);
-    const { thread_id: chat } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
     for (const spawn of calls(w, "threads.spawn")) {
       expect(JSON.stringify(spawn.input)).not.toContain("<hermes-bb>");
       expect(spawn.input).toEqual([{ type: "text", mentions: [], text: "", visibility: "agent-only" }]);
     }
     expect(w.markers("thr_1")[0]).toEqual({ op: "init", profile: "neo", bot: true });
-    expect(w.markers(chat)).toEqual([{ op: "init", profile: "neo" }]);
   });
 
   it("a failed init send takes the thread back with no tombstone; the next keep-alive spawns again", async () => {
@@ -181,11 +179,11 @@ describe("P1 follow-ups: tombstones (Q1)", () => {
     const w = await botChatWorld();
     await on(w);
     await w.idle("thr_1");
-    const { thread_id: bound } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+    const bound = await w.newThread("neo");
     const sid = bindingByThread(w.db, bound)!.expected_id!;
     w.persisted(bound, { profile_home: NEO, lineage_root: sid, session_id: sid, turns: [{ submission_id: `bb:${bound}:c1`, anchor_uids: ["s1"], reply_uids: [], at: 1 }] });
     await w.idle(bound);
-    const { thread_id: pending } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+    const pending = await w.newThread("neo");
     const pendingId = bindingByThread(w.db, pending)!.expected_id!;
     for (const id of [bound, pending, "thr_1"]) {
       w.thread(id).deletedAt = 9;
@@ -203,7 +201,7 @@ describe("T2.1–T2.2: discovery and 30-day import", () => {
     await drain(w);
     const sides: string[] = [];
     for (const n of [1, 2]) {
-      const { thread_id } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+      const thread_id = await w.newThread("neo");
       const sid = bindingByThread(w.db, thread_id)!.expected_id!;
       // bb's own side chats list as `local`/`desktop` rows, first turn bb's.
       chat(w, sid, { created_source: "desktop" }, [turn(`s${n}`, { submission_id: `bb:${thread_id}:1` })]);
@@ -533,13 +531,14 @@ describe("T2.3: title follow", () => {
     expect(w.thread(t).title).toBe("Mine");
 
     // A side chat listed with a Hermes title keeps bb's; so does the bot thread.
-    const { thread_id: side } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+    const side = await w.newThread("neo");
+    w.thread(side).title = "Plan my week";
     const sid = bindingByThread(w.db, side)!.expected_id!;
     w.persisted(side, { profile_home: NEO, lineage_root: sid, session_id: sid, turns: [{ submission_id: `bb:${side}:1`, anchor_uids: ["s1"], reply_uids: [], at: 1 }] });
     await w.idle(side);
     chat(w, sid, { title: "Hermes names it", created_source: "desktop" }, [turn("s1", { submission_id: `bb:${side}:1` })]);
     await w.changed(NEO);
-    expect(w.thread(side).title).toBe("New Neo chat");
+    expect(w.thread(side).title).toBe("Plan my week");
     expect(w.thread("thr_1").title).toBe("Neo");
     expect(calls(w, "threads.update").filter((a) => a.title !== undefined).map((a) => a.threadId)).toEqual([t]);
   });
@@ -865,10 +864,9 @@ describe("e2e: a legacy chat adopted by bb's first send", () => {
 
 describe("review 5: the user's own send behind an init or import", () => {
   it("releases the hold (approvals push) and drops the read flag; a plugin wake doesn't", async () => {
-    const w = await botChatWorld([]);
-    await on(w);
-    await drain(w);
-    const { thread_id: chat } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+    const w = await world();
+    await w.connect();
+    const chat = (await on(w)).thread_id!;
     expect(w.levels.get(chat)).toBe("muted");
     const hook = w.harness.inspection.registrations.hooks["message.dispatch"]!;
     const dispatch = (initiator: "user" | "system", blocks: ReturnType<typeof encodeMarker>[] | { type: "text"; mentions: never[]; text: string }[]) =>
@@ -971,22 +969,6 @@ describe("review 10: the bot thread follows a new Bot Chat", () => {
 });
 
 describe("review 12 and 13", () => {
-  it("a side chat's title never comes from a wake's label (an entry with a marker)", async () => {
-    const w = await botChatWorld([]);
-    await on(w);
-    await drain(w);
-    const { thread_id: chat } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
-    w.prompts.set(chat, [
-      { createdAt: 1, id: "p1", input: [{ type: "image", url: "x" } as never] },
-      { createdAt: 2, id: "p2", input: [{ type: "text", mentions: [], text: "[Outside bb] from the CLI" }, encodeMarker({ op: "mirror", anchor_uid: "s2", labeled: true })] },
-    ]);
-    await w.idle(chat);
-    expect(w.thread(chat).title).toBe("New Neo chat");
-    w.prompts.get(chat)!.push({ createdAt: 3, id: "p3", input: [{ type: "text", mentions: [], text: "my own words" }] });
-    await w.idle(chat);
-    expect(w.thread(chat).title).toBe("my own words");
-  });
-
   it("a failed wake send releases its input-only hold when nothing else holds the thread", async () => {
     const w = await botChatWorld([turn("u1")]);
     await on(w);
@@ -1192,10 +1174,9 @@ describe("review-2 6-10", () => {
   });
 
   it("7: the plugin's own send (spawnStart, initiator user, no sender) isn't the user's", async () => {
-    const w = await botChatWorld([]);
-    await on(w);
-    await drain(w);
-    const { thread_id: chat } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+    const w = await world();
+    await w.connect();
+    const chat = (await on(w)).thread_id!;
     const hook = w.harness.inspection.registrations.hooks["message.dispatch"]!;
     const blocks = [{ type: "text" as const, mentions: [], text: "", visibility: "agent-only" as const }];
     expect(await hook(makeMessageDispatchHookContext({ thread: { id: chat, providerId: "hermes" }, initiator: "user", originPluginId: "hermes", input: { blocks, text: "" } }))).toEqual({ action: "proceed" });
@@ -1326,7 +1307,7 @@ describe("v1.0.1: a failed job records once, by its caller", () => {
     const w = await world();
     await w.connect();
     await on(w);
-    const { thread_id } = await w.rpc<{ thread_id: string }>("newChat", { profile: "neo" });
+    const thread_id = await w.newThread("neo");
     await w.idle(thread_id);
     // The init is confirmed over: a read check waits a quiet period.
     await w.quiet();
@@ -1337,12 +1318,10 @@ describe("v1.0.1: a failed job records once, by its caller", () => {
     expect(await errors(w)).toEqual([]);
   });
 
-  it("setBot's and newChat's job errors reach their caller only", async () => {
+  it("setBot's job errors reach its caller only", async () => {
     const w = await world();
     await w.connect();
     await on(w);
-    w.state.failSpawn = 1;
-    await expect(w.harness.behavior.callRpc("newChat", { profile: "neo" })).rejects.toThrow("model catalog is empty");
     await w.rpc("setBot", { profile_home: NEO, on: false });
     // The switch-on's Bot Chat lookup fails.
     w.botChats.get = () => {

@@ -73,7 +73,6 @@ export function turn(anchor: string, over: Partial<HistoryTurn> = {}): HistoryTu
 export async function world({ profiles = [neo, bob], seed, threads: before = [] }: WorldOptions = {}) {
   const threads = new Map<string, FakeThread>(before.map((t) => [t.id, t]));
   const events = new Map<string, { type: string; data: unknown; seq: number }[]>();
-  const prompts = new Map<string, { createdAt: number; id: string; input: PromptInput[] }[]>();
   const levels = new Map<string, string>();
   const levelCalls: { threadId: string; level: string }[] = [];
   /** Inputs the fake bridge has rendered, per thread (`render`). */
@@ -250,7 +249,6 @@ export async function world({ profiles = [neo, bob], seed, threads: before = [] 
           setImmediate(() => void fake.harness.behavior.emitThreadEvent("thread.deleted", { thread: dto(threads.get(threadId)!) } as never));
           return { ok: true };
         },
-        promptHistory: async ({ threadId }) => prompts.get(threadId) ?? [],
         getPluginMetadata: async () => ({ metadata: {} }),
         events: {
           list: async ({ threadId, types, order, limit, beforeSeq }) => {
@@ -317,7 +315,6 @@ export async function world({ profiles = [neo, bob], seed, threads: before = [] 
     levels,
     levelCalls,
     cards,
-    prompts,
     rpc,
     flush,
     elapse,
@@ -389,6 +386,17 @@ export async function world({ profiles = [neo, bob], seed, threads: before = [] 
       const list = events.get(threadId) ?? [];
       list.push({ type: "thread/extensionState/updated", seq: ++state.seq, data: { kind: `hermes/${EXTENSION_KINDS.status}`, payload, providerThreadId: "p" } });
       events.set(threadId, list);
+    },
+    /**
+     * A Hermes chat bb made itself (`bb thread spawn --option profile=<bot>`): its recorded start, then
+     * `thread.created`. Its id comes from the same counter as the server's spawns.
+     */
+    async newThread(profile: string) {
+      const id = `thr_${++state.ids}`;
+      threads.set(id, { id, title: null, status: "idle", archivedAt: null, deletedAt: null, pinned: false, queued: 0, lastReadAt: null, latestAttentionAt: ++state.clock, visibility: "visible", originPluginId: null, spawn: null, inputs: [] });
+      this.event(id, "client/thread/start", { request: { method: "thread/start", params: { options: { sessionOptions: { profile } } } } });
+      await this.emit("thread.created", id);
+      return id;
     },
     /** A recorded bb event of this thread (e.g. `client/thread/start`). */
     event(threadId: string, type: string, data: unknown) {

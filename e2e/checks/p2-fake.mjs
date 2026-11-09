@@ -63,6 +63,9 @@ const bindings = (profile) => db(`SELECT * FROM bindings WHERE profile_home = ${
 const bindingOf = (root) => db(`SELECT * FROM bindings WHERE lineage_root = ${q(root)}`)[0];
 const bots = () => Object.fromEntries(rpc("bots").bots.map((b) => [b.profile, b]));
 const setBot = (profile, on) => rpc("setBot", { profile_home: HOME_OF[profile], on });
+/** A side chat as `bb thread spawn` starts one, on the Hermes machine (the isolated host daemon). */
+const spawnChat = (profile, prompt) =>
+  sbbj("thread", "spawn", "--project", "proj_personal", "--provider", "hermes", "--machine", readFileSync(`${process.env.HOME}/.bb-hermes-e2e/host-id`, "utf8").trim(), "--option", `profile=${profile}`, "--prompt", prompt).id;
 const diagnostics = () => rpc("diagnostics");
 /** Errors the harness itself causes: the fake folder has no `hermes` CLI for refresh-prompts. */
 const HARNESS = /^(hermes_not_found|set_bot_access_incomplete)$/;
@@ -426,9 +429,7 @@ check("7 duplicates 0; no plugin errors since a chat was deleted in Hermes, A38'
 check("7 no HTTP 409 in bb's server log since the run started", !readFileSync(`${process.env.HOME}/.bb-hermes-e2e/logs/server.1.log`, "utf8").split("\n").some((l) => { try { const j = JSON.parse(l); return j.time >= t0 && /\b409\b/.test(l); } catch { return false; } }));
 
 // ---- 9. no marker shown; a side chat too
-const side = rpc("newChat", { profile: "alex" }).thread_id;
-await sleep(6000);
-sbb("thread", "tell", side, "side chat hello");
+const side = spawnChat("alex", "side chat hello");
 await until("side chat reply", () => replies(side).length > 0, 30_000);
 await sleep(2000);
 const fallbacks = hermesThreads().map((t) => t.titleFallback ?? null);
@@ -436,7 +437,7 @@ check("9 every Hermes thread's titleFallback is null or marker-free", fallbacks.
 
 // ---- a big catalog (bridge sqsvkmqs)
 await ctl("models", { count: 120 });
-const cat = rpc("newChat", { profile: "bob" }).thread_id;
+const cat = spawnChat("bob", "big catalog");
 const catalog = await until("catalog", () => events(cat).filter((e) => e.type === "thread/extensionState/updated" && e.data.kind === "bb/provider-model-catalog").at(-1), 30_000);
 check("a 120-model catalog fits bb's 64 KiB state and reaches the thread", catalog.data.payload.models.length === 120 && JSON.stringify(catalog.data.payload).length < 65536 && !events(cat).some((e) => /unhandled/.test(e.type)), `${JSON.stringify(catalog.data.payload).length} bytes`);
 await ctl("models", { count: 1 });

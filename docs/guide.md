@@ -28,7 +28,7 @@ Switching it **off** archives its bb threads, removes the skill, and stops watch
 ## What you see
 
 - **Bot thread:** pinned, titled with the bot's name. It is the bot's Bot Chat, shared with Hermes' other apps (Desktop, Conduit).
-- **Side chats:** "New chat with <bot>" in the Hermes rail panel, or `bb thread spawn --project proj_personal --provider hermes --option profile=<bot>` on the Hermes machine.
+- **Side chats:** bb's New Thread on the Hermes machine: pick Hermes, then the bot in the Bot chip. Or `bb thread spawn --project proj_personal --provider hermes --option profile=<bot>` on the Hermes machine.
 - **Mirrored chats:** every CLI, TUI, Desktop and Conduit chat of a bot that is on. Cron, one-shot, ACP, API-server, Discord and other chat-app sessions stay in Hermes.
   - At switch-on, chats active in the last 30 days are imported, read and silently. Older turns of a long chat stay in Hermes, with a note at the top. The switch row says how many before you turn it on.
   - Chats started later appear as new threads, unread.

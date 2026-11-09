@@ -95,11 +95,6 @@ export const rpcContract = defineRpcContract({
     input: z.object({ profile_home: z.string().min(1), on: z.boolean() }).strict(),
     output: botRowSchema,
   },
-  /** A side chat with an enabled bot (flow 2): `profile` is the profile name. The app navigates to `thread_id`. */
-  newChat: {
-    input: z.object({ profile: z.string().min(1) }).strict(),
-    output: z.object({ thread_id: z.string() }).strict(),
-  },
   /** Redeploy (flow 12): stops idle Hermes threads now and busy ones at their `thread.idle`. */
   stopHosted: {
     input: z.null(),
