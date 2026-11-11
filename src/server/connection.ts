@@ -45,10 +45,10 @@ function healthFrom(settings: ConnectionSettings, patch: Partial<Health> & { sta
 /** Change detection ignores `worker_last_seen_at`: it moves every keep-alive; the app reads it on refetch. */
 const sameHealth = (a: Health, b: Health): boolean => JSON.stringify({ ...a, worker_last_seen_at: 0 }) === JSON.stringify({ ...b, worker_last_seen_at: 0 });
 
-/** The machine (mapping db `kv`) and the folder (`bb.settings`), read at each check. */
+/** The machine (mapping db `kv`), the folder and the `models` ids (`bb.settings`), read at each check. */
 export interface ConnectionSource {
   /** `machine_folder`: the folder the machine was set with (null: a P0 db, taken as matching). */
-  get(): Promise<ConnectionSettings & { machine_folder: string | null }>;
+  get(): Promise<ConnectionSettings & { machine_folder: string | null; models: string[] }>;
 }
 
 /**
@@ -124,7 +124,7 @@ export function createConnection(bb: BbPluginApi, settings: ConnectionSource, db
     if (fresh) unanswered(healthFrom(current, { state: "connecting", machine }));
     try {
       const enabled = enabledBots(db).map((b) => b.profile_home);
-      const output = await host.call("ensureWatch", { root: current.folder, enabled_bots: enabled }, { hostId: current.machine });
+      const output = await host.call("ensureWatch", { root: current.folder, enabled_bots: enabled, models: current.models }, { hostId: current.machine });
       answer = output;
       const newBoot = noteBoot(output);
       const state: HealthState = !output.connected ? "disconnected" : output.supported === false ? "not_supported" : "connected";

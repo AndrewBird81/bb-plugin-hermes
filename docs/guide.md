@@ -12,6 +12,7 @@ Chat with your Hermes bots in bb, and see their Hermes chats as bb threads that 
 
 1. `bb plugin install git:github.com/AndrewBird81/bb-plugin-hermes@^1 --yes` (a version range: a tag would pin it).
 2. Settings → Plugins → Hermes: pick the **Hermes machine**. Change the **Hermes folder** only for an unusual install. The health line turns "connected, supported" within a minute.
+   - Optional: **Models** trims Hermes' model lists to the ids you list, one `provider/model` per line (e.g. `openai-codex/gpt-6.1-sol`). Each bot shows the ones it has. `bb provider models hermes --machine <Hermes machine>` lists the ids.
    - Hermes then appears in bb's New Thread on that machine only. bb caches which machines have Hermes for up to 5 minutes; `bb plugin reload hermes` shows it at once.
    - Settings → Providers and the Hermes icon on threads show Hermes only when the Hermes machine is bb's primary machine. There, **Disable** stops every Hermes turn, the plugin's own syncs and imports included, until you enable it again.
 3. To update: `bb plugin update hermes`, then `bb plugin rpc call hermes stopHosted`, so running bot processes restart on the new build.

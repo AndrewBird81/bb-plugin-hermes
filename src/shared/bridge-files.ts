@@ -37,7 +37,8 @@ export const fallbackBot = <B extends { profile: string; served: boolean }>(enab
  * `worker.json`, rewritten on every `ensureWatch` that changes it. Its presence with the bridge's folder
  * as `root` means "this machine runs the Hermes worker"; a bridge without it fails turns with
  * `otherMachineText` (01 §9). `enabled`: the bots `model/list` offers as the `profile` session option
- * (`bb thread spawn --option profile=<bot>`, A18).
+ * (`bb thread spawn --option profile=<bot>`, A18). `models`: the `models` setting; bridges list only these
+ * (empty = every model).
  */
 export const workerFileSchema = z
   .object({
@@ -45,6 +46,7 @@ export const workerFileSchema = z
     worker_boot_id: z.string(),
     written_at: z.number(),
     enabled: z.array(enabledBotSchema),
+    models: z.array(z.string()).default([]),
   })
   .strict();
 export type WorkerFile = z.infer<typeof workerFileSchema>;

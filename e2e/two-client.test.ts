@@ -55,7 +55,7 @@ beforeAll(async () => {
   rmSync(DATA, { recursive: true, force: true });
   mkdirSync(DATA, { recursive: true });
   const enabled = PROFILES.map((p) => ({ profile: p, profile_home: h.profileHome(p), bot_label: botLabel(p), cwd: null, served: true }));
-  writeFileSync(path.join(DATA, WORKER_FILE), JSON.stringify({ root: H, worker_boot_id: "boot-e2e", written_at: Date.now(), enabled } satisfies WorkerFile));
+  writeFileSync(path.join(DATA, WORKER_FILE), JSON.stringify({ root: H, worker_boot_id: "boot-e2e", written_at: Date.now(), enabled, models: [] } satisfies WorkerFile));
   bridge = createBridge("e2e-build", {
     holdRetryMs: [1000, 2000, 3000],
     connection: {

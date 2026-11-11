@@ -49,6 +49,8 @@ export interface WatcherOptions {
 /** What one keep-alive tells the worker besides the folder. */
 export interface Reconcile {
   enabledBots: readonly string[];
+  /** The `models` setting, for `worker.json`. */
+  models?: readonly string[];
   /** The worker's dataDir; bridges' files go to the sibling `bridge-data`. */
   dataDir: string;
 }
@@ -186,7 +188,7 @@ export class Watcher {
    * chats, prewarm their models, and key-check REST once per gateway instance. Best effort: a failure
    * here never fails the keep-alive.
    */
-  private async reconcile({ enabledBots, dataDir }: Reconcile): Promise<void> {
+  private async reconcile({ enabledBots, models = [], dataDir }: Reconcile): Promise<void> {
     this.enabled = [...enabledBots];
     this.dataDir = dataDir;
     const root = this.root!;
@@ -198,7 +200,7 @@ export class Watcher {
       if (known) enabled.push({ profile: known.profile.name, profile_home: home, bot_label: botLabel(known.profile.name, known.profile.handle), cwd: known.profile.terminal_cwd, served: known.profile.served });
       dirs.set(home, known?.dir ?? canonicalHome(home));
     }
-    await this.workerFile.write(bridgeDataDir(dataDir), root, this.bootId, enabled).catch(() => {});
+    await this.workerFile.write(bridgeDataDir(dataDir), root, this.bootId, enabled, models).catch(() => {});
     await this.changes.set(dirs);
     if (!this.connected) return;
     this.models.prewarm(this.enabled);

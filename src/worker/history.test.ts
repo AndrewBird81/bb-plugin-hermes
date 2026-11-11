@@ -56,7 +56,7 @@ describe("worker.json", () => {
     const out = await h.experimental_call("ensureWatch", { root, enabled_bots: [alex] });
     const file = path.join(bridgeDir, WORKER_FILE);
     const first = JSON.parse(readFileSync(file, "utf8"));
-    expect(first).toEqual({ root, worker_boot_id: out.worker_boot_id, written_at: expect.any(Number), enabled: [{ profile: "alex", profile_home: alex, bot_label: "Alex", cwd: "~/notes", served: true }] });
+    expect(first).toEqual({ root, worker_boot_id: out.worker_boot_id, written_at: expect.any(Number), enabled: [{ profile: "alex", profile_home: alex, bot_label: "Alex", cwd: "~/notes", served: true }], models: [] });
 
     await sleep(5);
     await h.experimental_call("ensureWatch", { root, enabled_bots: [alex] });
@@ -64,6 +64,9 @@ describe("worker.json", () => {
 
     await h.experimental_call("ensureWatch", { root, enabled_bots: [alex, root] });
     expect(JSON.parse(readFileSync(file, "utf8")).enabled.map((b: { bot_label: string }) => b.bot_label)).toEqual(["Alex", "Hermes"]);
+    // The `models` setting's ids, for bridges' lists.
+    await h.experimental_call("ensureWatch", { root, enabled_bots: [alex, root], models: ["codex/terra"] });
+    expect(JSON.parse(readFileSync(file, "utf8")).models).toEqual(["codex/terra"]);
     untouched(fake, "bob", bob);
   });
 

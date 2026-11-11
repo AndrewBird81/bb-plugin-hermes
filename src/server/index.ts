@@ -4,7 +4,7 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import pkg from "../../package.json" with { type: "json" };
 import { hostContract, hostSignals } from "../shared/host-contract.js";
 import { BOTS_CHANNEL, rpcContract, type Diagnostics } from "../shared/rpc-contract.js";
-import type { SettingsHandle } from "../shared/settings.js";
+import { parseModels, type SettingsHandle } from "../shared/settings.js";
 import { createBots, personalProject } from "./bots.js";
 import { createChats } from "./chats.js";
 import { createDiscovery } from "./discovery.js";
@@ -51,7 +51,10 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
   // A P0 db has a machine but no folder for it: it counts as matching, so record the folder now.
   if (savedMachine(db) && machineFolder(db) === null) setKv(db, MACHINE_FOLDER_KEY, (await settings.get()).folder);
   const source: ConnectionSource = {
-    get: async () => ({ machine: savedMachine(db), folder: (await settings.get()).folder, machine_folder: machineFolder(db) }),
+    get: async () => {
+      const { folder, models } = await settings.get();
+      return { machine: savedMachine(db), folder, machine_folder: machineFolder(db), models: parseModels(models) };
+    },
   };
   let onConnected: OnConnected = () => {};
   const connection = createConnection(bb, source, db, host, (event) => onConnected(event));

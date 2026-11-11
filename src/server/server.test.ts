@@ -172,7 +172,7 @@ describe("keep-alive and health", () => {
     const t = await setup({ machine: "" });
     const health = await t.rpc<Health>("setConnection", { machine: MACHINE, folder: "/private/tmp/bb-hermes-test/home" });
     expect(health).toMatchObject({ state: "connected", folder: "/private/tmp/bb-hermes-test/home" });
-    expect(t.ensureCalls().at(-1)?.input).toEqual({ root: "/private/tmp/bb-hermes-test/home", enabled_bots: [] });
+    expect(t.ensureCalls().at(-1)?.input).toEqual({ root: "/private/tmp/bb-hermes-test/home", enabled_bots: [], models: [] });
     // Back to unset: no further host call.
     const calls = t.ensureCalls().length;
     expect((await t.rpc<Health>("setConnection", { machine: "" })).state).toBe("not_configured");
@@ -184,7 +184,14 @@ describe("keep-alive and health", () => {
     const t = await setup();
     await t.rpc("setConnection", { machine: MACHINE });
     await t.harness.behavior.setSettings({ folder: "/private/tmp/bb-hermes-test/other" });
-    await vi.waitFor(() => expect(t.ensureCalls().at(-1)?.input).toEqual({ root: "/private/tmp/bb-hermes-test/other", enabled_bots: [] }));
+    await vi.waitFor(() => expect(t.ensureCalls().at(-1)?.input).toEqual({ root: "/private/tmp/bb-hermes-test/other", enabled_bots: [], models: [] }));
+  });
+
+  it("a models save re-checks at once and sends its ids", async () => {
+    const t = await setup();
+    await t.rpc("setConnection", { machine: MACHINE });
+    await t.harness.behavior.setSettings({ models: "codex/terra\n local/mlx , codex/terra\n\n" });
+    await vi.waitFor(() => expect(t.ensureCalls().at(-1)?.input).toMatchObject({ models: ["codex/terra", "local/mlx"] }));
   });
 
   it("the machine is saved in kv, not in bb's settings", async () => {

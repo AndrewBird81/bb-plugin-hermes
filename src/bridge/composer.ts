@@ -110,11 +110,14 @@ export function chipOption(enabled: readonly EnabledBot[], own?: { profile: stri
   return shown ? botOption(shown, values) : null;
 }
 
-/** "The bot's model" (the default), then the bot's models. */
-export function availableModels(catalog: Catalog | null, sessionOptions?: ReturnType<typeof botOption>[]): AvailableModel[] {
+/**
+ * "The bot's model" (the default), then the bot's models: only those in `shown` (the `models` setting) unless it is
+ * empty. A pick is still checked against every model (`chooseModel`): the setting trims lists, it doesn't refuse.
+ */
+export function availableModels(catalog: Catalog | null, sessionOptions?: ReturnType<typeof botOption>[], shown: readonly string[] = []): AvailableModel[] {
   return [
     placeholderModel(catalog, sessionOptions),
-    ...(catalog?.models ?? []).map((m) => ({
+    ...(catalog?.models ?? []).filter((m) => !shown.length || shown.includes(m.id)).map((m) => ({
       id: m.id,
       model: m.id,
       displayName: m.model,
@@ -139,8 +142,8 @@ export const STATE_MAX_BYTES = 64 * 1024;
  * its ladder goes `reasoningDiscovery: "unknown"`, which bb fills by asking `model/list{selectedModel}` when it is
  * picked (`refineSelectedModel`); bb refines no chip.
  */
-export function catalogState(catalog: Catalog, sessionOptions?: ReturnType<typeof botOption>[]): { models: AvailableModel[]; selectedOnlyModels: [] } {
-  const full = availableModels(catalog, sessionOptions);
+export function catalogState(catalog: Catalog, sessionOptions?: ReturnType<typeof botOption>[], shown: readonly string[] = []): { models: AvailableModel[]; selectedOnlyModels: [] } {
+  const full = availableModels(catalog, sessionOptions, shown);
   const kept = (i: number) => full[i]!.id === PLACEHOLDER_MODEL || full[i]!.id === catalog.current;
   const order = [...full.keys()].sort((a, b) => Number(kept(b)) - Number(kept(a)));
   const bytes = (v: unknown) => Buffer.byteLength(JSON.stringify(v));
@@ -182,9 +185,9 @@ export function catalogState(catalog: Catalog, sessionOptions?: ReturnType<typeo
  * carry the chip with every switched-on bot, as `model/list` does: a project's threads share its catalog with the
  * project's New Thread, which would lose the chip after the first chat there (research 13 §6).
  */
-export function composerStates(bot: { profile: string; bot_label: string }, catalog: Catalog | null, enabled: readonly EnabledBot[] = []): ThreadDelta[] {
+export function composerStates(bot: { profile: string; bot_label: string }, catalog: Catalog | null, enabled: readonly EnabledBot[] = [], shown: readonly string[] = []): ThreadDelta[] {
   const states: ThreadDelta[] = [{ kind: "extension.state", extensionKind: "bb/session-options", payload: { options: [botOption(bot)] } }];
-  if (catalog) states.push({ kind: "extension.state", extensionKind: "bb/provider-model-catalog", payload: catalogState(catalog, [chipOption(enabled, bot)!]) as never });
+  if (catalog) states.push({ kind: "extension.state", extensionKind: "bb/provider-model-catalog", payload: catalogState(catalog, [chipOption(enabled, bot)!], shown) as never });
   return states;
 }
 

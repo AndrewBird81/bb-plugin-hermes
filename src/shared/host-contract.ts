@@ -159,10 +159,11 @@ export const hostContract = defineRpcContract({
   /**
    * Idempotent; also the 60 s keep-alive (an idle worker dies at 300 s with no exit event, S7 §6).
    * `enabled_bots`: profile homes of the enabled bots. The worker watches them (hint + WAL stat), prewarms
-   * their models and writes `bridge-data/worker.json` for bridges (`bridge-files.ts`).
+   * their models and writes `bridge-data/worker.json` for bridges (`bridge-files.ts`). `models`: the `models`
+   * setting's ids, also for `worker.json` (empty = every model).
    */
   ensureWatch: {
-    input: z.object({ root: folderSchema, enabled_bots: z.array(profileHome) }).strict(),
+    input: z.object({ root: folderSchema, enabled_bots: z.array(profileHome), models: z.array(z.string()).default([]) }).strict(),
     output: ensureWatchOutputSchema,
     experimental_retryable: true,
   },

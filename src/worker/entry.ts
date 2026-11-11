@@ -30,7 +30,7 @@ export function createHostEntry(opts: HostEntryOptions = {}) {
     contract: hostContract,
     experimental_signals: hostSignals,
     handlers: {
-      ensureWatch: async ({ root, enabled_bots }, context) => {
+      ensureWatch: async ({ root, enabled_bots, models }, context) => {
         bindLifecycle(context.lifecycle.signal);
         // The daemon's environment for this call only (A44): read before any await.
         const target = bbTarget(process.env, opts.access?.exists);
@@ -39,7 +39,7 @@ export function createHostEntry(opts: HostEntryOptions = {}) {
         const dataDir = context.experimental_paths.dataDir;
         // The wrapper follows bb when it moves (an update, a new server URL) while any bot is on.
         if (enabled_bots.length && target) await writeWrapper(dataDir, target).catch(() => {});
-        return watcher.ensure(root, context.signal, { enabledBots: enabled_bots, dataDir });
+        return watcher.ensure(root, context.signal, { enabledBots: enabled_bots, models, dataDir });
       },
       describe: async ({ root }, context) => {
         bindLifecycle(context.lifecycle.signal);

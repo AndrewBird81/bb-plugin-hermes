@@ -7,11 +7,16 @@ import { hostContract } from "./host-contract.js";
 import { catalogFromModelOptions, catalogSchema, parseModelId } from "./models.js";
 import { readProviderOptions, switchedOffText } from "./provider-options.js";
 import { rpcContract } from "./rpc-contract.js";
-import { folderSchema, machineSchema, settingsDescriptors } from "./settings.js";
+import { folderSchema, machineSchema, parseModels, settingsDescriptors } from "./settings.js";
 
 describe("settings", () => {
-  it("bb's settings form holds only the folder: the machine is picked by name in the app", () => {
-    expect(Object.keys(settingsDescriptors)).toEqual(["folder"]);
+  it("bb's settings form holds the folder and the models: the machine is picked by name in the app", () => {
+    expect(Object.keys(settingsDescriptors)).toEqual(["folder", "models"]);
+  });
+
+  it("models: one id per line or comma, trimmed, no blanks or repeats", () => {
+    expect(parseModels("")).toEqual([]);
+    expect(parseModels(" a/b \nc/d,a/b\n\n e/f[1m] ")).toEqual(["a/b", "c/d", "e/f[1m]"]);
   });
 
   it("validates machine and folder", () => {

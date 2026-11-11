@@ -173,7 +173,7 @@ export function createBridge(build: string, opts: BridgeOptions = {}): Bridge {
     const bot = own ?? fallbackBot(worker?.enabled ?? []);
     if (!worker || !bot) return { models: [placeholderModel()], selectedOnlyModels: [] };
     const catalog = await fetchCatalog(host.link(expandHome(worker.root)), host.dataDir, bot);
-    return { models: availableModels(catalog, [chipOption(worker.enabled, own)!]), selectedOnlyModels: [] };
+    return { models: availableModels(catalog, [chipOption(worker.enabled, own)!], worker.models), selectedOnlyModels: [] };
   };
 
   const hostThread = (threadId: string, providerThreadId: string): HostedThread => {

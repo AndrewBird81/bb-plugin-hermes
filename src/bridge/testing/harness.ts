@@ -49,7 +49,7 @@ export function creq(): string {
   return out;
 }
 
-export async function startRig(opts: { profiles?: string[]; enabled?: string[]; worker?: boolean; holdRetryMs?: number[]; rotating?: string[]; secondMs?: number } = {}): Promise<Rig> {
+export async function startRig(opts: { profiles?: string[]; enabled?: string[]; worker?: boolean; models?: string[]; holdRetryMs?: number[]; rotating?: string[]; secondMs?: number } = {}): Promise<Rig> {
   const fake = await startFakeHermes({ profiles: opts.profiles ?? ["alex", "bob"], rotating: opts.rotating, secondMs: opts.secondMs });
   const clients: HermesClient[] = [];
   const dataDir = tempDir("bridge-data-");
@@ -58,7 +58,7 @@ export async function startRig(opts: { profiles?: string[]; enabled?: string[]; 
     return { profile: p.name, profile_home: p.home, bot_label: botLabel(p.name), cwd: null, served: true };
   });
   if (opts.worker !== false) {
-    const worker: WorkerFile = { root: fake.folder, worker_boot_id: "boot-1", written_at: Date.now(), enabled };
+    const worker: WorkerFile = { root: fake.folder, worker_boot_id: "boot-1", written_at: Date.now(), enabled, models: opts.models ?? [] };
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(path.join(dataDir, WORKER_FILE), JSON.stringify(worker));
   }

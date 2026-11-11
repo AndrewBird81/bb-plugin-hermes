@@ -452,8 +452,8 @@ export class HostedThread {
 
   /** The chip and the bot's models for this thread (`thread/start`, `init`; S7 1a, 1c). */
   async publishComposer(ctx: ThreadContext): Promise<void> {
-    const enabled = readWorkerFile(this.host.dataDir)?.enabled ?? [];
-    this.emit(composerStates({ profile: ctx.profile, bot_label: ctx.botLabel }, await this.catalog(ctx), enabled));
+    const worker = readWorkerFile(this.host.dataDir);
+    this.emit(composerStates({ profile: ctx.profile, bot_label: ctx.botLabel }, await this.catalog(ctx), worker?.enabled ?? [], worker?.models ?? []));
   }
 
   private remember(choice: ModelChoice | null): void {

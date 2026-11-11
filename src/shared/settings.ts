@@ -23,7 +23,18 @@ export const settingsDescriptors = {
     default: DEFAULT_FOLDER,
     experimental_schema: folderSchema,
   },
+  models: {
+    type: "string",
+    label: "Models",
+    description:
+      "Show only these models in Hermes chats, one provider/model per line (e.g. openai-codex/gpt-6.1-sol). Each bot shows the ones it has. Empty: all of them. \"The bot's model\" is always offered.",
+    default: "",
+    experimental_multiline: true,
+  },
 } satisfies PluginSettingDescriptors;
+
+/** The `models` setting as ids: one per line (or comma), trimmed, no blanks or repeats. Empty = every model. */
+export const parseModels = (text: string): string[] => [...new Set(text.split(/[\n,]/).map((s) => s.trim()).filter(Boolean))];
 
 export interface ConnectionSettings {
   machine: string;

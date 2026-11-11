@@ -182,6 +182,33 @@ describe("item 14: an untouched chip shows the bot the chat gets", () => {
   });
 });
 
+describe("the models setting (worker.json `models`)", () => {
+  it("New Thread's list and a thread's catalog show only its ids, after \"The bot's model\", which keeps the current model's reasoning", async () => {
+    await rig.close();
+    rig = await startRig({ models: ["stub/stub-mini", "other/absent"] });
+    rig.fake.handle("model.options", () => TWO_MODELS);
+    const ids = (models: Record<string, any>[]) => models.map((m) => m.id);
+    const { models } = (await rig.call("model/list", {})).result as { models: Record<string, any>[] };
+    expect(ids(models)).toEqual([PLACEHOLDER_MODEL, "stub/stub-mini"]);
+    // The current model (stub/stub) is hidden; "The bot's model" still offers its "Default" level.
+    expect(models[0]!.supportedReasoningEfforts.map((e: { reasoningEffort: string }) => e.reasoningEffort)).toEqual(["default"]);
+    await startThread(rig, "thr_set", opts("bob"));
+    await rig.waitFor(() => deltas(rig, "thr_set").length >= 2);
+    const catalog = deltas(rig, "thr_set").find((d) => d.extensionKind === "bb/provider-model-catalog")!;
+    expect(ids((catalog.payload as { models: Record<string, any>[] }).models)).toEqual([PLACEHOLDER_MODEL, "stub/stub-mini"]);
+    // A hidden model the bot has still runs: the setting trims lists, it doesn't refuse.
+    await turn(rig, "thr_set", [text("hi")], { ...opts("bob"), model: "stub/stub" });
+    expect(rig.requests("session.create").at(-1)!.params).toMatchObject({ model: "stub", provider: "stub" });
+    expect(warnings("thr_set")).toEqual([]);
+  });
+
+  it("empty: every model", async () => {
+    rig.fake.handle("model.options", () => TWO_MODELS);
+    const { models } = (await rig.call("model/list", {})).result as { models: Record<string, any>[] };
+    expect(models.map((m) => m.id)).toEqual([PLACEHOLDER_MODEL, "stub/stub", "stub/stub-mini"]);
+  });
+});
+
 describe("thread/start", () => {
   it("publishes the one-value bot chip and the bot's models, each with the chip of every switched-on bot", async () => {
     await startThread(rig, "thr_ch", opts("bob"));

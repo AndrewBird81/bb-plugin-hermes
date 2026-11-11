@@ -53,7 +53,7 @@ describe("switches (T1.9)", () => {
     const row = await on(w);
     expect(row).toMatchObject({ enabled: true, thread_id: "thr_1" });
     expect(w.access).toEqual([{ profile_home: NEO, on: true, enabled_bots: [NEO] }]);
-    expect(w.hostCalls("ensureWatch").at(-1)?.input).toEqual({ root: "~/.hermes", enabled_bots: [NEO] });
+    expect(w.hostCalls("ensureWatch").at(-1)?.input).toEqual({ root: "~/.hermes", enabled_bots: [NEO], models: [] });
     expect(w.thread("thr_1").spawn).toMatchObject({
       projectId: "proj_personal",
       providerId: "hermes",
@@ -87,7 +87,7 @@ describe("switches (T1.9)", () => {
     expect([w.thread("thr_1").archivedAt, w.thread(chat).archivedAt, w.thread(userArchived).archivedAt]).toEqual([1, 1, 5]);
     expect(bindingByThread(w.db, userArchived)?.archived_by_switch).toBe(false);
     expect(w.access.at(-1)).toEqual({ profile_home: NEO, on: false, enabled_bots: [] });
-    expect(w.hostCalls("ensureWatch").at(-1)?.input).toEqual({ root: "~/.hermes", enabled_bots: [] });
+    expect(w.hostCalls("ensureWatch").at(-1)?.input).toEqual({ root: "~/.hermes", enabled_bots: [], models: [] });
 
     const before = w.threads.size;
     await on(w);

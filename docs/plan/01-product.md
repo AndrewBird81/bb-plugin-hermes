@@ -7,6 +7,7 @@ What the user sees, feature by feature. Each ends with acceptance criteria (AC);
 - Plugin settings page: **Hermes folder** in bb's settings form; below it the plugin's Connection section with the **Hermes machine** picker and the health line (02 §Placement). Each setting appears once:
   - **Hermes machine:** a picker of bb machines. Unset → "Not connected", no Hermes I/O. The machine is saved with the folder it was set for: a folder that changed without a save (a reinstall resets the folder but keeps the machine) → "Not connected" until the connection is saved again.
   - **Hermes folder:** defaults to `~/.hermes`; editable for unusual installs and for tests (02 §Placement).
+  - **Models:** optional, one `provider/model` per line; model lists show only these (D59). Empty → every model.
 - **Health line:** connected or not; Hermes version and "supported" or "not supported"; worker last seen.
   - Not supported → mirroring and import pause; chats from bb keep working while the methods they use are present (02 flow 11).
 - Hermes is listed only on the Hermes machine (D56): in New Thread there; in Settings → Providers and the row icon only when that machine is bb's primary machine. The plugin adds no machine picker of its own.
@@ -67,7 +68,7 @@ AC:
   - bb names the chat from its first message.
   - The Hermes session is created on the first message: an abandoned draft leaves nothing in Hermes.
 - **Composer:** bb's own: text, attachments, voice dictation, bb's model chip, reasoning.
-  - **Model:** "The bot's model" first and the default (D53), then the bot's `model.options`. It sends no model and no reasoning, so a chat runs its bot's own model and level unless you pick a model there (D53); it offers only "Default", since bb carries one level across models and keeps it wherever offered. A pick is validated against the last-known list; never blocks a turn. An unoffered model → the bot's default plus a warning (S7 finding 6).
+  - **Model:** "The bot's model" first and the default (D53), then the bot's `model.options`, only those in the **Models** setting when it is set (D59). It sends no model and no reasoning, so a chat runs its bot's own model and level unless you pick a model there (D53); it offers only "Default", since bb carries one level across models and keeps it wherever offered. A pick is validated against the last-known list; never blocks a turn. An unoffered model → the bot's default plus a warning (S7 finding 6).
   - **Reasoning** (D17): Hermes levels per model; `default` = the bot's level (r11 §1). Mid-chat changes apply from the next turn.
   - **Attachments:** images (PNG, JPEG, GIF, WebP) go to Hermes (A50); other files don't: a warning names them, the text still goes.
 - **Replies** stream live: text, reasoning, tools.

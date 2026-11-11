@@ -9,13 +9,13 @@ export class WorkerFileWriter {
   private last: string | null = null;
 
   /** Writes `<bridgeDataDir>/worker.json` unless this process already wrote this content; true when written. */
-  async write(bridgeDataDir: string, root: string, workerBootId: string, enabled: EnabledBot[]): Promise<boolean> {
-    const key = JSON.stringify([bridgeDataDir, root, workerBootId, enabled]);
+  async write(bridgeDataDir: string, root: string, workerBootId: string, enabled: EnabledBot[], models: readonly string[] = []): Promise<boolean> {
+    const key = JSON.stringify([bridgeDataDir, root, workerBootId, enabled, models]);
     if (key === this.last) return false;
     const file = path.join(bridgeDataDir, WORKER_FILE);
     await mkdir(bridgeDataDir, { recursive: true });
     const tmp = `${file}.${process.pid}.tmp`;
-    const body = workerFileSchema.parse({ root, worker_boot_id: workerBootId, written_at: Date.now(), enabled });
+    const body = workerFileSchema.parse({ root, worker_boot_id: workerBootId, written_at: Date.now(), enabled, models });
     await writeFile(tmp, JSON.stringify(body, null, 2) + "\n");
     await rename(tmp, file);
     this.last = key;
