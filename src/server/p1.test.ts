@@ -739,6 +739,15 @@ describe("folder guard (R8)", () => {
     expect(deriveProviderOptions(w.db, { settings: { folder: "~/.hermes" }, threadId: "thr_x" }).machine).toEqual({ id: MACHINE, name: "hermes-mac" });
   });
 
+  it("a models save after a folder reset stays folder_changed: only a folder save keeps the machine", async () => {
+    const w = await world({ seed: (db) => setKv(db, "machine_folder", "/private/tmp/bb-hermes-test/old") });
+    await w.harness.behavior.setSettings({ models: "openai-codex/gpt-6.1-sol" });
+    await w.flush();
+    expect(getKv(w.db, "machine_folder")).toBe("/private/tmp/bb-hermes-test/old");
+    expect(await w.rpc("health")).toMatchObject({ state: "not_configured", detail: "folder_changed" });
+    expect(w.harness.inspection.experimental_hostRpcCalls).toEqual([]);
+  });
+
   it("a P0 db (machine, no folder) counts as matching; a folder saved in bb's settings keeps the machine", async () => {
     const w = await world();
     expect(getKv(w.db, "machine_folder")).toBe("~/.hermes");

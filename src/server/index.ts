@@ -190,8 +190,12 @@ export async function startServer(bb: BbPluginApi, settings: SettingsHandle, db:
     await connection.ensureNow();
   });
   // A folder saved in bb's settings form keeps the machine (only a folder that moved without a save stops it).
+  // A save that leaves the folder as it was (a Models save) records nothing, so it can't clear `folder_changed`.
+  let lastFolder = (await settings.get()).folder;
   settings.onChange(async () => {
-    setKv(db, MACHINE_FOLDER_KEY, (await settings.get()).folder);
+    const { folder } = await settings.get();
+    if (folder !== lastFolder) setKv(db, MACHINE_FOLDER_KEY, folder);
+    lastFolder = folder;
     void connection.ensureNow();
   });
 
