@@ -169,6 +169,10 @@ Live (2026-11-09, UTC): `v1.0.0` released (tag `9f9a436c`); the steps above, in 
 - `bb provider list`: Hermes on the primary and `$HERMES_HOST`, not on `$WORK_HOST`, so Hermes rows get the icon. 0 Hermes writes; gateway pid unchanged; no Hermes turn ran.
 - Don't make Hermes the default in Settings → Providers while relying on `list-here` (guide).
 
+## v1.2.0 release (2026-11-11, UTC)
+
+`v1.2.0` released (tag `2801d6cc`): the **Models** setting (D59), and a Models-only save keeps `folder_changed` (review c43). Live update not run yet.
+
 ## Approvals
 
 Gated steps (pushes, tags, releases, the live install, each live bot switch-on) check this log first (04 §Rollout).
@@ -195,3 +199,4 @@ Gated steps (pushes, tags, releases, the live install, each live bot switch-on) 
 | 2026-11-09 | Release `v1.1.0`, its live update, one live test chat with `default` | Approved ("Approved") |
 | 2026-11-09 | Disable provider-acp's `acp-hermes-agent` on live bb | Done at the owner's request |
 | 2026-11-09 | Build `list-here` (D58), release `v1.1.1`, update live and write the marker on the primary | Approved ("Go for it (deploy and publish)") |
+| 2026-11-11 | Models setting (D59): push and release `v1.2.0`, no PR | Approved in Code Review Workspace ("Push and make a new release") |
