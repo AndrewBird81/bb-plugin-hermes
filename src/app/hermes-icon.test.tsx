@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { HERMES_PATHS, HermesIcon } from "./hermes-icon.js";
+import { HERMES_PATHS, HERMES_TINT, HermesIcon } from "./hermes-icon.js";
 
 describe("Hermes icon", () => {
   it("the inline icon is assets/hermes.svg", () => {
@@ -10,5 +10,9 @@ describe("Hermes icon", () => {
     // The Hermes Agent mark needs even-odd filling: both draw with it.
     expect(asset).toContain('fill-rule="evenodd"');
     expect(renderToStaticMarkup(<HermesIcon />)).toContain('fill-rule="evenodd"');
+  });
+
+  it("draws in its own tint", () => {
+    expect(renderToStaticMarkup(<HermesIcon />)).toContain(`fill="${HERMES_TINT}"`);
   });
 });

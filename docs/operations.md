@@ -205,3 +205,4 @@ Gated steps (pushes, tags, releases, the live install, each live bot switch-on) 
 | 2026-11-09 | Build `list-here` (D58), release `v1.1.1`, update live and write the marker on the primary | Approved ("Go for it (deploy and publish)") |
 | 2026-11-11 | Models setting (D59): push and release `v1.2.0`, no PR | Approved in Code Review Workspace ("Push and make a new release") |
 | 2026-11-11 | `v1.2.0` live update, `stopHosted`, and the Models list | Approved ("Do those outstanding 3 steps") |
+| 2026-11-19 | Icon tint (Kanagawa Dragon aqua): push, release `v1.2.1` and its live update | Approved ("Push your changes and install whatever you need to") |
